@@ -83,6 +83,12 @@ function detectComposants(nom){
   return [...out];
 }
 
+// BF Cuit = mixé chaud (plat cuit/chaud → mixé → servi chaud)
+// BF Cru  = mixé froid (aliment cru/froid → mixé → servi froid)
+function mixeProfil(plat){
+  return ['BF_CUIT','REMISE_TC'].includes(plat.profil_haccp) ? 'BF_CUIT' : 'BF_CRU';
+}
+
 const CATS = [
   { id:'potages',    label:'🍲 Potages',    short:'Potage' },
   { id:'entrees',    label:'🥗 Entrées',    short:'Entrée' },
@@ -289,6 +295,10 @@ function renderPlatRow(catId, plat, idx){
   const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
   const stat = computePlatStatus(plat);
   const variants = plat.variants || {};
+  const mxp = PROFILS[variants.mixe_profil || mixeProfil(plat)];
+  const mxBadge = variants.mixe
+    ? ` <span style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 5px;border-radius:5px;font-weight:800;vertical-align:middle">${mxp.label}</span>`
+    : '';
   return `
   <div class="mn-plat">
     <div class="mn-plat-row1">
@@ -303,7 +313,7 @@ function renderPlatRow(catId, plat, idx){
     <div class="mn-plat-row3">
       <label class="mn-plat-chk">
         <input type="checkbox" ${variants.mixe?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'mixe',this.checked)">
-        🥄 Mixé
+        🥄 Mixé${mxBadge}
       </label>
       <label class="mn-plat-chk">
         <input type="checkbox" ${variants.sans_sel?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'sans_sel',this.checked)">
@@ -516,9 +526,15 @@ window._menuChangeProfil = function(catId, idx){
   const cur = order.indexOf(plat.profil_haccp);
   plat.profil_haccp = order[(cur+1) % order.length];
   if(!['SORTIE_DIRECTE','PREP_MINUTE'].includes(plat.profil_haccp)) plat.statut_auto = null;
+  // Recalculate mixé BF profile if the variant is active
+  if(plat.variants?.mixe){
+    plat.variants.mixe_profil = mixeProfil(plat);
+    if(typeof toast === 'function') toast('Profil → ' + (PROFILS[plat.profil_haccp]?.label||'?') + ' · Mixé → ' + (PROFILS[plat.variants.mixe_profil]?.label||'?'), 'info');
+  } else {
+    if(typeof toast === 'function') toast('Profil → ' + (PROFILS[plat.profil_haccp]?.label||'?'), 'info');
+  }
   setMenu(_menuState.date, _menuState.service, menu);
   if(typeof renderMain === 'function') renderMain();
-  if(typeof toast === 'function') toast('Profil → ' + (PROFILS[plat.profil_haccp]?.label||'?'), 'info');
 };
 window._menuToggleVariant = function(catId, idx, variant, checked){
   const menu = getMenu(_menuState.date, _menuState.service);
@@ -527,8 +543,15 @@ window._menuToggleVariant = function(catId, idx, variant, checked){
   if(!plat) return;
   plat.variants = plat.variants || {};
   plat.variants[variant] = !!checked;
+  if(variant === 'mixe'){
+    if(checked){
+      plat.variants.mixe_profil = mixeProfil(plat);
+    } else {
+      delete plat.variants.mixe_profil;
+    }
+  }
   setMenu(_menuState.date, _menuState.service, menu);
-  // Pas de re-render complet — la checkbox est déjà à jour visuellement
+  if(typeof renderMain === 'function') renderMain();
 };
 window._menuRecopierHier = function(){
   const dStr = addDays(_menuState.date, -1);
@@ -624,8 +647,12 @@ function _menuAutoOnSave(menu){
       (menu.categories[c.id]||[]).forEach(plat => {
         addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
         count33++;
-        if(plat.variants?.mixe)    { addPlatTemoin(plat.nom+' (mixé)',    plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé');    count33++; }
-        if(plat.variants?.sans_sel){ addPlatTemoin(plat.nom+' (sans sel)',plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'sans_sel');count33++; }
+        if(plat.variants?.mixe){
+          const mxProfil = plat.variants.mixe_profil || mixeProfil(plat);
+          addPlatTemoin(plat.nom+' (mixé)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé', mxProfil);
+          count33++;
+        }
+        if(plat.variants?.sans_sel){ addPlatTemoin(plat.nom+' (sans sel)',plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'sans_sel'); count33++; }
         if(plat.variants?.hp)      { addPlatTemoin(plat.nom+' (HP)',      plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'hp');       count33++; }
       });
     });
@@ -638,11 +665,12 @@ function _menuAutoOnSave(menu){
   let count34 = 0;
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
+      const mxProfil = plat.variants?.mixe ? (plat.variants.mixe_profil || mixeProfil(plat)) : null;
       const variants = [
-        { nom: plat.nom, variant: '' },
-        ...(plat.variants?.mixe     ? [{ nom: plat.nom+' (mixé)',    variant: 'MIXÉ'    }] : []),
-        ...(plat.variants?.sans_sel ? [{ nom: plat.nom+' (sans sel)',variant: 'SANS SEL'}] : []),
-        ...(plat.variants?.hp       ? [{ nom: plat.nom+' (HP)',      variant: 'HP'      }] : []),
+        { nom: plat.nom, variant: '', profil: plat.profil_haccp },
+        ...(plat.variants?.mixe     ? [{ nom: plat.nom+' (mixé)',    variant: 'MIXÉ',     profil: mxProfil    }] : []),
+        ...(plat.variants?.sans_sel ? [{ nom: plat.nom+' (sans sel)',variant: 'SANS SEL', profil: plat.profil_haccp }] : []),
+        ...(plat.variants?.hp       ? [{ nom: plat.nom+' (HP)',      variant: 'HP',       profil: plat.profil_haccp }] : []),
       ];
       variants.forEach(v => {
         const ts = new Date().toISOString();
@@ -652,6 +680,7 @@ function _menuAutoOnSave(menu){
           operateur: chef, nb_etiq: 1,
           _sec: 'enr34', _ts: ts,
           _plat_id: plat.plat_id, _plat_nom: plat.nom, _menu_id: menu.menu_id,
+          _plat_profil: v.profil || null,
           _variant: v.variant || null, _from_menu: true,
         };
         S.enr34.lignes.unshift(rec);
@@ -698,12 +727,11 @@ window._menuGenerateTemoins = function(){
   let count = 0;
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
-      // Plat normal
       addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
       count++;
-      // Variantes
       if(plat.variants?.mixe){
-        addPlatTemoin(plat.nom + ' (mixé)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé');
+        const mxProfil = plat.variants.mixe_profil || mixeProfil(plat);
+        addPlatTemoin(plat.nom + ' (mixé)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé', mxProfil);
         count++;
       }
       if(plat.variants?.sans_sel){
@@ -725,7 +753,7 @@ window._menuGenerateTemoins = function(){
   if(typeof renderMain === 'function') renderMain();
 };
 
-function addPlatTemoin(nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menuId, variant){
+function addPlatTemoin(nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menuId, variant, overrideProfil){
   const rec = stampEntry({
     produit:        nom,
     operateur:      chef,
@@ -739,7 +767,7 @@ function addPlatTemoin(nom, plat, chef, datePrelev, heure, dateDestruct, service
     _ts:           new Date().toISOString(),
     _plat_id:       plat.plat_id,
     _plat_nom:      plat.nom,
-    _plat_profil:   plat.profil_haccp,
+    _plat_profil:   overrideProfil || plat.profil_haccp,
     _menu_id:       menuId,
     _from_menu:     true,
     _variant:       variant || null,
