@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+  <html lang="fr">
+  <head>
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>HACC.PRO &mdash; Dashboard</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" id="pwa-manifest-link" href="/manifest.json">
+  <meta name="application-name" content="HACC.PRO Dashboard">
+  <meta name="apple-mobile-web-app-title" content="HACC.PRO Dashboard">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0F2240">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <!-- Configuration Supabase centralisee (cle anon - securisee par RLS) -->
+  <!-- Supabase CDN (obligatoire avant authGuard et supabaseClientInit) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabaseconfig.js"></script>
+  <script src="js/supabaseclientinit.js"></script>
+  <!-- Garde de session pour le Dashboard -->
+  <script src="js/authguard.js"></script>
+  <script>
+  runAuthGuard({ sessionKey: 'haccpro_session', stableKey: 'haccp_dash_cfg_v2', loginUrl: './' });
+  </script>
+  <!-- Utilitaires partages -->
+  <script src="js/utils.js"></script>
+  
+  <script>
+    // Enregistrement du Service Worker (PWA offline)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+          // Mise à jour silencieuse disponible
+          reg.addEventListener('updatefound', function() {
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function() {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[HACCPro] Mise à jour disponible — rechargez la page.');
+              }
+            });
+          });
+        }).catch(function(err) {
+          console.warn('[HACCPro] SW non enregistré :', err);
+        });
+      });
+    }
+  </script>
+  </head>
+  <body>
+  <script>
+  (function(){
+    var m={name:"HACC.PRO Dashboard",short_name:"HACC.PRO",start_url:"dashboard.html",display:"standalone",background_color:"#0F2240",theme_color:"#0F2240",
+      icons:[{src:"icon-192.png",sizes:"192x192",type:"image/png",purpose:"any maskable"},{src:"icon-512.png",sizes:"512x512",type:"image/png",purpose:"any maskable"}]};
+    var b=new Blob([JSON.stringify(m)],{type:"application/manifest+json"});
+    document.getElementById("pwa-manifest-link").href=URL.createObjectURL(b);
+  })();
+  </script>
+
+  
+
+
+
+<!-- APP -->
+<div id="app" style="display:none">
+
+  <!-- Sidebar overlay mobile -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <nav class="sidebar" id="sidebar">
+    <div class="sidebar-logo" onclick="navTo('overview');closeSidebar();" style="cursor:pointer" title="Accueil">
+      <img src="data:image/png;base64,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" alt="HACC.PRO" width="36" height="36" style="border-radius:8px;flex-shrink:0">
+      <div class="sidebar-logo-text">
+        <div class="t1">HACC.PRO</div>
+        <div class="t2" id="sidebar-tenant-name">Restalliance</div>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="sidebar-user-name" id="sb-name">—</div>
+      <div class="sidebar-user-role" id="sb-role">—</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-section-label">Général</div>
+      <div class="nav-item active" onclick="navTo('overview')" data-page="overview"><span class="ico">📊</span>Vue d'ensemble</div>
+      <div class="nav-item" onclick="navTo('saisies')" data-page="saisies"><span class="ico">📋</span>Saisies PMS</div>
+      <div class="nav-item" onclick="navTo('photos')" data-page="photos"><span class="ico">📷</span>Photos</div>
+      <div class="nav-item" onclick="navTo('nc')" data-page="nc"><span class="ico">🚨</span>Non-conformités</div>
+      <div class="nav-section-label">Par fiche</div>
+      <div class="nav-item" onclick="navTo('pg-reception')" data-page="pg-reception"><span class="ico">📦</span>Réceptions</div>
+      <div class="nav-item" onclick="navTo('pg-tracabilite')" data-page="pg-tracabilite"><span class="ico">📋</span>Traçabilité MP</div>
+      <div class="nav-item" onclick="navTo('pg-ccp')" data-page="pg-ccp"><span class="ico">❄️</span>CCP</div>
+      <div class="nav-item" onclick="navTo('pg-temperatures')" data-page="pg-temperatures"><span class="ico">🌡️</span>Températures</div>
+      <div class="nav-item" onclick="navTo('pg-nettoyage')" data-page="pg-nettoyage"><span class="ico">🧹</span>Nettoyage</div>
+      <div class="nav-item" onclick="navTo('pg-nuisibles')" data-page="pg-nuisibles"><span class="ico">🐀</span>Nuisibles</div>
+      <div class="nav-item" onclick="navTo('pg-cuisson')" data-page="pg-cuisson"><span class="ico">🥘</span>Cuisson & Distrib.</div>
+      <div class="nav-item" onclick="navTo('pg-suivi')" data-page="pg-suivi"><span class="ico">📋</span>Maintenance & Labo</div>
+      <div class="nav-section-label">Analyse</div>
+      <div class="nav-item" onclick="navTo('compare')" data-page="compare" id="nav-compare"><span class="ico">⚖️</span>PMS vs GMO</div>
+      <div class="nav-item" onclick="navTo('gmo')" data-page="gmo" id="nav-gmo"><span class="ico">📝</span>GMO</div>
+      <div class="nav-item" onclick="navTo('rapports')" data-page="rapports"><span class="ico">📄</span>Rapports PDF</div>
+      <div class="nav-item" onclick="navTo('alerts')" data-page="alerts" id="nav-alerts" style="display:none"><span class="ico">🚨</span>Alertes cuisines</div>
+      <div class="nav-item" onclick="navTo('actions-nc')" data-page="actions-nc" id="nav-actions-nc" style="display:none"><span class="ico">🛠️</span>Actions correctives</div>
+      <div class="nav-section-label" id="nav-admin-section" style="display:none">Administration</div>
+      <div class="nav-item" onclick="navTo('admin')" data-page="admin" id="nav-admin" style="display:none"><span class="ico">⚙️</span>Gérer l'organisation</div>
+      <div class="nav-item" onclick="navTo('super')" data-page="super" id="nav-super" style="display:none"><span class="ico">🌐</span>Super Admin</div>
+    </div>
+    <div class="sidebar-bottom">
+      <div class="logout-btn" onclick="doLogout()"><span>⬅</span> Déconnexion</div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <button class="topbar-menu-btn" onclick="toggleSidebar()">☰</button>
+      <div class="topbar-title" id="page-title">Vue d'ensemble</div>
+      <div class="topbar-filters" id="topbar-filters">
+        <!-- Sélecteur territoire/secteur/site combiné -->
+        <div class="filter-combo" id="filter-combo-wrap">
+          <button class="filter-combo-btn" id="filter-combo-btn" onclick="toggleFilterCombo()">
+            <span id="filter-combo-label">Tous les sites</span>
+            <span class="filter-combo-arrow">▾</span>
+          </button>
+          <div class="filter-combo-dropdown" id="filter-combo-dropdown">
+            <div class="filter-combo-section">
+              <div class="filter-combo-row">
+                <span class="filter-combo-ico">🗺️</span>
+                <select id="filter-territoire" onchange="onComboTerrChange()" class="filter-combo-select">
+                  <option value="">Tous les territoires</option>
+                </select>
+              </div>
+              <div class="filter-combo-row">
+                <span class="filter-combo-ico">📍</span>
+                <select id="filter-secteur" onchange="onComboSectChange()" class="filter-combo-select">
+                  <option value="">Tous les secteurs</option>
+                </select>
+              </div>
+              <div class="filter-combo-row">
+                <span class="filter-combo-ico">🏠</span>
+                <select id="filter-site" onchange="onComboSiteChange()" class="filter-combo-select">
+                  <option value="">Tous les sites</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Filtre mois -->
+        <select class="filter-select filter-mois-sel" id="filter-mois" onchange="applyFilters()">
+          <option value="">Tous les mois</option>
+        </select>
+        <select id="filter-load-period" onchange="loadData()"
+          style="padding:6px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:.75rem;font-weight:700;font-family:var(--font);background:#fff;color:var(--navy);cursor:pointer"
+          title="Période de chargement des données">
+          <option value="1">📅 1 mois</option>
+          <option value="3">📅 3 mois</option>
+          <option value="6" selected>📅 6 mois</option>
+          <option value="12">📅 12 mois</option>
+        </select>
+        <!-- Inputs cachés pour compatibilité -->
+        <input type="hidden" id="filter-site-m">
+        <input type="hidden" id="filter-mois-m">
+      </div>
+      <!-- Bouton refresh toujours visible + indicateur auto-refresh -->
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <div id="sync-indicator" title="Prochaine actualisation automatique" style="font-size:.65rem;color:rgba(0,0,0,.35);white-space:nowrap;display:none">↻ <span id="sync-countdown">2:00</span></div>
+        <button class="btn-refresh" onclick="loadData()" id="btn-refresh-main" title="Actualiser maintenant" style="display:flex;align-items:center;gap:5px;padding:6px 12px">
+          <span id="refresh-ico">↻</span>
+          <span class="refresh-label">Actualiser</span>
+        </button>
+      </div>
+    </div>
+    <!-- Filter drawer mobile -->
+
+    <!-- Content -->
+    <div class="content" id="content">
+      <div class="loading"><div class="spinner"></div>Chargement…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Panel -->
+<div class="detail-overlay" id="detail-overlay" onclick="if(event.target===this)closeDetail()">
+  <div class="detail-panel">
+    <div class="detail-header">
+      <div style="flex:1">
+        <div class="detail-header-title" id="detail-title">—</div>
+        <div class="detail-header-sub" id="detail-sub">—</div>
+      </div>
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+    </div>
+    <div class="detail-body" id="detail-body"></div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox" onclick="closeLightbox()">
+  <div id="lightbox-close" onclick="closeLightbox()">✕</div>
+  <img id="lightbox-img" src="">
+</div>
+
+<!-- Toasts -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+
+
+  <!-- Application Dashboard -->
+
+  <script>
+  // Forcer l'affichage après 1s — failsafe si bootApp ne s'exécute pas
+  setTimeout(function() {
+    var app = document.getElementById('app');
+    if (app && app.style.display === 'none') {
+      app.style.display = 'block';
+      // Si #content est vide, afficher un spinner de chargement
+      var content = document.getElementById('content');
+      if (content && !content.innerHTML.trim()) {
+        content.innerHTML = '<div class="loading"><div class="spinner"></div>Connexion en cours…</div>';
+      }
+    }
+  }, 1000);
+  </script>
+  <script src="js/app-dashboard.js?v=35"></script>
+  <!-- Module MENU (v36.1) — onglet Menus & Plats côté siège -->
+  <script src="js/app-menu-dashboard.js?v=361"></script>
+  
+</body>
+  </html>

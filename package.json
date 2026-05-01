@@ -1,0 +1,8 @@
+{
+  "name": "haccpro",
+  "private": true,
+  "version": "20.0.0",
+  "dependencies": {
+    "@netlify/functions": "^2.0.0"
+  }
+}

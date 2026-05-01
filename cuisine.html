@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+  <html lang="fr">
+  <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>HACC.PRO — Cuisine v36.3</title>
+  <meta name="application-name" content="HACC.PRO Cuisine">
+  <meta name="apple-mobile-web-app-title" content="HACC.PRO Cuisine">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0F2240">
+  <meta name="description" content="HACC.PRO &mdash; Gestion HACCP cuisine">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" id="pwa-manifest-link" href="/manifest.json">
+  <link rel="stylesheet" href="css/cuisine.css">
+  <!-- Bibliotheques externes -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Configuration Supabase centralisee (cle anon - securisee par RLS) -->
+  <script src="js/supabaseconfig.js"></script>
+  <!-- Initialisation SDK Supabase (auto-refresh token) -->
+  <script src="js/supabaseclientinit.js"></script>
+  <!-- Garde de session (verifie JWT, refresh si expire) -->
+  <script src="js/authguard.js"></script>
+  <script>
+  runAuthGuard({ sessionKey: 'haccpro_supa_cfg', stableKey: 'haccp_supa_cfg_v1', loginUrl: './' });
+  </script>
+  <!-- Utilitaires partages -->
+  <script src="js/utils.js"></script>
+  
+  <script>
+    // Enregistrement du Service Worker (PWA offline)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+          // Mise à jour silencieuse disponible
+          reg.addEventListener('updatefound', function() {
+            var newWorker = reg.installing;
+            newWorker.addEventListener('statechange', function() {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[HACCPro] Mise à jour disponible — rechargez la page.');
+              }
+            });
+          });
+        }).catch(function(err) {
+          console.warn('[HACCPro] SW non enregistré :', err);
+        });
+      });
+    }
+  </script>
+  </head>
+  <body>
+  <script>
+  (function(){
+    var m={name:"HACC.PRO Cuisine",short_name:"HACC.PRO",start_url:"cuisine.html",display:"standalone",background_color:"#0F2240",theme_color:"#0F2240",
+      icons:[{src:"icon-192.png",sizes:"192x192",type:"image/png",purpose:"any maskable"},{src:"icon-512.png",sizes:"512x512",type:"image/png",purpose:"any maskable"}]};
+    var b=new Blob([JSON.stringify(m)],{type:"application/manifest+json"});
+    document.getElementById("pwa-manifest-link").href=URL.createObjectURL(b);
+  })();
+  </script>
+
+  
+
+<!-- POST-EXPORT MODAL -->
+<div id="exp-done-ov">
+  <div class="exp-done-modal">
+    <div class="exp-done-hd">
+      <h2>✅ Fichier Excel généré</h2>
+      <p>Le fichier est dans vos Téléchargements. Suivez les étapes ci-dessous pour l'envoyer.</p>
+    </div>
+    <div class="exp-done-body">
+      <div class="exp-done-filename" id="exp-done-fname">—</div>
+      <ol class="exp-done-steps">
+        <li><span class="exp-done-step-num">1</span><span>Ouvrez votre <strong>application Mail</strong> (Gmail, Orange Mail…)</span></li>
+        <li><span class="exp-done-step-num">2</span><span>Appuyez sur <strong>Nouveau message</strong> ✏️</span></li>
+        <li><span class="exp-done-step-num">3</span><span>Appuyez sur l'icône <strong>Pièce jointe 📎</strong></span></li>
+        <li><span class="exp-done-step-num">4</span><span>Allez dans <strong>Téléchargements</strong> et sélectionnez le fichier ci-dessus</span></li>
+      </ol>
+      <div class="exp-done-btns">
+        <button class="exp-done-mail" id="exp-done-mail-btn" onclick="openMailFromDone()">✉️ Ouvrir la messagerie</button>
+        <button class="exp-done-close" onclick="document.getElementById('exp-done-ov').classList.remove('open')">Fermer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal licence supprimé -->
+
+<!-- PHOTO MODAL -->
+<div id="ocr-ov" onclick="if(event.target===this)closeOcrModal()">
+  <div id="ocr-box">
+    <div class="ocr-hdr">
+      <span class="ocr-hdr-title">📷 Photo étiquette</span>
+      <button class="ocr-close" onclick="closeOcrModal()">✕</button>
+    </div>
+    <div class="ocr-body" id="ocr-body">
+      <div class="ocr-preview-wrap" id="ocr-preview-wrap">
+        <div class="ocr-placeholder" id="ocr-placeholder">📷 Appuyez sur "Prendre une photo"</div>
+        <img id="ocr-img" style="display:none;width:100%;height:100%;object-fit:contain">
+      </div>
+      <input type="file" id="ocr-file-input" accept="image/*" capture="environment" style="display:none" onchange="photoHandleFile(this)">
+    </div>
+    <div id="ocr-save-info" style="padding:6px 16px;font-size:.68rem;color:#1565c0;background:#e3f2fd;text-align:center;display:none;border-top:1px solid #bbdefb">
+      📁 Sauvegardée dans <strong>Téléchargements</strong> · miniature stockée dans l'app
+    </div>
+    <div class="ocr-actions">
+      <button class="ocr-btn-retry" onclick="ocrTriggerCamera()">📷 Ouvrir la caméra</button>
+      <button class="ocr-btn-apply" id="ocr-apply-btn" onclick="photoSave()" style="opacity:.4;pointer-events:none">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL VALIDATION NETTOYAGE -->
+<div id="nett-modal-ov" onclick="if(event.target===this)closeNettModal()">
+  <div class="nett-modal-box">
+    <div class="ocr-hdr">
+      <span class="ocr-hdr-title">✅ Valider le nettoyage</span>
+      <button class="ocr-close" onclick="closeNettModal()">✕</button>
+    </div>
+    <div style="padding:14px 16px 0">
+      <div style="font-size:.95rem;font-weight:800;color:var(--plum);margin-bottom:2px" id="nett-modal-title"></div>
+      <div style="font-size:.73rem;color:#b89ab6;margin-bottom:4px" id="nett-modal-zone"></div>
+      <div style="font-size:.72rem;color:#888;margin-bottom:14px">🧴 <span id="nett-modal-produit"></span></div>
+      <div class="fgrid">
+        <div class="fg">
+          <label>Heure</label>
+          <input class="fi" type="time" id="nett-modal-heure">
+        </div>
+        <div class="fg">
+          <label>Cuisinier</label>
+          <select class="fi" id="nett-modal-chef"></select>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:8px">
+        <label>Conforme ?</label>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="cfb oui" id="nett-conf-oui" style="flex:1;padding:11px;font-size:.9rem"
+            onclick="document.getElementById('nett-modal-conf').value='OUI';this.classList.add('on');document.getElementById('nett-conf-non').classList.remove('on');document.getElementById('nett-photo-zone').style.display='none';document.getElementById('nett-photo-preview').innerHTML='';_nettNCPhoto=null">✓ OUI</button>
+          <button class="cfb non" id="nett-conf-non" style="flex:1;padding:11px;font-size:.9rem"
+            onclick="document.getElementById('nett-modal-conf').value='NON';this.classList.add('on');document.getElementById('nett-conf-oui').classList.remove('on');document.getElementById('nett-photo-zone').style.display='block'">✗ NON</button>
+        </div>
+        <input type="hidden" id="nett-modal-conf" value="OUI">
+      </div>
+      <div class="fg" style="margin-top:8px">
+        <label>Commentaire / Description NC *</label>
+        <input class="fi" type="text" id="nett-modal-comment" placeholder="Ex: Résidus sur le plan de travail…">
+      </div>
+      <!-- Zone photo NC — visible uniquement si NON -->
+      <div id="nett-photo-zone" style="display:none;margin-top:10px;margin-bottom:14px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:10px 12px">
+        <div style="font-size:.75rem;font-weight:800;color:#991b1b;margin-bottom:6px">📸 Photo de la non-conformité (obligatoire)</div>
+        <label style="display:flex;align-items:center;gap:8px;background:#dc2626;color:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:.78rem;font-weight:700;width:fit-content">
+          📷 Prendre une photo
+          <input type="file" accept="image/*" capture="environment" style="display:none" onchange="nettNCHandlePhoto(this)">
+        </label>
+        <div id="nett-photo-preview" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <div class="ocr-actions" style="padding:12px 16px">
+      <button class="ocr-btn-retry" onclick="closeNettModal()">Annuler</button>
+      <button class="ocr-btn-apply" onclick="saveNettVal()">✅ Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL AJOUT ÉLÉMENT NETTOYAGE -->
+<div id="nett-add-ov" onclick="if(event.target===this)closeNettAddModal()">
+  <div class="nett-modal-box">
+    <div class="ocr-hdr">
+      <span class="ocr-hdr-title">➕ Ajouter un élément</span>
+      <button class="ocr-close" onclick="closeNettAddModal()">✕</button>
+    </div>
+    <div style="padding:14px 16px">
+      <div class="fgrid">
+        <div class="fg">
+          <label>Zone *</label>
+          <input class="fi" type="text" id="nett-add-zone" placeholder="ex: Cuisine chaude" list="nett-zones-list">
+          <datalist id="nett-zones-list">
+            <option>Cuisine chaude</option><option>Cuisine froide</option>
+            <option>Légumerie</option><option>Plonge</option>
+            <option>Enceintes froides</option><option>Réception</option>
+            <option>Local déchets</option><option>Sanitaires</option>
+            <option>Distribution</option><option>Général</option>
+          </datalist>
+        </div>
+        <div class="fg">
+          <label>Matériel / Surface *</label>
+          <input class="fi" type="text" id="nett-add-materiel" placeholder="ex: Plans de travail">
+        </div>
+        <div class="fg">
+          <label>Fréquence</label>
+          <select class="fi" id="nett-add-freq">
+            <option value="apres_usage">⚡ Après chaque usage</option>
+            <option value="quotidien" selected>📅 Quotidien</option>
+            <option value="hebdo">📆 Hebdomadaire</option>
+            <option value="mensuel">🗓️ Mensuel</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Produit nettoyant</label>
+          <input class="fi" type="text" id="nett-add-produit" placeholder="ex: Dégraissant alimentaire">
+        </div>
+      </div>
+    </div>
+    <div class="ocr-actions" style="padding:0 16px 14px">
+      <button class="ocr-btn-retry" onclick="closeNettAddModal()">Annuler</button>
+      <button class="ocr-btn-apply" onclick="saveNettAdd()">✅ Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL NUISIBLES -->
+<div id="nuis-modal-ov" onclick="if(event.target===this)closeNuisiblesModal()">
+  <div class="nett-modal-box">
+    <div class="ocr-hdr">
+      <span class="ocr-hdr-title">🐀 Vérification nuisibles</span>
+      <button class="ocr-close" onclick="closeNuisiblesModal()">✕</button>
+    </div>
+    <div style="padding:14px 16px 0">
+      <div style="font-size:.95rem;font-weight:800;color:var(--plum);margin-bottom:12px">📍 <span id="nuis-modal-zone"></span></div>
+      <div class="fgrid">
+        <div class="fg">
+          <label>Heure</label>
+          <input class="fi" type="time" id="nuis-modal-heure">
+        </div>
+        <div class="fg">
+          <label>Cuisinier</label>
+          <select class="fi" id="nuis-modal-chef"></select>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:10px">
+        <label>Présence de nuisibles ?</label>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <button class="cfb oui on" id="nuis-pres-non" style="flex:1;padding:13px;font-size:.95rem;border-radius:12px"
+            onclick="nuisiblesTogglePresence('NON')">✅ NON — RAS</button>
+          <button class="cfb non" id="nuis-pres-oui" style="flex:1;padding:13px;font-size:.95rem;border-radius:12px"
+            onclick="nuisiblesTogglePresence('OUI')">⚠️ OUI — Présence</button>
+        </div>
+        <input type="hidden" id="nuis-modal-presence" value="NON">
+      </div>
+      <div id="nuis-action-block" style="display:none;margin-top:10px;margin-bottom:4px">
+        <div style="background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:10px 12px;margin-bottom:8px">
+          <div style="font-size:.75rem;font-weight:800;color:#dc2626;margin-bottom:4px">⚠️ Présence détectée — Action corrective obligatoire</div>
+          <div style="font-size:.7rem;color:#991b1b">Une non-conformité sera enregistrée automatiquement.</div>
+        </div>
+        <div class="fg">
+          <label>Action corrective effectuée *</label>
+          <input class="fi" type="text" id="nuis-modal-action" placeholder="Ex: Pièges posés, signalement societe de deratisation...">
+        </div>
+      </div>
+      <div style="margin-bottom:14px"></div>
+    </div>
+    <div class="ocr-actions" style="padding:12px 16px">
+      <button class="ocr-btn-retry" onclick="closeNuisiblesModal()">Annuler</button>
+      <button class="ocr-btn-apply" onclick="saveNuisiblesCheck()">✅ Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- AUDIT MODAL -->
+<div id="audit-ov" onclick="if(event.target===this)closeAuditModal()">
+  <div id="audit-box">
+    <div class="audit-hdr">
+      <span class="audit-hdr-ico">🔍</span>
+      <div>
+        <div class="audit-hdr-title">Préparation Contrôle Sanitaire</div>
+        <div class="audit-hdr-sub">Rapport HACCP complet</div>
+      </div>
+      <button class="audit-close" onclick="closeAuditModal()">✕</button>
+    </div>
+    <div class="audit-body" id="audit-body">
+    </div>
+  </div>
+</div>
+
+<!-- AUDIT MATIÈRES PREMIÈRES -->
+<div id="audit-mp-ov" onclick="if(event.target===this)closeAuditMP()" style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3500;display:flex;align-items:flex-end;justify-content:center;opacity:0;pointer-events:none;transition:.25s">
+  <div id="audit-mp-box" style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:700px;max-height:90vh;display:flex;flex-direction:column;transform:translateY(100%);transition:.3s">
+    <div style="background:linear-gradient(135deg,#5C1E5A,#c93a78);color:#fff;padding:16px 18px;border-radius:20px 20px 0 0;display:flex;align-items:center;gap:10px;flex-shrink:0">
+      <span style="font-size:1.4rem">📊</span>
+      <div style="flex:1">
+        <div style="font-size:1rem;font-weight:900">Audit Matières Premières</div>
+        <div style="font-size:.75rem;opacity:.85">Top 20 & statistiques d'utilisation</div>
+      </div>
+      <button onclick="closeAuditMP()" style="background:rgba(255,255,255,.2);border:none;color:#fff;border-radius:50%;width:32px;height:32px;font-size:1rem;cursor:pointer;font-family:inherit">✕</button>
+    </div>
+    <div style="padding:6px 14px;background:#f8f0f8;border-bottom:1px solid #e8d0e8;display:flex;gap:5px;flex-wrap:wrap;flex-shrink:0">
+      <button class="period-pill on" id="amp-pill-mois" onclick="auditMPSetPeriod('mois')">Ce mois</button>
+      <button class="period-pill" id="amp-pill-15j" onclick="auditMPSetPeriod('15j')">15 jours</button>
+      <button class="period-pill" id="amp-pill-semaine" onclick="auditMPSetPeriod('semaine')">Cette semaine</button>
+      <button class="period-pill" id="amp-pill-all" onclick="auditMPSetPeriod('all')">Tout</button>
+    </div>
+    <div id="audit-mp-body" style="overflow-y:auto;padding:14px 16px;flex:1"></div>
+    <div style="padding:12px 16px;border-top:1px solid #f0e4f0;flex-shrink:0">
+      <button onclick="exportMP_PDF(_auditMPPeriod)" style="width:100%;padding:11px;background:var(--plum);color:#fff;border:none;border-radius:10px;font-size:.84rem;font-weight:800;cursor:pointer;font-family:inherit">📄 Exporter cette période en PDF</button>
+    </div>
+  </div>
+</div>
+<div id="exp-ov" onclick="if(event.target===this)closeExpModal()">
+  <div class="exp-modal">
+    <div class="exp-hd">
+      <h2>📊 Export Excel</h2>
+      <p>Génère un fichier .xlsx et l'envoie par email ou messagerie</p>
+    </div>
+    <div class="exp-body">
+      <div class="exp-field">
+        <label>📧 Email destinataire</label>
+        <input type="email" id="exp-email" placeholder="qualite@restalliance.fr" oninput="saveExpCfg()">
+      </div>
+      <div class="exp-field">
+        <label>📅 Période à exporter</label>
+        <div class="period-pills" id="period-pills">
+          <button class="period-pill on" data-period="mois" onclick="setPeriod('mois')">Ce mois</button>
+          <button class="period-pill" data-period="today" onclick="setPeriod('today')">Aujourd'hui</button>
+          <button class="period-pill" data-period="week" onclick="setPeriod('week')">7 derniers jours</button>
+          <button class="period-pill" data-period="15j" onclick="setPeriod('15j')">15 derniers jours</button>
+          <button class="period-pill" data-period="all" onclick="setPeriod('all')">Tout</button>
+          <button class="period-pill" data-period="custom" onclick="setPeriod('custom')">Personnalisé</button>
+        </div>
+        <div class="period-custom" id="period-custom-block" style="display:none">
+          <input type="date" id="period-from" onchange="saveExpCfg()">
+          <span style="font-size:.8rem;color:#b89ab6;font-weight:700">au</span>
+          <input type="date" id="period-to" onchange="saveExpCfg()">
+        </div>
+        <div id="period-label" style="font-size:.72rem;color:var(--mag);font-weight:700;margin-top:4px"></div>
+      </div>
+      <div class="exp-field">
+        <label>📋 Sections à exporter</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <button class="btn btn-sec" style="font-size:.75rem;padding:5px 10px" onclick="expSelectAll(true)">Tout cocher</button>
+          <button class="btn btn-sec" style="font-size:.75rem;padding:5px 10px" onclick="expSelectAll(false)">Tout décocher</button>
+          <button class="btn btn-sec" style="font-size:.75rem;padding:5px 10px" onclick="expSelectWithData()">Avec données seulement</button>
+        </div>
+        <div class="exp-sec-grid" id="exp-sections"></div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <button class="exp-go" id="exp-go-btn" onclick="doExportXLSX()">📊 Générer et partager</button>
+        <button class="exp-cancel" onclick="closeExpModal()">Annuler</button>
+      </div>
+      <p style="font-size:.7rem;color:#b89ab6;margin-top:10px;text-align:center">Le fichier est généré sur la tablette. Sur iOS/Android, il s'ouvrira dans le menu de partage pour l'envoyer par mail, WhatsApp, etc.</p>
+    </div>
+  </div>
+</div>
+
+<!-- SAISIE ENCEINTE MODAL -->
+<div class="enc-saisie-ov" id="enc-ov" onclick="if(event.target===this)closeEncSaisie()">
+  <div class="enc-saisie-modal">
+    <div class="enc-saisie-title" id="enc-modal-title">Saisie température</div>
+    <div class="enc-saisie-sub" id="enc-modal-sub"></div>
+    <div id="enc-modal-tp"></div>
+    <div id="enc-conf-badge" style="margin-top:8px;min-height:32px"></div>
+    <div id="enc-modal-chef" style="margin-top:4px"></div>
+    <div style="display:flex;gap:10px;margin-top:18px">
+      <button class="btn-save" style="flex:1" onclick="saveEncSaisie()">✅ Enregistrer</button>
+      <button class="btn btn-sec" onclick="closeEncSaisie()">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<!-- SYNC MODAL -->
+<div id="sync-ov" onclick="if(event.target===this)closeSyncModal()">
+  <div class="sync-modal">
+    <div class="sync-hd">
+      <h2>☁️ Synchronisation Google Sheets</h2>
+      <p>Envoie les saisies vers la feuille centrale Restalliance</p>
+    </div>
+    <div class="sync-body">
+      <!-- Status banner -->
+      <div class="sync-banner never" id="sync-banner">
+        <span class="sync-dot idle"></span>
+        <span id="sync-banner-txt">Jamais synchronisé sur ce site</span>
+      </div>
+      <!-- Config -->
+      <div class="sync-field">
+        <label>🔗 URL Google Apps Script</label>
+        <input type="url" id="sync-url" placeholder="https://script.google.com/macros/s/…/exec" oninput="saveSyncCfg()">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="sync-field">
+          <label>🏷️ Code site (ex: LYON01)</label>
+          <input type="text" id="sync-site-id" placeholder="LYON01" oninput="saveSyncCfg()">
+        </div>
+        <div class="sync-field">
+          <label>🏠 Nom de l'établissement</label>
+          <input type="text" id="sync-site-nom" placeholder="EHPAD Les Tilleuls" oninput="saveSyncCfg()">
+        </div>
+      </div>
+      <!-- Sections à synchroniser -->
+      <div class="sync-field">
+        <label>📋 Sections à envoyer</label>
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <button class="btn btn-sec" style="font-size:.75rem;padding:5px 10px" onclick="syncSelectAll(true)">Tout cocher</button>
+          <button class="btn btn-sec" style="font-size:.75rem;padding:5px 10px" onclick="syncSelectAll(false)">Tout décocher</button>
+          <button class="btn btn-sec" style="font-size:.75rem;padding:5px 10px" onclick="syncSelectNonSynced()">Non envoyés</button>
+        </div>
+        <div class="sync-section-list" id="sync-sections"></div>
+      </div>
+      <!-- Log -->
+      <div class="sync-log" id="sync-log" style="display:none"></div>
+      <!-- Actions -->
+      <div class="sync-actions">
+        <button class="sync-go" id="sync-go-btn" onclick="doSync()">⬆️ Synchroniser maintenant</button>
+        <button class="sync-cancel" onclick="closeSyncModal()">Annuler</button>
+      </div>
+      <p style="font-size:.7rem;color:#b89ab6;margin-top:10px;text-align:center">Les données sont envoyées chiffrées via HTTPS. Elles restent aussi sur la tablette.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SUPABASE SYNC MODAL                                     -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div id="supa-ov" onclick="if(event.target===this)closeSupaModal()" style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:8500;display:flex;align-items:flex-end;justify-content:center;padding-bottom:env(safe-area-inset-bottom);opacity:0;pointer-events:none;transition:opacity .2s">
+  <div style="background:#fff;border-radius:22px 22px 0 0;padding:22px 18px 28px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,.22)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <span style="font-size:1.3rem">🗄️</span>
+      <div>
+        <div style="font-size:1rem;font-weight:900;color:#0F2240">Sync Supabase</div>
+        <div style="font-size:.72rem;color:#64748b">Synchronisation automatique des saisies vers le cloud</div>
+      </div>
+      <div style="flex:1"></div>
+      <button onclick="closeSupaModal()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:#94a3b8;padding:4px">✕</button>
+    </div>
+
+    <!-- Clés intégrées - invisibles -->
+    <input type="hidden" id="supa-url" value="https://lthxpucxjcwzphshdhmp.supabase.co">
+    <input type="hidden" id="supa-anon-key" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0aHhwdWN4amN3enBoc2hkaG1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMTU5MzIsImV4cCI6MjA4OTY5MTkzMn0._tLh6V35KkWu7p2eUyK0J03MaIqzHmMSYhQFZ3o8c80">
+    <input type="hidden" id="supa-user-token">
+    <input type="hidden" id="supa-tenant-id">
+
+    <!-- Statut -->
+    <div id="supa-status-bar" style="margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#f1f5f9;font-size:.8rem;font-weight:700;display:flex;align-items:center;gap:8px">
+      <span id="supa-status-dot" style="width:10px;height:10px;border-radius:50%;background:#94a3b8;flex-shrink:0"></span>
+      <span id="supa-status-txt">Non configuré</span>
+    </div>
+
+    <!-- Code site uniquement -->
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:.75rem;font-weight:700;color:#475569;margin-bottom:4px">🏷️ Code site</label>
+      <input type="text" id="supa-site-id" placeholder="LYON01" oninput="saveSupaCfg()" autocomplete="off"
+        style="width:100%;border:1.5px solid #e2e8f0;border-radius:9px;padding:10px 14px;font-size:.88rem;font-family:inherit;box-sizing:border-box;color:#1e293b;font-weight:700;text-transform:uppercase">
+      <div style="font-size:.68rem;color:#94a3b8;margin-top:4px">Renseigné par votre administrateur — visible dans le dashboard sur votre site</div>
+    </div>
+
+    <!-- Queue info -->
+    <div id="supa-queue-info" style="margin-bottom:14px;padding:10px 14px;background:#f8fafc;border-radius:10px;font-size:.78rem;color:#475569;display:none">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span>En attente d'envoi</span><strong id="supa-q-pending">0</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span>Envoyés (session)</span><strong id="supa-q-synced">0</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+        <span>Erreurs</span><strong id="supa-q-errors" style="color:#dc2626">0</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid #e2e8f0;margin-top:4px">
+        <span>📷 Photos incluses</span><strong id="supa-q-photos" style="color:#7c3aed">auto</strong>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div id="supa-log" style="display:none;background:#0f172a;color:#94a3b8;border-radius:10px;padding:10px 12px;font-size:.7rem;font-family:monospace;max-height:120px;overflow-y:auto;margin-bottom:12px;line-height:1.5"></div>
+
+    <!-- Actions -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+      <button onclick="event.stopPropagation();supaFlushNow()" id="supa-flush-btn" style="padding:12px;background:linear-gradient(135deg,#0F2240,#1e40af);color:#fff;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.82rem;opacity:.5;pointer-events:none">⬆️ Envoyer maintenant</button>
+      <button id="supa-retry-btn" onclick="event.stopPropagation();supaRetryErrors()" style="padding:12px;background:#fef3c7;color:#92400e;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.82rem;display:none">🔁 Relancer les erreurs</button>
+      <button onclick="event.stopPropagation();supaTestConnection()" style="padding:12px;background:#f1f5f9;color:#475569;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.82rem">🔌 Tester la connexion</button>
+          <button onclick="event.stopPropagation();supaDeduplicateRecords()" id="supa-dedup-btn" style="padding:12px;background:#fdf4ff;color:#7e22ce;border:1.5px solid #e9d5ff;border-radius:12px;cursor:pointer;font-size:.78rem;font-weight:800;font-family:inherit;grid-column:1/-1">🧹 Nettoyer les doublons en base</button>
+          <button onclick="event.stopPropagation();supaPurgeOrphans()" id="supa-purge-btn" style="padding:12px;background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5;border-radius:12px;cursor:pointer;font-size:.78rem;font-weight:800;font-family:inherit;grid-column:1/-1">🗑️ Purger les orphelins (refroid. &gt;7j + plats témoins périmés)</button>
+    </div>
+    <button onclick="event.stopPropagation();closeSupaModal()" style="width:100%;padding:12px;background:var(--plum);color:#fff;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.85rem">✓ Fermer</button>
+  </div>
+</div>
+
+<!-- TIME WHEEL OVERLAY -->
+<div id="tw-ov" onclick="twBg(event)">
+  <div class="tw-modal">
+    <div class="tw-hd"><span id="tw-lbl">Heure</span><button class="tw-ok" onclick="twConfirm()">Valider ✓</button></div>
+    <div class="tw-body">
+      <div class="tw-col" id="twc-h"><div class="tw-hl"></div><div class="tw-list" id="twl-h"></div></div>
+      <div class="tw-sep">:</div>
+      <div class="tw-col" id="twc-m"><div class="tw-hl"></div><div class="tw-list" id="twl-m"></div></div>
+    </div>
+    <div class="tw-hint">⬆ Faites glisser pour régler ⬇</div>
+    <div class="tw-direct">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <input class="tw-dinp" id="tw-inp-h" type="number" min="0" max="23" placeholder="HH"
+          oninput="twDirectInput('h',this)"
+          onblur="twDirectBlur('h',this)"
+          onfocus="this.select()">
+        <div class="tw-dinp-lbl">Heures</div>
+      </div>
+      <div class="tw-direct-sep">:</div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <input class="tw-dinp" id="tw-inp-m" type="number" min="0" max="59" placeholder="MM"
+          oninput="twDirectInput('m',this)"
+          onblur="twDirectBlur('m',this)"
+          onfocus="this.select()">
+        <div class="tw-dinp-lbl">Minutes</div>
+      </div>
+    </div>
+    <div class="tw-direct-hint">✏️ Ou saisissez directement les chiffres</div>
+  </div>
+</div>
+
+<header>
+  <div class="h-top">
+    <div class="logo-area" onclick="goTo('accueil')" style="cursor:pointer" title="Accueil">
+      <div id="header-logo-img" style="width:32px;height:32px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:6px">
+        <svg width="32" height="32" viewBox="0 0 40 40" fill="none">
+          <ellipse cx="13" cy="17" rx="10" ry="14" transform="rotate(-16 13 17)" fill="#8DC63F"/>
+          <ellipse cx="27" cy="17" rx="10" ry="14" transform="rotate(16 27 17)" fill="#E86048"/>
+          <ellipse cx="20" cy="19" rx="7" ry="10" fill="#C93A78" opacity=".84"/>
+          <ellipse cx="20" cy="29" rx="7.5" ry="4.5" fill="#C93A78" opacity=".45"/>
+        </svg>
+      </div>
+      <div class="logo-text" id="header-logo-text">
+        <span class="lg1" id="header-groupe">GROUPE</span>
+        <span class="lg2" id="header-nom">restalliance</span>
+      </div>
+    </div>
+    <div style="flex:1"></div>
+    <div class="h-right">
+      <button class="h-sess-btn" id="sess-hdr-btn" onclick="openSessModal()" title="Session cuisinier">👤</button>
+      <span id="supa-sync-badge" onclick="openSupaModal()" title="Synchronisation cloud" style="display:none;cursor:pointer;font-size:.72rem;font-weight:800;padding:3px 7px;border-radius:10px;background:rgba(255,255,255,.18);color:#fff;margin-right:2px;letter-spacing:.2px">☁️</span>
+      <button class="h-icon-btn" onclick="openSP()" title="Configuration">⚙️</button>
+    </div>
+  </div>
+</header>
+
+<!-- SETTINGS PANEL -->
+<div id="sp" onclick="spBg(event)">
+  <div class="sp-in">
+    <div class="sp-h2">⚙️ Paramètres</div>
+
+    <!-- ─── 1. ÉTABLISSEMENT ─────────────────────────── -->
+    <div class="sp-sec">🏠 Établissement</div>
+    <div class="sp-cfg-field">
+      <label>Nom de l'établissement</label>
+      <input type="text" id="etab-nom" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">
+      <div class="sp-cfg-field">
+        <label>Code site</label>
+        <input type="text" id="etab-code" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">
+      </div>
+      <div class="sp-cfg-field">
+        <label>Mois en cours</label>
+        <input type="month" id="etab-mois" readonly style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">
+      </div>
+    </div>
+
+    <!-- ─── 2. ÉQUIPE ────────────────────────────────── -->
+    <div class="sp-sec">👨‍🍳 Équipe cuisiniers</div>
+    <div class="chef-list" id="chef-list"></div>
+    <div class="chef-add">
+      <input type="text" id="chef-inp" placeholder="Prénom NOM" onkeydown="if(event.key==='Enter')addChef()">
+      <button class="chef-add-btn" onclick="addChef()">+ Ajouter</button>
+    </div>
+
+    <!-- ─── 3. APPARENCE ─────────────────────────────── -->
+    <div class="sp-sec">🎨 Apparence & Navigation</div>
+    <div style="background:var(--fond);border:1.5px solid var(--brd);border-radius:12px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div><div style="font-size:.85rem;font-weight:800;color:var(--gris)">🌙 Mode sombre</div></div>
+        <label class="tog"><input type="checkbox" id="tog-dark" onchange="toggleDarkMode(this.checked)"><span class="tog-sl"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div><div style="font-size:.85rem;font-weight:800;color:var(--gris)">🔔 Son des alertes</div></div>
+        <label class="tog"><input type="checkbox" id="tog-sound" checked onchange="S.config=S.config||{};S.config.soundOn=this.checked;save()"><span class="tog-sl"></span></label>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div><div style="font-size:.85rem;font-weight:800;color:var(--gris)">📳 Vibration</div></div>
+        <label class="tog"><input type="checkbox" id="tog-vibrate" checked onchange="S.config=S.config||{};S.config.vibrateOn=this.checked;save()"><span class="tog-sl"></span></label>
+      </div>
+      <div style="height:1px;background:var(--brd);margin:6px 0 10px"></div>
+      <div style="height:1px;background:var(--brd);margin:8px 0 10px"></div>
+      <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:7px;text-transform:uppercase;letter-spacing:.3px">🔄 Synchronisation ENR19</div>
+      <div style="font-size:.73rem;color:var(--gris2);margin-bottom:8px;line-height:1.5">Si vous avez saisi des températures via les tuiles de l'accueil avant avril 2026, elles ne sont peut-être pas dans le dashboard. Ce bouton les envoie.</div>
+      <button onclick="resyncEnr19()" style="width:100%;padding:10px;background:#f0e4f0;border:1.5px solid var(--plum);border-radius:10px;font-size:.82rem;font-weight:800;color:var(--plum);cursor:pointer;font-family:inherit;margin-bottom:12px">🔄 Resynchroniser les températures vers le cloud</button>
+      <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:7px;text-transform:uppercase;letter-spacing:.3px">🏷️ Format étiquettes</div>
+      <select class="fi" id="sel-etiq-fmt" onchange="setEtiqA4Fmt(this.value)" style="width:100%;margin-bottom:4px">
+        <option value="a4_119763">📄 99,1 × 38,1 mm — Réf. 119763 (14/feuille)</option>
+        <option value="a4_115287">📄 105 × 39 mm — Réf. 115287 (14/feuille)</option>
+        <option value="a4_2col">📄 A4 — 2 colonnes (90×45mm, 16/feuille)</option>
+        <option value="a4_1col">📄 A4 — 1 colonne (180×50mm, 8/feuille)</option>
+        <option value="therm_57">🏷️ Thermique 57×40mm</option>
+        <option value="therm_62">🏷️ Thermique 62×29mm</option>
+        <option value="therm_100">🏷️ Thermique 100×50mm</option>
+      </select>
+      <div style="font-size:.65rem;color:#b89ab6">Format partagé par ENR33, ENR34 et ENR36. Impression mixte toujours en mode A4.</div>
+      <div style="height:1px;background:var(--brd);margin-bottom:10px"></div>
+      <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:7px;text-transform:uppercase;letter-spacing:.3px">Couleur principale</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <button onclick="applyTheme('#5C1E5A')" style="width:34px;height:34px;border-radius:50%;background:#5C1E5A;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Violet"></button>
+        <button onclick="applyTheme('#1565c0')" style="width:34px;height:34px;border-radius:50%;background:#1565c0;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Bleu"></button>
+        <button onclick="applyTheme('#2e7d32')" style="width:34px;height:34px;border-radius:50%;background:#2e7d32;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Vert"></button>
+        <button onclick="applyTheme('#c62828')" style="width:34px;height:34px;border-radius:50%;background:#c62828;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Rouge"></button>
+        <button onclick="applyTheme('#e65100')" style="width:34px;height:34px;border-radius:50%;background:#e65100;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Orange"></button>
+        <button onclick="applyTheme('#4a148c')" style="width:34px;height:34px;border-radius:50%;background:#4a148c;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Indigo"></button>
+        <button onclick="applyTheme('#004d40')" style="width:34px;height:34px;border-radius:50%;background:#004d40;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Teal"></button>
+        <button onclick="applyTheme('#37474f')" style="width:34px;height:34px;border-radius:50%;background:#37474f;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)" title="Anthracite"></button>
+        <input type="color" id="custom-color-pick" value="#5C1E5A" onchange="applyTheme(this.value)" style="width:34px;height:34px;border-radius:50%;border:3px solid #fff;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3);padding:2px" title="Couleur libre">
+      </div>
+      <div style="height:1px;background:var(--brd);margin-bottom:10px"></div>
+      <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">Nom & Logo</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px">
+        <input type="text" id="sp-groupe-label" placeholder="Ex: La traça facile" value="" style="width:100%;border:1.5px solid var(--brd);border-radius:8px;padding:7px 10px;font-size:.8rem;font-family:inherit;color:var(--gris);box-sizing:border-box" oninput="applyHeaderName()">
+        <input type="text" id="sp-nom-label" placeholder="Ex: Hacc.pro" value="" style="width:100%;border:1.5px solid var(--brd);border-radius:8px;padding:7px 10px;font-size:.8rem;font-weight:800;font-family:inherit;color:var(--gris);box-sizing:border-box" oninput="applyHeaderName()">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="background:var(--plum);color:#fff;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">
+          📷 Logo<input type="file" accept="image/*" style="display:none" onchange="applyHeaderLogo(this)">
+        </label>
+        <button onclick="resetHeaderLogo()" style="font-size:.72rem;font-weight:700;color:#dc2626;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit">↺ Défaut</button>
+        <div id="sp-logo-preview" style="width:32px;height:32px;overflow:hidden;border-radius:6px;border:1.5px solid var(--brd);display:flex;align-items:center;justify-content:center;background:var(--fond)"></div>
+      </div>
+    </div>
+
+    <!-- Position navigation -->
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📐 Position de la navigation</div>
+    <div id="nav-layout-ui" style="margin-bottom:12px"></div>
+
+    <!-- ─── 4. CUISINE ────────────────────────────────── -->
+    <div class="sp-sec">🍽️ Configuration cuisine</div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">❄️ Enceintes de stockage (ENR19)</div>
+    <div id="sp-enceintes"></div>
+    <div style="display:flex;gap:8px;margin-top:6px;margin-bottom:12px">
+      <button class="btn btn-sec" style="flex:1;padding:9px;font-size:.8rem" onclick="addEnceinte('frigo')">+ 🌡️ Réfrigérateur</button>
+      <button class="btn btn-sec" style="flex:1;padding:9px;font-size:.8rem" onclick="addEnceinte('congelateur')">+ ❄️ Congélateur</button>
+    </div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px;display:flex;align-items:center;justify-content:space-between">
+      <span>🌡️ Services de distribution</span>
+      <button onclick="addDistribService()" style="background:var(--plum);color:#fff;border:none;border-radius:20px;padding:3px 10px;font-size:.7rem;font-weight:800;cursor:pointer;font-family:inherit">+ Ajouter</button>
+    </div>
+    <div id="sp-distrib-services" style="margin-bottom:12px"></div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px;display:flex;align-items:center;justify-content:space-between">
+      <span>🗑️ Poubelles & Recyclage</span>
+      <button onclick="poubelleAdd()" style="background:var(--plum);color:#fff;border:none;border-radius:20px;padding:3px 10px;font-size:.7rem;font-weight:800;cursor:pointer;font-family:inherit">+ Ajouter</button>
+    </div>
+    <div id="sp-poubelles" style="margin-bottom:12px"></div>
+
+    <!-- ─── 5. FICHES & DONNÉES ───────────────────────── -->
+    <div class="sp-sec">📋 Fiches & Données</div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">📄 Pages personnalisées</div>
+    <div id="sp-custpages"></div>
+    <button class="btn btn-sec" style="width:100%;padding:9px;font-size:.8rem;margin-bottom:12px" onclick="openPageCreator()">+ ✨ Créer une page personnalisée</button>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:5px;text-transform:uppercase;letter-spacing:.3px">🗂️ Onglets fixes</div>
+    <div id="sp-fixed"></div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin:10px 0 5px;text-transform:uppercase;letter-spacing:.3px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">
+      <span>🗂️ Ordre des onglets</span>
+      <button id="nav-lock-btn" onclick="toggleNavLock()" style="border-radius:20px;padding:4px 10px;font-size:.68rem;font-weight:800;cursor:pointer;font-family:inherit;border:1.5px solid var(--brd);background:var(--fond);color:#7B2D78">🔓 Réorganiser</button>
+    </div>
+    <div id="sp-list"></div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin:10px 0 5px;text-transform:uppercase;letter-spacing:.3px">📝 Dictionnaire de produits</div>
+    <div id="sp-dict-ui">
+      <div style="font-size:.75rem;color:var(--gris2);margin-bottom:6px"><span id="sp-dict-count">0</span> produits en mémoire</div>
+      <button onclick="openDictManager()" style="width:100%;padding:9px;background:var(--fond);border:1.5px solid var(--brd);border-radius:10px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit;color:var(--plum)">📝 Gérer le dictionnaire</button>
+    </div>
+
+    <!-- ─── 6. ACTIONS ────────────────────────────────── -->
+    <div class="sp-sec">🚀 Actions rapides</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <button style="padding:13px 8px;background:linear-gradient(135deg,#1565c0,#1976d2);color:#fff;border:none;border-radius:12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="openSyncModal();closeSP()">☁️ Google Sheets</button>
+      <button style="padding:13px 8px;background:linear-gradient(135deg,#0F2240,#1e3a5f);color:#fff;border:none;border-radius:12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="openSupaModal();closeSP()">🗄️ Supabase</button>
+      <button style="padding:13px 8px;background:linear-gradient(135deg,#1b5e20,#2e7d32);color:#fff;border:none;border-radius:12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="openExpModal();closeSP()">📊 Export Excel</button>
+      <button style="padding:13px 8px;background:linear-gradient(135deg,#b8860b,#d4a017);color:#fff;border:none;border-radius:12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="openAuditModal();closeSP()">🔍 Contrôle sanitaire</button>
+      <button style="padding:13px 8px;background:linear-gradient(135deg,#7B2D78,#c93a78);color:#fff;border:none;border-radius:12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="openAuditMP();closeSP()">📦 Audit MP Top 20</button>
+      <button style="padding:13px 8px;background:linear-gradient(135deg,#0369a1,#0284c7);color:#fff;border:none;border-radius:12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit;grid-column:span 2" onclick="exportPhotosZip();closeSP()">📷 Photos du mois (ZIP)</button>
+    </div>
+
+    <!-- ─── 7. DONNÉES ────────────────────────────────── -->
+    <div class="sp-sec">💾 Données</div>
+    <div style="background:#f8f0f8;border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:.72rem;font-weight:700;color:#b89ab6;margin-bottom:8px">Dernière sauvegarde auto : <span id="sp-last-backup">—</span></div>
+      <div style="display:flex;flex-direction:column;gap:7px">
+        <button class="btn" style="width:100%;padding:11px;background:var(--plum);color:#fff;border:none;border-radius:10px;font-size:.84rem;font-weight:800;cursor:pointer" onclick="exportJSON()">📥 Télécharger la sauvegarde JSON</button>
+        <label style="width:100%;padding:11px;background:#f3e8f3;color:var(--plum);border:1.5px solid var(--plum);border-radius:10px;font-size:.84rem;font-weight:800;cursor:pointer;text-align:center;display:block">
+          📤 Restaurer depuis un fichier JSON
+          <input type="file" accept=".json" style="display:none" onchange="importJSON(this)">
+        </label>
+      </div>
+    </div>
+    <div style="font-size:.7rem;font-weight:800;color:#7A6579;margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📥 Exports CSV par section</div>
+    <div style="margin-bottom:8px">
+      <div style="font-size:.68rem;color:#b89ab6;font-weight:700;margin-bottom:5px">PÉRIODE</div>
+      <div class="period-pills" id="sp-period-pills" style="gap:5px">
+        <button class="period-pill on" data-period="mois" onclick="setSpPeriod('mois')">Ce mois</button>
+        <button class="period-pill" data-period="today" onclick="setSpPeriod('today')">Auj.</button>
+        <button class="period-pill" data-period="week" onclick="setSpPeriod('week')">7j</button>
+        <button class="period-pill" data-period="15j" onclick="setSpPeriod('15j')">15j</button>
+        <button class="period-pill" data-period="all" onclick="setSpPeriod('all')">Tout</button>
+        <button class="period-pill" data-period="custom" onclick="setSpPeriod('custom')">Perso.</button>
+      </div>
+      <div class="period-custom" id="sp-period-custom" style="display:none;margin-top:5px">
+        <input type="date" id="sp-period-from">
+        <span style="font-size:.8rem;color:#b89ab6;font-weight:700">au</span>
+        <input type="date" id="sp-period-to">
+      </div>
+      <div id="sp-period-label" style="font-size:.7rem;color:var(--mag);font-weight:700;margin-top:3px"></div>
+    </div>
+    <div id="sp-exports" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px"></div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:10px">
+      <button class="btn" style="width:100%;padding:10px;background:#1565c0;color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="purgeCheckStatus()">🔍 Vérifier les données à archiver</button>
+      <button class="btn" style="width:100%;padding:10px;background:#166534;color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="purgeExportJSON()">💾 Exporter toutes les données (JSON)</button>
+      <button class="btn" style="width:100%;padding:10px;background:#7c3aed;color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="purgeMiniatures()">🖼️ Purger les miniatures (&gt;6 mois)</button>
+      <button class="btn" style="width:100%;padding:10px;background:#dc2626;color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit" onclick="clearSupaQueue()">🗑️ Vider la queue de sync (erreurs)</button>
+      <button class="btn" style="width:100%;padding:10px;background:linear-gradient(135deg,#991b1b,#7f1d1d);color:#fff;border:2px solid #fca5a5;border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:inherit" onclick="resetCompleteLocal()">🔥 RESET complet (vider localStorage + recharger)</button>
+    </div>
+    <div id="sp-purge-status" style="margin-bottom:8px"></div>
+
+    <!-- ─── 8. ACCÈS ──────────────────────────────────── -->
+    <div class="sp-sec">🔑 Accès & Sécurité</div>
+    <div id="sp-licence"></div>
+    <div id="sp-security"></div>
+
+  </div>
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:12px 20px 20px;background:linear-gradient(to bottom,rgba(255,255,255,0) 0%,#fff 30%);pointer-events:none">
+    <div style="text-align:center;margin-bottom:6px">
+      <span style="font-size:.6rem;color:#c0a0c0;font-weight:600;letter-spacing:.3px">Créé par <a href="https://hacc.pro" target="_blank" style="color:#b89ab6;text-decoration:none;font-weight:700">hacc.pro</a></span>
+    </div>
+    <button class="sp-close" onclick="closeSP()" style="pointer-events:all">✓ Enregistrer et fermer</button>
+  </div>
+</div>
+
+<nav id="main-nav"></nav>
+<div class="nav-toggle" id="nav-toggle-bar">
+  <button class="nav-toggle-btn" onclick="toggleNav()" id="nav-toggle-btn">▾ Fiches</button>
+</div>
+<main id="main-content"></main>
+<div id="toast"></div>
+<div style="position:fixed;bottom:4px;right:8px;font-size:.52rem;color:#d4b0d2;font-weight:600;pointer-events:none;z-index:1;letter-spacing:.2px">hacc.pro</div>
+
+<!-- CONFIRM MODAL -->
+<div id="confirm-modal">
+  <div class="conf-box">
+    <h3 id="confirm-title">Confirmer ?</h3>
+    <p id="confirm-msg"></p>
+    <div class="conf-box-btns">
+      <button class="conf-no" onclick="confirmNo()">Annuler</button>
+      <button class="conf-yes" id="confirm-yes-btn" onclick="confirmYes()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL SAISIE TEXTE (remplace prompt) -->
+<div id="prompt-modal">
+  <div class="prompt-box">
+    <h3 id="prompt-title">Saisir</h3>
+    <p id="prompt-msg" style="display:none"></p>
+    <input type="text" id="prompt-input" autocomplete="off"
+      onkeydown="if(event.key==='Enter')promptOk();if(event.key==='Escape')promptCancel()">
+    <div class="prompt-box-btns">
+      <button class="prompt-cancel" onclick="promptCancel()">Annuler</button>
+      <button class="prompt-ok" id="prompt-ok-btn" onclick="promptOk()">OK</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- DATE PICKER CUSTOM -->
+
+<div id="dp-ov" onclick="if(event.target===this)dpCancel()">
+  <div class="dp-sheet">
+    <div class="dp-header">
+      <div class="dp-header-day" id="dp-hday"></div>
+      <div class="dp-header-date" id="dp-hdate">—</div>
+    </div>
+    <div class="dp-nav">
+      <button class="dp-nav-btn" onclick="dpMove(-12)" title="-1 an" style="font-size:.85rem;font-weight:900">«</button>
+      <button class="dp-nav-btn" onclick="dpMove(-1)">‹</button>
+      <span class="dp-month-label" id="dp-month-lbl" onclick="dpYearInput()"></span>
+      <button class="dp-nav-btn" onclick="dpMove(1)">›</button>
+      <button class="dp-nav-btn" onclick="dpMove(12)" title="+1 an" style="font-size:.85rem;font-weight:900">»</button>
+    </div>
+    <div class="dp-weekdays">
+      <div class="dp-wd">L</div><div class="dp-wd">M</div><div class="dp-wd">M</div>
+      <div class="dp-wd">J</div><div class="dp-wd">V</div><div class="dp-wd">S</div>
+      <div class="dp-wd">D</div>
+    </div>
+    <div class="dp-days" id="dp-days"></div>
+    <div class="dp-actions">
+      <button class="dp-btn-cancel" onclick="dpCancel()">Annuler</button>
+      <button class="dp-btn-ok" onclick="dpConfirm()">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN MODAL -->
+<div id="pin-modal">
+  <div class="pin-box">
+    <h3 id="pin-title">Code administrateur</h3>
+    <div class="pin-sub" id="pin-sub">Entrez votre code à 4 chiffres</div>
+    <div class="pin-dots">
+      <span class="pin-dot" id="pd0"></span>
+      <span class="pin-dot" id="pd1"></span>
+      <span class="pin-dot" id="pd2"></span>
+      <span class="pin-dot" id="pd3"></span>
+    </div>
+    <div class="pin-keypad">
+      <button class="pin-key" onclick="pinPress('1')">1</button>
+      <button class="pin-key" onclick="pinPress('2')">2</button>
+      <button class="pin-key" onclick="pinPress('3')">3</button>
+      <button class="pin-key" onclick="pinPress('4')">4</button>
+      <button class="pin-key" onclick="pinPress('5')">5</button>
+      <button class="pin-key" onclick="pinPress('6')">6</button>
+      <button class="pin-key" onclick="pinPress('7')">7</button>
+      <button class="pin-key" onclick="pinPress('8')">8</button>
+      <button class="pin-key" onclick="pinPress('9')">9</button>
+      <button class="pin-key empty-key" disabled></button>
+      <button class="pin-key" onclick="pinPress('0')">0</button>
+      <button class="pin-key del-key" onclick="pinDelete()">⌫</button>
+    </div>
+    <div id="pin-recovery-area"></div>
+    <a class="pin-cancel-link" onclick="closePinModal()">Annuler</a>
+  </div>
+</div>
+
+<!-- SESSION MODAL (bottom sheet) -->
+<div id="sess-modal" onclick="sessBg(event)">
+  <div class="sess-sheet">
+    <div class="sess-hd">
+      <h2>👤 Qui êtes-vous ?</h2>
+      <button class="sess-hd-close" onclick="closeSessModal()">✕</button>
+    </div>
+    <div class="sess-body" id="sess-body"></div>
+  </div>
+</div>
+
+<!-- PAGE CREATOR MODAL -->
+<div id="cp-modal" onclick="cpBg(event)">
+  <div class="cp-wrap">
+    <div class="cp-header">
+      <span style="font-size:1.1rem">✨</span>
+      <h2 id="cp-modal-title">Créer une page personnalisée</h2>
+      <button onclick="closePageCreator()" style="background:rgba(255,255,255,.18);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit">✕</button>
+    </div>
+    <div class="cp-body" id="cp-body">
+      <div class="cp-section">Nom & icône</div>
+      <div class="cp-row">
+        <input class="cp-emoji-inp" id="cp-emoji" type="text" maxlength="2" value="📄" oninput="cpState.emoji=this.value">
+        <input class="cp-inp" id="cp-name" type="text" placeholder="Ex: Contrôle quotidien..." oninput="cpState.name=this.value">
+      </div>
+      <div class="cp-section">Catégorie</div>
+      <div class="cp-cats" id="cp-cats">
+        <button class="cp-cat-btn" onclick="cpSetCat('suivi')">📊 Suivi</button>
+        <button class="cp-cat-btn" onclick="cpSetCat('prpo')">🔧 PrPo</button>
+        <button class="cp-cat-btn" onclick="cpSetCat('ccp')">⚠️ CCP</button>
+        <button class="cp-cat-btn" onclick="cpSetCat('mensuel')">📅 Mensuel</button>
+        <button class="cp-cat-btn" onclick="cpSetCat('ponctuel')">📌 Ponctuel</button>
+      </div>
+      <div class="cp-section">Règle / Consigne <span style="font-weight:500;text-transform:none;font-size:.85em">(optionnel)</span></div>
+      <textarea class="cp-inp" id="cp-regle" rows="2" placeholder="Ex: T°C ≤+3°C. Sinon jeter..." oninput="cpState.regle=this.value" style="resize:none;line-height:1.5"></textarea>
+
+      <div class="cp-section">🧩 Palette de blocs — appuyer pour ajouter</div>
+      <div class="cp-palette" id="cp-palette"></div>
+
+      <div class="cp-section">📋 Champs ajoutés <span id="cp-field-count" style="font-weight:500;text-transform:none;font-size:.85em"></span></div>
+      <div class="cp-field-list" id="cp-field-list"></div>
+    </div>
+    <div class="cp-footer" style="position:sticky">
+      <button class="cp-btn-cancel" onclick="closePageCreator()">Annuler</button>
+      <button class="cp-btn-save" onclick="cpSavePage()">💾 Enregistrer la page</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+
+  <!-- Application Cuisine (ordre important: service avant app) -->
+  <script src="js/supabaseservice.js"></script>
+  <script src="js/printservice.js"></script>
+  <script src="js/app-cuisine.js"></script>
+  <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
+  <script src="js/app-menu-cuisine.js?v=363"></script>
+  
+</body>
+  </html>
