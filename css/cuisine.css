@@ -1122,12 +1122,11 @@ body.nav-right main { margin-right:82px; padding-top:56px; }
 .trc-suggestion-item{display:flex;align-items:center;gap:6px;font-size:.7rem;color:#78350f;padding:3px 0;flex-wrap:wrap;}
 .trc-conf{font-size:.56rem;padding:1px 5px;border-radius:6px;font-weight:800;}
 .trc-conf-haute{background:#dcfce7;color:#166534;}
+.trc-conf-bonne{background:#dbeafe;color:#1e40af;}
 .trc-conf-moyenne{background:#fef9c3;color:#713f12;}
 .trc-link-btn{background:#5C1E5A;color:#fff;border:none;border-radius:7px;padding:4px 9px;font-size:.65rem;font-weight:800;cursor:pointer;font-family:inherit;margin-left:auto;}
-.trc-recette{margin-top:6px;padding:8px 10px;background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;}
-.trc-recette-title{font-size:.65rem;font-weight:800;color:#0369a1;margin-bottom:6px;}
-.trc-recette-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px;}
-.trc-ing-chip{background:#fff;border:1px solid #bae6fd;border-radius:8px;padding:3px 8px;font-size:.62rem;font-weight:700;color:#0369a1;white-space:nowrap;transition:background .15s;}
-.trc-ing-chip:hover{background:#e0f2fe;}
-.trc-recette-hint{font-size:.56rem;color:#7ea8c0;font-style:italic;}
+.trc-missing{margin-top:6px;padding:8px 10px;background:#fff7ed;border-radius:10px;border:1px solid #fed7aa;}
+.trc-missing-title{font-size:.65rem;font-weight:800;color:#c2410c;margin-bottom:5px;}
+.trc-missing-chips{display:flex;flex-wrap:wrap;gap:5px;}
+.trc-missing-chip{background:#fff;border:1.5px dashed #fb923c;border-radius:8px;padding:3px 8px;font-size:.62rem;font-weight:700;color:#c2410c;}
 .trc-recette-loading{margin-top:6px;font-size:.68rem;color:#9a9a9a;font-style:italic;}
