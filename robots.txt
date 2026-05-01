@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Allow: /landing.html
+Allow: /faq/
+Allow: /guides/
+Allow: /comparatif/
+Allow: /signup.html
+
+# Pages privées de l'app — ne pas indexer
+Disallow: /dashboard.html
+Disallow: /cuisine.html
+Disallow: /onboarding.html
+Disallow: /pms-setup.html
+Disallow: /netlify/
+Disallow: /js/
+Disallow: /css/
+
+Sitemap: https://hacc.pro/sitemap.xml
