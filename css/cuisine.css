@@ -1106,3 +1106,28 @@ body.nav-right main { margin-right:82px; padding-top:56px; }
 .nc-action-desc{font-size:.72rem;color:#6b7280;line-height:1.25;}
 .nc-action-pill{margin-top:2px;background:#f97316;color:#fff;border-radius:20px;padding:2px 8px;font-size:.62rem;font-weight:900;}
 .nc-selected-summary{margin-top:8px;padding:8px 10px;border-radius:10px;background:#fff;border:1px solid #fcd2d2;font-size:.72rem;font-weight:700;color:#7f1d1d;}
+
+/* ── Tracabilité HACCP — Timeline & Auto-liaisons ────── */
+.trc-banner-extra{margin-top:8px;border-top:1px dashed #d8b4d8;padding-top:8px;}
+.trc-timeline{margin-top:6px;padding:8px 10px;background:#f8f0ff;border-radius:10px;border:1px solid #e2c8e2;}
+.trc-title{font-size:.65rem;font-weight:800;color:#7A6579;text-transform:uppercase;letter-spacing:.3px;margin-bottom:6px;}
+.trc-steps{display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
+.trc-step{display:flex;align-items:center;gap:3px;background:#fff;border:1px solid #e2c8e2;border-radius:8px;padding:3px 7px;}
+.trc-icon{font-size:.85rem;}
+.trc-label{font-size:.6rem;font-weight:700;color:#5C1E5A;}
+.trc-date{font-size:.56rem;color:#9a7a9a;margin-left:2px;}
+.trc-arrow{font-size:.65rem;color:#c9b4c9;flex-shrink:0;}
+.trc-suggestions{margin-top:6px;padding:8px 10px;background:#fffbeb;border-radius:10px;border:1px solid #fde68a;}
+.trc-sugg-title{font-size:.65rem;font-weight:800;color:#92400e;margin-bottom:5px;}
+.trc-suggestion-item{display:flex;align-items:center;gap:6px;font-size:.7rem;color:#78350f;padding:3px 0;flex-wrap:wrap;}
+.trc-conf{font-size:.56rem;padding:1px 5px;border-radius:6px;font-weight:800;}
+.trc-conf-haute{background:#dcfce7;color:#166534;}
+.trc-conf-moyenne{background:#fef9c3;color:#713f12;}
+.trc-link-btn{background:#5C1E5A;color:#fff;border:none;border-radius:7px;padding:4px 9px;font-size:.65rem;font-weight:800;cursor:pointer;font-family:inherit;margin-left:auto;}
+.trc-recette{margin-top:6px;padding:8px 10px;background:#f0f9ff;border-radius:10px;border:1px solid #bae6fd;}
+.trc-recette-title{font-size:.65rem;font-weight:800;color:#0369a1;margin-bottom:6px;}
+.trc-recette-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px;}
+.trc-ing-chip{background:#fff;border:1px solid #bae6fd;border-radius:8px;padding:3px 8px;font-size:.62rem;font-weight:700;color:#0369a1;white-space:nowrap;transition:background .15s;}
+.trc-ing-chip:hover{background:#e0f2fe;}
+.trc-recette-hint{font-size:.56rem;color:#7ea8c0;font-style:italic;}
+.trc-recette-loading{margin-top:6px;font-size:.68rem;color:#9a9a9a;font-style:italic;}
