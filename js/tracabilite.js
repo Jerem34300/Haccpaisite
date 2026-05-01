@@ -142,7 +142,7 @@ const Tracabilite = (() => {
   }
 
   // ── Recherche dans S[] (localStorage/mémoire) ─────────────────
-  function _searchLocal(platNom, enrTypes, maxHoursAgo = 168) {
+  function _searchLocal(platNom, enrTypes, maxHoursAgo = 4320) {
     const results = [];
     const cutoff  = Date.now() - maxHoursAgo * 3600 * 1000;
     const types   = enrTypes || Object.keys(ENR_META);
@@ -171,13 +171,13 @@ const Tracabilite = (() => {
   }
 
   // ── Recherche dans Supabase (7 derniers jours) ─────────────────
-  async function _searchSupabase(platNom, maxDays = 7) {
+  async function _searchSupabase(platNom, maxDays = 180) {
     // Cache 5 min pour éviter de re-requêter à chaque frappe
     const cacheKey = _norm(platNom);
     try {
       const c = JSON.parse(localStorage.getItem(SEARCH_CACHE) || '{}');
       const e = c[cacheKey];
-      if (e && (Date.now() - e.ts) < 5 * 60 * 1000) return e.data;
+      if (e && (Date.now() - e.ts) < 30 * 60 * 1000) return e.data;
     } catch(e) {}
 
     const supaCfg = (typeof SupaEngine !== 'undefined' && typeof SupaEngine._cfg === 'function')
@@ -202,7 +202,7 @@ const Tracabilite = (() => {
         + `?site_id=eq.${encodeURIComponent(supaCfg.siteId)}`
         + `&recorded_at=gte.${since}`
         + `&select=enr_type,recorded_at,data,client_id`
-        + `&order=recorded_at.desc&limit=200`;
+        + `&order=recorded_at.desc&limit=1000`;
 
       const r = await fetch(url, {
         headers: {
