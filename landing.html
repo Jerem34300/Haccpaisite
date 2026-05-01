@@ -25,6 +25,24 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/landing.css">
+<style>
+/* Critical nav CSS inline — immune au cache du service worker */
+.nav{position:sticky;top:0;z-index:100;background:rgba(15,34,64,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.08)}
+.nav-inner{max-width:1140px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 24px}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-logo-name{font-size:1.25rem;font-weight:900;color:#fff;font-family:'Nunito',sans-serif}
+.nav-logo-name span{color:#8DC63F}
+.nav-links{display:flex;align-items:center;gap:4px}
+.nav-link-plain{color:rgba(255,255,255,.65);font-size:.85rem;font-weight:700;text-decoration:none;padding:7px 12px;border-radius:8px;transition:color .2s}
+.nav-link-plain:hover{color:#fff}
+.nav-btn-pill{background:#8DC63F;color:#fff;border-radius:20px;padding:9px 22px;font-size:.85rem;font-weight:900;text-decoration:none;display:inline-block;transition:all .2s;box-shadow:0 2px 10px rgba(141,198,63,.35);margin-left:8px;white-space:nowrap}
+.nav-btn-pill:hover{background:#6fa832;transform:translateY(-1px)}
+@media(max-width:640px){
+  .nav-inner{padding:12px 16px}
+  .nav-links .nav-link-plain{display:none}
+  .nav-btn-pill{padding:8px 16px;font-size:.8rem;margin-left:4px}
+}
+</style>
 
 <script type="application/ld+json">
 {
@@ -114,22 +132,8 @@
       <a href="login.html" class="nav-link-plain">Se connecter</a>
       <a href="signup.html" class="nav-btn-pill">Commencer →</a>
     </div>
-    <button class="nav-hamburger" onclick="toggleDrawer()" aria-label="Menu">
-      <span></span><span></span><span></span>
-    </button>
   </div>
 </nav>
-
-<!-- Mobile drawer -->
-<div class="nav-drawer" id="nav-drawer">
-  <button class="nav-drawer-close" onclick="toggleDrawer()">✕</button>
-  <a href="#features" class="nav-drawer-link" onclick="toggleDrawer()">Fonctionnalités</a>
-  <a href="#pricing" class="nav-drawer-link" onclick="toggleDrawer()">Tarifs</a>
-  <a href="faq/index.html" class="nav-drawer-link">Guide HACCP</a>
-  <a href="login.html" class="nav-drawer-link">Se connecter</a>
-  <a href="signup.html" class="nav-drawer-cta">Commencer gratuitement →</a>
-</div>
-<script>function toggleDrawer(){document.getElementById('nav-drawer').classList.toggle('open');}</script>
 
 <!-- ── HERO ── -->
 <section class="hero" aria-labelledby="hero-h1">

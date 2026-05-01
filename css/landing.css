@@ -23,17 +23,8 @@ a{color:inherit}
 .nav-links{display:flex;align-items:center;gap:4px}
 .nav-link-plain{color:rgba(255,255,255,.65);font-size:.85rem;font-weight:700;text-decoration:none;padding:7px 12px;border-radius:8px;transition:color .2s}
 .nav-link-plain:hover{color:#fff}
-.nav-btn-pill{background:var(--green);color:#fff;border-radius:20px;padding:9px 22px;font-size:.82rem;font-weight:900;text-decoration:none;display:inline-block;transition:all .2s;box-shadow:0 2px 10px rgba(141,198,63,.35);margin-left:6px}
+.nav-btn-pill{background:var(--green);color:#fff;border-radius:20px;padding:9px 22px;font-size:.85rem;font-weight:900;text-decoration:none;display:inline-block;transition:all .2s;box-shadow:0 2px 10px rgba(141,198,63,.35);margin-left:8px;white-space:nowrap}
 .nav-btn-pill:hover{background:var(--green2);transform:translateY(-1px);box-shadow:0 4px 16px rgba(141,198,63,.5)}
-/* Hamburger mobile */
-.nav-hamburger{display:none;flex-direction:column;gap:5px;background:none;border:none;cursor:pointer;padding:6px;border-radius:8px}
-.nav-hamburger span{display:block;width:22px;height:2px;background:rgba(255,255,255,.85);border-radius:2px;transition:all .25s}
-.nav-drawer{display:none;position:fixed;inset:0;z-index:200;background:rgba(8,23,46,.97);flex-direction:column;padding:24px;gap:0}
-.nav-drawer.open{display:flex}
-.nav-drawer-close{align-self:flex-end;background:none;border:none;color:#fff;font-size:1.6rem;cursor:pointer;padding:4px 10px;margin-bottom:16px}
-.nav-drawer-link{color:rgba(255,255,255,.85);font-size:1.1rem;font-weight:800;text-decoration:none;padding:16px 8px;border-bottom:1px solid rgba(255,255,255,.08)}
-.nav-drawer-link:hover{color:#fff}
-.nav-drawer-cta{background:var(--green);color:#fff;border-radius:14px;padding:14px;font-size:1rem;font-weight:900;text-decoration:none;text-align:center;display:block;margin-top:20px}
 
 /* ── HERO ── */
 .hero{background:var(--navy);padding:90px 24px 80px;position:relative;overflow:hidden}
@@ -213,17 +204,19 @@ footer{background:#08172e;border-top:1px solid rgba(255,255,255,.06);padding:52p
   .problem-grid,.features-grid,.testimonials-grid,.pricing-grid{grid-template-columns:1fr 1fr}
   .footer-top{grid-template-columns:1fr 1fr;gap:28px}
 }
+@media(max-width:640px){
+  .nav-inner{padding:12px 16px}
+  .nav-links .nav-link-plain{display:none}
+  .nav-btn-pill{padding:8px 16px;font-size:.8rem;margin-left:4px}
+}
 @media(max-width:600px){
   .hero{padding:60px 16px 48px}
   .hero h1{font-size:1.75rem}
   .hero-sub{font-size:.95rem}
   .stats-inner,.problem-grid,.features-grid,.testimonials-grid,.pricing-grid{grid-template-columns:1fr}
   .section-h2{font-size:1.6rem}
-  .nav-links .nav-link-plain{display:none}
-  .nav-links .nav-btn-pill{display:none}
-  .nav-hamburger{display:flex}
   .footer-top{grid-template-columns:1fr}
   .how-steps::before{display:none}
-  .trust-types{gap:10px}
-  .trust-types span{font-size:.76rem;padding:5px 10px}
+  .trust-types{gap:8px}
+  .trust-types span{font-size:.75rem;padding:5px 10px}
 }
