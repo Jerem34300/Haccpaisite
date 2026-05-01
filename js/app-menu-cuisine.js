@@ -205,13 +205,11 @@ function renderMenuJour(){
     .mn-cov-fill{height:100%;background:#fff;border-radius:6px;transition:.3s}
     .mn-cov-sub{font-size:.7rem;opacity:.92;margin-top:5px;line-height:1.4}
     .mn-empty{font-size:.78rem;color:#b89ab6;font-style:italic;text-align:center;padding:8px}
-    .mn-action-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-    .mn-act{padding:12px 10px;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer;font-size:.82rem;color:#fff;display:flex;align-items:center;justify-content:center;gap:5px;text-align:center;line-height:1.2}
-    .mn-act:active{opacity:.85}
-    .mn-act.temoin{background:linear-gradient(135deg,#0891b2,#06b6d4)}
-    .mn-act.print{background:linear-gradient(135deg,#7c3aed,#a855f7)}
-    .mn-act.save{background:linear-gradient(135deg,#5C1E5A,#C93A78);grid-column:1 / 3}
-    .mn-act.clear{background:#fee2e2;color:#dc2626;border:1.5px solid #fca5a5}
+    .mn-action-grid{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+    .mn-act{width:100%;padding:15px 16px;border:none;border-radius:14px;font-weight:800;font-family:inherit;cursor:pointer;font-size:.9rem;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;line-height:1.2;letter-spacing:.2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+    .mn-act:active{transform:scale(.97);opacity:.9}
+    .mn-act.save{background:linear-gradient(135deg,#5C1E5A,#C93A78);box-shadow:0 3px 10px rgba(92,30,90,.35)}
+    .mn-act.clear{background:#fff;color:#dc2626;border:1.5px solid #fca5a5}
     .mn-hist{background:#fff;border:1.5px solid var(--brd,#e0d0e0);border-radius:14px;padding:11px 12px;margin-top:14px;margin-bottom:30px}
     .mn-hist-tit{font-size:.88rem;font-weight:900;color:var(--plum,#5C1E5A);margin-bottom:8px;display:flex;align-items:center;gap:7px}
     .mn-hist-item{background:#f7f2f7;border-radius:10px;padding:9px 10px;margin-bottom:5px;border:1.5px solid #ede0ed;cursor:pointer}
@@ -255,10 +253,8 @@ function renderMenuJour(){
   ${CATS.map(cat => renderCatBlock(menu, cat)).join('')}
 
   <div class="mn-action-grid">
-    <button class="mn-act temoin" onclick="window._menuGenerateTemoins()">🧪 Générer plats témoins</button>
-    <button class="mn-act print" onclick="window._menuPrintEtiquettes()">🖨️ Imprimer étiquettes du jour</button>
     <button class="mn-act save" onclick="window._menuSave()">💾 Enregistrer le menu</button>
-    <button class="mn-act clear" onclick="window._menuClear()" style="grid-column:1 / 3">🗑️ Vider le menu de ${SERVICES.find(s=>s.id===sv)?.label||'ce service'}</button>
+    <button class="mn-act clear" onclick="window._menuClear()">🗑️ Vider ${SERVICES.find(s=>s.id===sv)?.label||'ce service'}</button>
   </div>
 
   ${renderMenuHistory()}
@@ -602,9 +598,75 @@ window._menuSave = function(){
       if(SupaEngine.flush) setTimeout(()=>SupaEngine.flush(), 200);
     }
   } catch(e){ console.warn('[menu] enqueue:', e); }
-  if(typeof toast === 'function') toast('✅ Menu enregistré ('+total+' plat'+(total>1?'s':'')+')','success');
+  // Auto-générer ENR33 + ajouter étiquettes au lot
+  _menuAutoOnSave(menu);
   if(typeof renderMain === 'function') renderMain();
 };
+
+// Appelé automatiquement à chaque "Enregistrer le menu"
+function _menuAutoOnSave(menu){
+  const chef = (typeof getActiveSession==='function' ? getActiveSession() : null) ||
+               (S.config?.chefs && S.config.chefs[0]) || '';
+  const heure       = (typeof nowT === 'function') ? nowT() : new Date().toTimeString().slice(0,5);
+  const datePrelev  = _menuState.date;
+  const dateDestruct= addDays(datePrelev, 7);
+  const serviceTxt  = _menuState.service === 'midi'     ? 'Déjeuner'
+                    : _menuState.service === 'soir'     ? 'Dîner'
+                    : _menuState.service === 'petitdej' ? 'Petit-déjeuner' : 'Goûter';
+
+  S.enr33 = S.enr33 || {}; S.enr33.lignes = S.enr33.lignes || [];
+  const deja = (S.enr33.lignes||[]).filter(l =>
+    l._menu_id === menu.menu_id && (l.date === today() || (l._ts||'').slice(0,10) === today())
+  );
+  let count33 = 0;
+  if(deja.length === 0){
+    CATS.forEach(c => {
+      (menu.categories[c.id]||[]).forEach(plat => {
+        addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
+        count33++;
+        if(plat.variants?.mixe)    { addPlatTemoin(plat.nom+' (mixé)',    plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé');    count33++; }
+        if(plat.variants?.sans_sel){ addPlatTemoin(plat.nom+' (sans sel)',plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'sans_sel');count33++; }
+        if(plat.variants?.hp)      { addPlatTemoin(plat.nom+' (HP)',      plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'hp');       count33++; }
+      });
+    });
+    save();
+    try { if(typeof SupaEngine !== 'undefined' && SupaEngine.flush) SupaEngine.flush(); } catch(e){}
+  }
+
+  // Ajouter les étiquettes au lot ENR34 (sans imprimer)
+  S.enr34 = S.enr34 || {}; S.enr34.lignes = S.enr34.lignes || [];
+  let count34 = 0;
+  CATS.forEach(c => {
+    (menu.categories[c.id]||[]).forEach(plat => {
+      const variants = [
+        { nom: plat.nom, variant: '' },
+        ...(plat.variants?.mixe     ? [{ nom: plat.nom+' (mixé)',    variant: 'MIXÉ'    }] : []),
+        ...(plat.variants?.sans_sel ? [{ nom: plat.nom+' (sans sel)',variant: 'SANS SEL'}] : []),
+        ...(plat.variants?.hp       ? [{ nom: plat.nom+' (HP)',      variant: 'HP'      }] : []),
+      ];
+      variants.forEach(v => {
+        const ts = new Date().toISOString();
+        const rec = {
+          produit: v.nom, association: v.nom, service: serviceTxt,
+          date: datePrelev, heure_prelev: heure, date_destruct: dateDestruct,
+          operateur: chef, nb_etiq: 1,
+          _sec: 'enr34', _ts: ts,
+          _plat_id: plat.plat_id, _plat_nom: plat.nom, _menu_id: menu.menu_id,
+          _variant: v.variant || null, _from_menu: true,
+        };
+        S.enr34.lignes.unshift(rec);
+        try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr34', rec); } catch(e){}
+        count34++;
+      });
+    });
+  });
+  save();
+
+  const msg = count33 > 0
+    ? `✅ Menu enregistré · ${count33} plat${count33>1?'s':''} témoin${count33>1?'s':''} créé${count33>1?'s':''} · ${count34} étiquette${count34>1?'s':''} dans le lot`
+    : `✅ Menu enregistré · ${count34} étiquette${count34>1?'s':''} mises à jour dans le lot`;
+  if(typeof toast === 'function') toast(msg, 'success');
+}
 
 // ════════════════════════════════════════════════════
 // GÉNÉRATION AUTO PLATS TÉMOINS (ENR33)
@@ -702,18 +764,22 @@ window._menuPrintEtiquettes = function(){
                      _menuState.service === 'soir' ? 'Dîner' :
                      _menuState.service === 'petitdej' ? 'Petit-déjeuner' : 'Goûter';
 
-  // Collecter toutes les étiquettes à imprimer (1 par variante cochée + 1 normale)
+  // Collecter les étiquettes par plat et aligner sur grille 2 colonnes
+  // Chaque plat = [normal, mixé?, sans_sel?, hp?] → si nombre impair on ajoute un espaceur null
   const etiqs = [];
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
-      etiqs.push({nom: plat.nom, variant: ''});
-      if(plat.variants?.mixe) etiqs.push({nom: plat.nom, variant: 'MIXÉ'});
-      if(plat.variants?.sans_sel) etiqs.push({nom: plat.nom, variant: 'SANS SEL'});
-      if(plat.variants?.hp) etiqs.push({nom: plat.nom, variant: 'HP'});
+      const group = [{ nom: plat.nom, variant: '' }];
+      if(plat.variants?.mixe)     group.push({ nom: plat.nom, variant: 'MIXÉ' });
+      if(plat.variants?.sans_sel) group.push({ nom: plat.nom, variant: 'SANS SEL' });
+      if(plat.variants?.hp)       group.push({ nom: plat.nom, variant: 'HP' });
+      // Pad à un multiple de 2 pour que le plat suivant commence toujours à gauche
+      if(group.length % 2 !== 0)  group.push(null);
+      etiqs.push(...group);
     });
   });
 
-  if(etiqs.length === 0){
+  if(!etiqs.some(Boolean)){
     if(typeof toast==='function') toast('Aucun plat dans le menu','warning');
     return;
   }
@@ -724,7 +790,9 @@ window._menuPrintEtiquettes = function(){
   const ico = _menuState.service==='midi'?'☀️':_menuState.service==='soir'?'🌙':_menuState.service==='petitdej'?'🌅':'🍰';
   const etabName = (S.syncCfg?.siteNom || S.config?.etab || 'Établissement');
 
+  const realCount = etiqs.filter(Boolean).length;
   const cards = etiqs.map(e => {
+    if(e === null) return `<div class="etiq-spacer"></div>`;
     const fullNom = e.variant ? (e.nom + ' — ' + e.variant) : e.nom;
     const variantBadge = e.variant ? `<div class="variant-badge">${escH(e.variant)}</div>` : '';
     return `<div class="etiq">
@@ -752,6 +820,7 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
 .no-print button{cursor:pointer;font-family:inherit}
 .no-print h2{font-size:14px;color:#5C1E5A;margin:0;font-weight:800}
 .page{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start}
+.etiq-spacer{width:calc(50% - 10px);min-width:280px;visibility:hidden}
 .etiq{width:calc(50% - 10px);min-width:280px;border:2.5px solid #5C1E5A;border-radius:5px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.1);page-break-inside:avoid}
 .hd{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #5C1E5A;padding-bottom:5px;gap:6px}
 .logo{font-size:9px;font-weight:bold;color:#c93a78;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -766,6 +835,7 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
   body{background:#fff;padding:0}
   .no-print{display:none !important}
   .page{gap:3mm}
+  .etiq-spacer{width:calc(50% - 3mm);visibility:hidden}
   .etiq{width:calc(50% - 3mm);min-width:0;border-width:0.4mm;padding:2.5mm 3mm;gap:1mm;box-shadow:none}
   .hd{padding-bottom:1mm}
   .logo{font-size:6pt}
@@ -781,7 +851,7 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
 </style>
 </head><body>
 <div class="no-print">
-  <h2>🖨️ ${etiqs.length} étiquette${etiqs.length>1?'s':''} — Menu ${dPrelev} ${serviceTxt}</h2>
+  <h2>🖨️ ${realCount} étiquette${realCount>1?'s':''} — Menu ${dPrelev} ${serviceTxt}</h2>
   <button onclick="window.print()" style="background:#5C1E5A;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:bold">🖨️ Imprimer</button>
   <button onclick="window.close()" style="background:#eee;color:#333;border:1px solid #ccc;padding:10px 20px;border-radius:8px;font-size:13px">✕ Fermer</button>
   <span style="font-size:12px;color:#666">À détruire le ${dDestr}</span>
@@ -798,7 +868,7 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
     }
     w.document.write(html);
     w.document.close();
-    if(typeof toast==='function') toast('🖨️ '+etiqs.length+' étiquettes prêtes à imprimer','success');
+    if(typeof toast==='function') toast('🖨️ '+realCount+' étiquettes prêtes à imprimer','success');
   } catch(e){
     console.warn('[menu print]', e);
     if(typeof toast==='function') toast('Erreur impression: '+e.message,'danger');
