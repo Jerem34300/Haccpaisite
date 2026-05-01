@@ -1,115 +1,28 @@
 <!DOCTYPE html>
-  <html lang="fr">
-  <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <title>HACC.PRO — Connexion</title>
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
-  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="manifest" id="pwa-manifest-link" href="/manifest.json">
-  <meta name="application-name" content="HACC.PRO">
-  <meta name="apple-mobile-web-app-title" content="HACC.PRO">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#0F2240">
-  
-  <link rel="stylesheet" href="css/login.css">
-  
-  <script>
-    // Enregistrement du Service Worker (PWA offline)
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js').then(function(reg) {
-          // Mise à jour silencieuse disponible
-          reg.addEventListener('updatefound', function() {
-            var newWorker = reg.installing;
-            newWorker.addEventListener('statechange', function() {
-              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('[HACCPro] Mise à jour disponible — rechargez la page.');
-              }
-            });
-          });
-        }).catch(function(err) {
-          console.warn('[HACCPro] SW non enregistré :', err);
-        });
-      });
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HACC.PRO</title>
+<meta name="robots" content="noindex">
+<script>
+(function(){
+  try {
+    var s1 = JSON.parse(localStorage.getItem('haccpro_session')||'{}');
+    var s2 = JSON.parse(localStorage.getItem('haccpro_supa_cfg')||'{}');
+    var DASH = ['super_admin','siege','directeur','chef_secteur'];
+    var PMS  = ['cuisinier'];
+    if(s1.token && s1.role){
+      if(DASH.includes(s1.role)) { window.location.replace('dashboard.html'); return; }
+      if(PMS.includes(s1.role))  { window.location.replace('cuisine.html');   return; }
     }
-  </script>
-  </head>
-  <body>
-
-  
-
-<div class="card">
-  <!-- Header -->
-  <div class="card-header">
-    <div class="logo-wrap">
-      <svg class="logo-svg" width="68" height="68" viewBox="0 0 90 90" fill="none">
-        <rect x="20" y="54" width="50" height="13" rx="4" fill="rgba(255,255,255,.18)"/>
-        <rect x="23" y="47" width="44" height="10" rx="2" fill="rgba(255,255,255,.14)"/>
-        <circle cx="45" cy="33" r="16" fill="white"/>
-        <circle cx="29" cy="38" r="11" fill="white"/>
-        <circle cx="61" cy="38" r="11" fill="white"/>
-        <path d="M30 46 L40 57 L62 32" stroke="#4CAF1A" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-      </svg>
-      <div>
-        <div class="logo-name">HACC<span>.PRO</span></div>
-        <div class="logo-sub">Espace de connexion</div>
-      </div>
-    </div>
-
-    <!-- Config avancée dans le header -->
-    <!-- Clés intégrées - invisibles -->
-    <input type="hidden" id="cfg-url" value="https://lthxpucxjcwzphshdhmp.supabase.co">
-    <input type="hidden" id="cfg-key" value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0aHhwdWN4amN3enBoc2hkaG1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMTU5MzIsImV4cCI6MjA4OTY5MTkzMn0._tLh6V35KkWu7p2eUyK0J03MaIqzHmMSYhQFZ3o8c80">
-  </div>
-
-  <!-- Body -->
-  <div class="card-body">
-    <div class="field">
-      <label>Email</label>
-      <input type="email" id="login-email" placeholder="prenom@entreprise.fr" autocomplete="email">
-    </div>
-    <div class="field">
-      <label>Mot de passe</label>
-      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"
-        onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
-
-    <button class="btn-login" id="btn-login" onclick="doLogin()">
-      <span id="btn-label">Se connecter →</span>
-      <div class="spinner" id="btn-spinner"></div>
-    </button>
-    <div class="err" id="login-err"></div>
-
-    <div class="forgot">
-      <button onclick="doForgot()">Mot de passe oublié ?</button>
-    </div>
-  </div>
-</div>
-
-<!-- Config toggle label -->
-
-
-
-
-  <div class="version">HACC.PRO v4 · hacc.pro</div>
-
-  <!-- Scripts (ordre important) -->
-  <script>
-  /* PWA Manifest dynamique */
-  (function(){
-    var m={name:"HACC.PRO",short_name:"HACC.PRO",start_url:"./",display:"standalone",background_color:"#0F2240",theme_color:"#0F2240",
-      icons:[
-        {src:"icon-192.png",sizes:"192x192",type:"image/png",purpose:"any maskable"},
-        {src:"icon-512.png",sizes:"512x512",type:"image/png",purpose:"any maskable"}
-      ]};
-    var b=new Blob([JSON.stringify(m)],{type:"application/manifest+json"});
-    document.getElementById("pwa-manifest-link").href=URL.createObjectURL(b);
-  })();
-  </script>
-  <script src="js/supabaseconfig.js"></script>
-  <script src="js/app-login.js"></script>
-  </body>
-  </html>
+    if(s2.userToken && s2.userRole==='cuisinier'){
+      window.location.replace('cuisine.html'); return;
+    }
+  } catch(e){}
+  window.location.replace('landing.html');
+})();
+</script>
+</head>
+<body></body>
+</html>

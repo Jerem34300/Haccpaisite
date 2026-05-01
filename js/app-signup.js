@@ -198,6 +198,13 @@ async function doSignup(){
       sites:_data.sites, plan:_data.plan
     }));
 
+    // 6. Email de bienvenue via Resend (non bloquant)
+    fetch('/.netlify/functions/send-email', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ type:'welcome', to:_data.email, company:_data.company, plan:_data.plan })
+    }).catch(()=>{});
+
     _showSuccessRedirect();
 
   } catch(e){

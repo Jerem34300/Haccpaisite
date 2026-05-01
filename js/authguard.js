@@ -22,7 +22,7 @@
   async function runAuthGuard(options) {
     const sessionKey = options.sessionKey;
     const stableKey  = options.stableKey || null;
-    const loginUrl   = options.loginUrl  || '/';
+    const loginUrl   = options.loginUrl  || 'login.html';
     const onSuccess  = options.onSuccess  || null;
 
     function allowRender() {
