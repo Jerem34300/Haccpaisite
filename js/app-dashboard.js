@@ -1424,299 +1424,346 @@ function applyTempFilter(siteId, date){
   }catch(e){}
 }
 function renderOverview(){
-  const recs=filteredRecords();
-  const nb=recs.length;
-  const nc=recs.filter(r=>isNC(r)).length;
-  // Bannière alertes enceintes J-1
-  const _alertBanner=renderEnceinteAlerts();
-  const _fOv=getFilters(),_mOv=_fOv.mois||new Date().toISOString().slice(0,7);
-  const pct=pmsWeightedScore(recs,_mOv) ?? 100;
-  // Compter les sites qui ont des saisies OU une visite GMO ce mois
-  const f0=_fOv, mois0=_mOv;
-  const sitesAvecSaisies=new Set(recs.map(r=>r.site_id));
-  const sitesAvecGMO=new Set(_gmos.filter(g=>g.visit_date?.startsWith(mois0)).map(g=>g.site_id));
-  const sitesActifsSet=new Set([
-    ...[...sitesAvecSaisies].map(code=>_sites.find(s=>s.code===code)?.id).filter(Boolean),
-    ...sitesAvecGMO
-  ]);
-  const sitesActifs=sitesActifsSet.size||sitesAvecSaisies.size;
-  const dernSaisie=recs[0]?.recorded_at?new Date(recs[0].recorded_at).toLocaleDateString('fr-FR',{day:'numeric',month:'long'}):null;
+  const recs  = filteredRecords();
+  const nb    = recs.length;
+  const _alertBanner = renderEnceinteAlerts();
+  const f0    = getFilters();
+  const mois0 = f0.mois || new Date().toISOString().slice(0,7);
+  const pct   = pmsWeightedScore(recs, mois0) ?? 100;
+  const colGlob = pct>=90?'#16a34a':pct>=75?'#d97706':'#dc2626';
 
-  // ── Couleur globale ──
-  const colGlob=pct>=90?'#16a34a':pct>=75?'#d97706':'#dc2626';
-  const tagGlob=pct>=90?'RAS':'⚠️ À surveiller';
-
-  // ── 1. Banner d\'état global ──────────────────────────
-  let html=(_alertBanner||'')+`
-  <div style="background:linear-gradient(135deg,var(--navy) 0%,#1e3a6e 100%);border-radius:18px;padding:22px 24px;margin-bottom:20px;color:#fff;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-    <div style="flex:1;min-width:180px">
-      <div style="font-size:.72rem;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Conformité globale</div>
-      <div style="display:flex;align-items:baseline;gap:10px">
-        <span style="font-size:3rem;font-weight:900;line-height:1;color:${colGlob==='#16a34a'?'#86efac':colGlob==='#d97706'?'#fcd34d':'#fca5a5'}">${pct}%</span>
-        <span style="font-size:.82rem;font-weight:700;padding:3px 10px;border-radius:20px;background:rgba(255,255,255,.12)">${tagGlob}</span>
-      </div>
-      <div style="font-size:.75rem;color:rgba(255,255,255,.5);margin-top:6px">${nb} saisies · ${nc} NC${dernSaisie?' · Dernière saisie '+dernSaisie:''}</div>
-      <div style="margin-top:12px;height:5px;background:rgba(255,255,255,.15);border-radius:3px"><div style="width:${pct}%;height:100%;background:${colGlob==='#16a34a'?'#86efac':colGlob==='#d97706'?'#fcd34d':'#fca5a5'};border-radius:3px;transition:width .6s"></div></div>
-    </div>
-    <div style="display:flex;gap:20px;flex-shrink:0">
-      <div style="text-align:center">
-        <div style="font-size:1.8rem;font-weight:900;color:#fca5a5">${nc}</div>
-        <div style="font-size:.65rem;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px">NC</div>
-      </div>
-      <div style="text-align:center">
-        <div style="font-size:1.8rem;font-weight:900">${sitesActifs}</div>
-        <div style="font-size:.65rem;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px">Sites</div>
-      </div>
-    </div>
-  </div>`;
-
-  // ── 2. NC actives en haut (priorité dirigeant) ───────
-  const ncRecs=recs.filter(r=>isNC(r)).slice(0,6);
-  if(ncRecs.length>0){
-    html+=`<div style="background:#fff5f5;border:1.5px solid #fecaca;border-radius:14px;padding:16px 18px;margin-bottom:18px">
-      <div style="font-size:.8rem;font-weight:800;color:#991b1b;margin-bottom:12px">🚨 ${ncRecs.length} Non-conformité(s) récente(s)</div>
-      <div style="display:flex;flex-direction:column;gap:8px">`;
-    ncRecs.forEach(r=>{
-      const d=r.data||{};
-      const site=_siteName(r.site_id);
-      const dt=r.recorded_at?new Date(r.recorded_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}):'';
-      let produit;
-      if(r.enr_type==='enr30') produit=d.probleme||d.desc||d.description||'Non-conformité';
-      else if(r.enr_type==='enr28'||d.ref_id){
-        const mat=d.materiel||nettMateriel(d.ref_id||'', r.site_id);
-        const zone=d.zone||nettZone(d.ref_id||'', r.site_id);
-        produit=mat&&zone?`${mat} — ${zone}`:mat||zone||nettLabel(d.ref_id||'', r.site_id)||'Nettoyage';
-      } else if(r.enr_type==='nuisibles_val') produit=d.zone?`Nuisibles — ${d.zone}`:'Nuisibles';
-      else produit=d.produit||d.fournisseur||d.enc_id||d.desc||'—';
-      const enrL=ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||'';
-      const isCloturee=r.enr_type==='enr30'?d.cloture==='OUI':isNCCloturee(r);
-      const cloture=isCloturee?'<span style="font-size:.65rem;background:#dcfce7;color:#166534;padding:1px 7px;border-radius:10px;font-weight:700">Clôturée</span>':'<span style="font-size:.65rem;background:#fee2e2;color:#991b1b;padding:1px 7px;border-radius:10px;font-weight:700">En cours</span>';
-      html+=`<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #fecaca;cursor:pointer" onclick="openDetail('${r.id}')">
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.8rem;font-weight:700;color:#7f1d1d">${escH(produit)}</div>
-          <div style="font-size:.7rem;color:#991b1b">${enrL} · 🏠 ${escH(site)} · ${dt}</div>
-        </div>
-        ${cloture}
-        <span style="color:#fca5a5;font-size:.85rem">›</span>
-      </div>`;
-    });
-    if(recs.filter(r=>isNC(r)).length>6){
-      html+=`<div style="text-align:center;margin-top:8px"><button onclick="navTo('nc')" style="background:none;border:none;color:#dc2626;font-size:.78rem;font-weight:700;cursor:pointer;font-family:var(--font)">Voir toutes les NC →</button></div>`;
+  // ── Calcul des données par site ──────────────────────────────
+  const siteMap = {};
+  recs.forEach(r => {
+    if(!siteMap[r.site_id]) siteMap[r.site_id]={total:0,nc:0,cats:{},lastActivity:null};
+    siteMap[r.site_id].total++;
+    if(isNC(r)) siteMap[r.site_id].nc++;
+    if(r.recorded_at && (!siteMap[r.site_id].lastActivity || r.recorded_at > siteMap[r.site_id].lastActivity))
+      siteMap[r.site_id].lastActivity = r.recorded_at;
+    const cat=CAT_GROUPS.find(c=>c.enrs.includes(r.enr_type));
+    if(cat){
+      if(!siteMap[r.site_id].cats[cat.key]) siteMap[r.site_id].cats[cat.key]={t:0,nc:0};
+      siteMap[r.site_id].cats[cat.key].t++;
+      if(isNC(r)) siteMap[r.site_id].cats[cat.key].nc++;
     }
-    html+=`</div></div>`;
+  });
+  const activeCodes = new Set(Object.keys(siteMap));
+  const rows = Object.entries(siteMap).map(([code,v])=>({
+    code, name:_siteName(code), terr:_siteTerr(code), ...v,
+    pct: Math.round((1-v.nc/v.total)*100),
+  }));
+  // Sites sans saisies ce mois
+  const inactiveRows = _sites
+    .filter(s=>!activeCodes.has(s.code))
+    .map(s=>({code:s.code,name:s.name,terr:_siteTerr(s.code),total:0,nc:0,pct:null,lastActivity:null,cats:{}}));
+  const allRows = [...rows,...inactiveRows];
+
+  // ── KPIs ────────────────────────────────────────────────────
+  const sitesEnAlerte  = rows.filter(r=>r.pct<75).length;
+  const ncActives      = recs.filter(r=>isNC(r)&&!isNCCloturee(r)).length;
+  const sitesInactifs  = inactiveRows.length;
+  const dernSaisie     = recs[0]?.recorded_at
+    ? new Date(recs[0].recorded_at).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})
+    : null;
+
+  // ── Triage sites ─────────────────────────────────────────────
+  const critiques = rows.filter(r=>r.pct<70||r.nc>5).sort((a,b)=>a.pct-b.pct);
+  const critSet   = new Set(critiques.map(r=>r.code));
+  const warnings  = rows.filter(r=>!critSet.has(r.code)&&(r.pct<85||r.nc>0)).sort((a,b)=>a.pct-b.pct);
+  const warnSet   = new Set(warnings.map(r=>r.code));
+  const oks       = rows.filter(r=>!critSet.has(r.code)&&!warnSet.has(r.code));
+
+  // ── Helpers pour les cartes ──────────────────────────────────
+  function relTime(iso){
+    if(!iso)return'jamais';
+    const diff=Date.now()-new Date(iso).getTime();
+    const h=Math.floor(diff/3600000);
+    if(h<1)return'il y a < 1h';
+    if(h<24)return`il y a ${h}h`;
+    const d=Math.floor(h/24);
+    if(d===1)return'hier';
+    return`il y a ${d}j`;
+  }
+  function scoreCol(p){return p==null?'#94a3b8':p>=85?'#16a34a':p>=70?'#d97706':'#dc2626';}
+  function scoreBg(p) {return p==null?'#f8fafc':p>=85?'#f0fdf4':p>=70?'#fffbeb':'#fff5f5';}
+  function scoreBrd(p){return p==null?'#e2e8f0':p>=85?'#bbf7d0':p>=70?'#fde68a':'#fecaca';}
+  function siteCard(s){
+    const col=scoreCol(s.pct), bg=scoreBg(s.pct), brd=scoreBrd(s.pct);
+    const searchKey=(s.name+' '+s.code+' '+s.terr).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const catBadges = CAT_GROUPS.filter(c=>s.cats[c.key]).map(c=>{
+      const cv=s.cats[c.key]; const cp=Math.round((1-cv.nc/cv.t)*100);
+      const cc=scoreCol(cp);
+      return `<span style="font-size:.58rem;font-weight:800;padding:2px 6px;border-radius:4px;background:${cc}18;color:${cc};border:1px solid ${cc}40">${c.ico} ${cp}%</span>`;
+    }).join('');
+    return `<div class="ov-site-card" data-search="${escH(searchKey)}" data-pct="${s.pct??-1}"
+      style="background:${bg};border:1.5px solid ${brd};border-radius:16px;padding:14px 16px;cursor:pointer;transition:box-shadow .15s,transform .15s"
+      onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-2px)'"
+      onmouseout="this.style.boxShadow='';this.style.transform=''"
+      onclick="(function(){const el=document.getElementById('filter-site');if(el){el.value='${s.code}';applyFilters();}navTo('saisies');})()">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.85rem;font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(s.name)}</div>
+          <div style="font-size:.65rem;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(s.terr||s.code)}</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:1.55rem;font-weight:900;color:${col};line-height:1">${s.pct!=null?s.pct+'%':'—'}</div>
+          ${s.nc>0?`<span style="font-size:.6rem;font-weight:800;background:#fee2e2;color:#991b1b;padding:1px 6px;border-radius:4px">${s.nc} NC</span>`:''}
+        </div>
+      </div>
+      ${s.pct!=null?`<div style="height:4px;background:rgba(0,0,0,.07);border-radius:2px;margin-bottom:8px;overflow:hidden"><div style="width:${s.pct}%;height:100%;background:${col};border-radius:2px;transition:width .5s"></div></div>`:''}
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:.62rem;color:var(--muted)">${s.total?s.total+' saisies':'Aucune saisie'} · ${relTime(s.lastActivity)}</div>
+        <span style="font-size:.7rem;color:var(--muted)">›</span>
+      </div>
+      ${catBadges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px">${catBadges}</div>`:''}
+    </div>`;
   }
 
-  // ── 3. Scores par catégorie (tuiles cliquables) ──────
-  html+=`<div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">Score par domaine</div>
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px">`;
-
-  const _mTile=getFilters().mois||new Date().toISOString().slice(0,7);
-  CAT_GROUPS.forEach(cat=>{
-    if (cat.key === 'temp') {
-      const a = calcEnr19Assiduite(recs, _mTile);
-      if (!a) {
-        html+=`<div style="background:#faf6fa;border-radius:14px;padding:14px;border:1px solid var(--border);opacity:.5">
-          <div style="font-size:1.3rem;margin-bottom:4px">${cat.ico}</div>
-          <div style="font-size:.72rem;font-weight:700;color:var(--muted)">${cat.label.replace(/^../,'')}</div>
-          <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Aucune saisie</div>
+  // ── NC récentes ──────────────────────────────────────────────
+  const ncRecs = recs.filter(r=>isNC(r)).slice(0,6);
+  let ncBlock='';
+  if(ncRecs.length>0){
+    ncBlock=`<div class="ov-panel ov-panel-danger" style="margin-bottom:18px">
+      <div class="ov-panel-title">🚨 ${ncRecs.length} NC récente${ncRecs.length>1?'s':''} <span style="font-size:.7rem;font-weight:600;opacity:.7">${recs.filter(r=>isNC(r)).length} ce mois</span></div>
+      ${ncRecs.map(r=>{
+        const d=r.data||{}, site=_siteName(r.site_id);
+        const dt=r.recorded_at?new Date(r.recorded_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'}):'';
+        let produit=d.produit||d.fournisseur||d.probleme||d.desc||d.enc_id||'—';
+        const enrL=ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||'';
+        const cloturee=isNCCloturee(r);
+        return `<div class="ov-nc-row" onclick="openDetail('${r.id}')">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.8rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(produit)}</div>
+            <div style="font-size:.68rem;color:var(--muted);margin-top:1px">${enrL} · ${escH(site)} · ${dt}</div>
+          </div>
+          <span style="flex-shrink:0;font-size:.62rem;font-weight:800;padding:2px 8px;border-radius:6px;${cloturee?'background:#dcfce7;color:#166534':'background:#fee2e2;color:#991b1b'}">${cloturee?'Clôturée':'En cours'}</span>
+          <span style="color:#fca5a5;font-size:.85rem;flex-shrink:0">›</span>
         </div>`;
+      }).join('')}
+      ${recs.filter(r=>isNC(r)).length>6?`<div style="text-align:center;margin-top:8px"><button onclick="navTo('nc')" style="background:none;border:none;color:#dc2626;font-size:.78rem;font-weight:700;cursor:pointer;font-family:var(--font)">Voir toutes les NC →</button></div>`:''}
+    </div>`;
+  }
+
+  // ── Domaines ────────────────────────────────────────────────
+  const _mTile=mois0;
+  let domHtml=`<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">Score par domaine</div>
+  <div class="ov-domain-grid" style="margin-bottom:20px">`;
+  CAT_GROUPS.forEach(cat=>{
+    if(cat.key==='temp'){
+      const a=calcEnr19Assiduite(recs,_mTile);
+      if(!a){
+        domHtml+=`<div class="ov-domain-card ov-dom-empty"><span class="ov-dom-ico">${cat.ico}</span><div class="ov-dom-label">${cat.label.replace(/^../,'')}</div><div class="ov-dom-sub">Aucune saisie</div></div>`;
         return;
       }
-      const col=a.pct>=90?'#16a34a':a.pct>=75?'#d97706':'#dc2626';
-      const bg=a.pct>=90?'#f0fdf4':a.pct>=75?'#fffbeb':'#fff5f5';
-      const brd=a.pct>=90?'#bbf7d0':a.pct>=75?'#fde68a':'#fecaca';
-      const cA=a.assiduite>=90?'#16a34a':a.assiduite>=70?'#d97706':'#dc2626';
-      html+=`<div onclick="navTo('${cat.page}')" style="background:${bg};border-radius:14px;padding:14px;border:1.5px solid ${brd};cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:1.3rem">${cat.ico}</span>
-          <span style="font-size:1.1rem;font-weight:900;color:${col}">${a.pct}%</span>
-        </div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--text);margin-bottom:6px">${cat.label.replace(/^../,'')}</div>
-        <div style="background:rgba(0,0,0,.06);border-radius:4px;height:4px;margin-bottom:6px;overflow:hidden">
-          <div style="height:100%;width:${a.pct}%;background:${col}"></div>
-        </div>
-        <div style="font-size:.62rem;color:${cA};font-weight:700">${a.assiduite}% assidus</div>
-        <div style="font-size:.61rem;color:var(--muted);margin-top:1px">${a.faits}/${a.attendus} relevés · ${a.oublis} oubli${a.oublis>1?'s':''}</div>
+      const c=scoreCol(a.pct),bg=scoreBg(a.pct),brd=scoreBrd(a.pct);
+      domHtml+=`<div class="ov-domain-card" style="background:${bg};border-color:${brd}" onclick="navTo('${cat.page}')">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px"><span class="ov-dom-ico">${cat.ico}</span><span style="font-size:1.4rem;font-weight:900;color:${c};line-height:1">${a.pct}%</span></div>
+        <div class="ov-dom-label">${cat.label.replace(/^../,'')}</div>
+        <div style="height:3px;background:rgba(0,0,0,.07);border-radius:2px;margin:6px 0;overflow:hidden"><div style="width:${a.pct}%;height:100%;background:${c}"></div></div>
+        <div class="ov-dom-sub">${a.faits}/${a.attendus} relevés</div>
       </div>`;
       return;
     }
     const catRecs=recs.filter(r=>cat.enrs.includes(r.enr_type));
-    const n=catRecs.length;
-    if(!n){
-      html+=`<div style="background:#faf6fa;border-radius:14px;padding:14px;border:1px solid var(--border);opacity:.5">
-        <div style="font-size:1.3rem;margin-bottom:4px">${cat.ico}</div>
-        <div style="font-size:.72rem;font-weight:700;color:var(--muted)">${cat.label.replace(/^../,'')}</div>
-        <div style="font-size:.68rem;color:var(--muted);margin-top:4px">Aucune saisie</div>
-      </div>`;
+    if(!catRecs.length){
+      domHtml+=`<div class="ov-domain-card ov-dom-empty"><span class="ov-dom-ico">${cat.ico}</span><div class="ov-dom-label">${cat.label.replace(/^../,'')}</div><div class="ov-dom-sub">Aucune saisie</div></div>`;
       return;
     }
     const nNC=catRecs.filter(r=>isNC(r)).length;
-    const p=Math.round((1-nNC/n)*100);
-    const c=p>=90?'#16a34a':p>=75?'#d97706':'#dc2626';
-    const bg=p>=90?'#f0fdf4':p>=75?'#fffbeb':'#fff5f5';
-    const bord=p>=90?'#bbf7d0':p>=75?'#fde68a':'#fecaca';
-    html+=`<div onclick="navTo('${cat.page}')" style="background:${bg};border-radius:14px;padding:14px;border:1.5px solid ${bord};cursor:pointer;transition:transform .15s,box-shadow .15s" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-      <div style="font-size:1.3rem;margin-bottom:4px">${cat.ico}</div>
-      <div style="font-size:.72rem;font-weight:700;color:var(--text)">${cat.label.replace(/^../,'')}</div>
-      <div style="font-size:1.6rem;font-weight:900;color:${c};line-height:1.2;margin:4px 0">${p}%</div>
-      <div style="font-size:.62rem;color:var(--muted)">${n} saisies · ${nNC} NC</div>
-      <div style="margin-top:8px;height:3px;background:rgba(0,0,0,.08);border-radius:2px"><div style="width:${p}%;height:100%;background:${c};border-radius:2px"></div></div>
+    const p=Math.round((1-nNC/catRecs.length)*100);
+    const c=scoreCol(p),bg=scoreBg(p),brd=scoreBrd(p);
+    domHtml+=`<div class="ov-domain-card" style="background:${bg};border-color:${brd}" onclick="navTo('${cat.page}')">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px"><span class="ov-dom-ico">${cat.ico}</span><span style="font-size:1.4rem;font-weight:900;color:${c};line-height:1">${p}%</span></div>
+      <div class="ov-dom-label">${cat.label.replace(/^../,'')}</div>
+      <div style="height:3px;background:rgba(0,0,0,.07);border-radius:2px;margin:6px 0;overflow:hidden"><div style="width:${p}%;height:100%;background:${c}"></div></div>
+      <div class="ov-dom-sub">${catRecs.length} saisies · ${nNC} NC</div>
     </div>`;
   });
-  html+=`</div>`;
+  domHtml+=`</div>`;
 
-  // ── 4. Classement des sites ───────────────────────────
-  const siteMap={};
-  recs.forEach(r=>{
-    if(!siteMap[r.site_id])siteMap[r.site_id]={total:0,nc:0,cats:{}};
-    siteMap[r.site_id].total++;
-    if(isNC(r))siteMap[r.site_id].nc++;
-    const cat=CAT_GROUPS.find(c=>c.enrs.includes(r.enr_type));
-    if(cat){
-      if(!siteMap[r.site_id].cats[cat.key])siteMap[r.site_id].cats[cat.key]={t:0,nc:0};
-      siteMap[r.site_id].cats[cat.key].t++;
-      if(isNC(r))siteMap[r.site_id].cats[cat.key].nc++;
-    }
-  });
-
-  const rows=Object.entries(siteMap)
-    .map(([code,v])=>({code,...v,pct:Math.round((1-v.nc/v.total)*100)}))
-    .sort((a,b)=>b.pct-a.pct);
-
-  if(rows.length){
-    html+=`<div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px">Classement des établissements</div>
-    <div class="table-card"><div class="table-wrap"><table>
-    <thead><tr>
-      <th>#</th><th>Établissement</th><th>Territoire › Secteur</th><th>Saisies</th><th>NC</th><th>Score global</th>
-      ${CAT_GROUPS.filter(c=>rows.some(r=>r.cats[c.key])).map(c=>`<th>${c.ico}</th>`).join('')}
-    </tr></thead><tbody>`;
-
-    const activeCats=CAT_GROUPS.filter(c=>rows.some(r=>r.cats[c.key]));
-    rows.forEach((s,i)=>{
-      const col=s.pct>=90?'#16a34a':s.pct>=75?'#d97706':'#dc2626';
-      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}.`;
-      const terr=_siteTerr(s.code);
-      html+=`<tr style="cursor:pointer" onclick="navTo('saisies');setTimeout(()=>{const el=document.getElementById('filter-site');if(el){el.value='${s.code}';applyFilters();}},100)">
-        <td style="font-weight:800;font-size:.9rem">${medal}</td>
-        <td><div style="font-weight:700;font-size:.82rem">${_siteName(s.code)}</div><div style="font-size:.68rem;color:var(--muted)">${s.code}</div></td>
-        <td style="font-size:.72rem;color:var(--muted)">${terr||'—'}</td>
-        <td style="font-family:var(--mono);font-weight:600">${s.total}</td>
-        <td style="color:${s.nc>0?'#dc2626':'#16a34a'};font-weight:700">${s.nc}</td>
-        <td>
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="flex:1;height:5px;background:#e2e8f0;border-radius:3px;min-width:50px"><div style="width:${s.pct}%;height:100%;background:${col};border-radius:3px"></div></div>
-            <span style="font-family:var(--mono);font-weight:800;color:${col};font-size:.8rem">${s.pct}%</span>
-          </div>
-        </td>
-        ${activeCats.map(cat=>{
-          const cv=s.cats[cat.key];
-          if(!cv)return'<td style="color:#e2e8f0;text-align:center">—</td>';
-          const cp=Math.round((1-cv.nc/cv.t)*100);
-          const cc=cp>=90?'#16a34a':cp>=75?'#d97706':'#dc2626';
-          return`<td style="text-align:center"><span style="font-family:var(--mono);font-weight:800;color:${cc};font-size:.78rem">${cp}%</span></td>`;
-        }).join('')}
-      </tr>`;
-    });
-    html+=`</tbody></table></div></div>`;
+  // ── Sections sites ────────────────────────────────────────────
+  function siteSection(title,colorClass,items,collapsed=false){
+    if(!items.length)return'';
+    const id='ov-sec-'+Math.random().toString(36).slice(2,8);
+    return `<div class="ov-section ${colorClass}" style="margin-bottom:16px">
+      <div class="ov-sec-hd" onclick="(function(){var g=document.getElementById('${id}');g.style.display=g.style.display==='none'?'':'none';})()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-radius:14px 14px 0 0;user-select:none">
+        <div style="font-size:.82rem;font-weight:800">${title} <span class="ov-sec-count" style="font-size:.72rem;opacity:.8">(${items.length})</span></div>
+        <span style="font-size:.9rem;opacity:.6">▾</span>
+      </div>
+      <div id="${id}" style="display:${collapsed?'none':''};padding:12px;display:grid" class="ov-site-grid">
+        ${items.map(siteCard).join('')}
+      </div>
+    </div>`;
   }
 
-  // ── 5. Bloc GMO — visible siège / directeur / chef ───
-  const rolesGMO = ['siege','directeur','chef_secteur'];
-  if (_profile && rolesGMO.includes(_profile.role) && _gmos.length >= 0) {
-    const f = getFilters();
-    const moisFilter = f.mois || new Date().toISOString().slice(0,7);
-
-    // GMOs du mois
-    const gmosMois = _gmos.filter(g => g.visit_date?.startsWith(moisFilter));
-
-    // Sites sans GMO ce mois
-    const sitesSansGMO = _sites.filter(s =>
-      !gmosMois.some(g => g.site_id === s.id) &&
-      recs.some(r => r.site_id === s.code)
-    );
-
-    // NC majeures non clôturées (bilan._bilan avec niveau NC majeure)
-    const ncMajeures = [];
-    _gmos.slice(0, 20).forEach(g => {
-      const bilan = g.scores?._bilan || [];
-      const site  = _sites.find(s => s.id === g.site_id);
-      bilan.filter(nc => nc.niveau === 'NC majeure' && !nc.verifie).forEach(nc => {
-        ncMajeures.push({ ...nc, siteName: site?.name||'—', visitDate: g.visit_date, gmoId: g.id });
+  // ── GMO ──────────────────────────────────────────────────────
+  let gmoSection='';
+  const rolesGMO=['siege','directeur','chef_secteur'];
+  if(_profile&&rolesGMO.includes(_profile.role)&&_gmos.length>=0){
+    const gmosMois=_gmos.filter(g=>g.visit_date?.startsWith(mois0));
+    const sitesSansGMO=_sites.filter(s=>!gmosMois.some(g=>g.site_id===s.id)&&recs.some(r=>r.site_id===s.code));
+    const ncMajeures=[];
+    _gmos.slice(0,20).forEach(g=>{
+      const bilan=g.scores?._bilan||[];
+      const site=_sites.find(s=>s.id===g.site_id);
+      bilan.filter(nc=>nc.niveau==='NC majeure'&&!nc.verifie).forEach(nc=>{
+        ncMajeures.push({...nc,siteName:site?.name||'—',visitDate:g.visit_date,gmoId:g.id});
       });
     });
-
-    html += `<div style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px;margin-top:4px">Suivi GMO — ${moisFilter}</div>`;
-
-    // Alertes NC majeures ouvertes
-    if (ncMajeures.length > 0) {
-      html += `<div style="background:#fff5f5;border:1.5px solid #fecaca;border-radius:14px;padding:14px 16px;margin-bottom:14px">
-        <div style="font-size:.8rem;font-weight:800;color:#991b1b;margin-bottom:10px">⚠️ ${ncMajeures.length} NC majeure${ncMajeures.length>1?'s':''} en attente de correction</div>
+    gmoSection=`<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px;margin-top:4px">Suivi GMO — ${mois0}</div>`;
+    if(ncMajeures.length>0){
+      gmoSection+=`<div class="ov-panel ov-panel-danger" style="margin-bottom:14px">
+        <div class="ov-panel-title">⚠️ ${ncMajeures.length} NC majeure${ncMajeures.length>1?'s':''} GMO en attente</div>
         ${ncMajeures.slice(0,5).map(nc=>{
-          // Vérifier si l'utilisateur peut valider cette NC
-          const ncSite = _sites.find(s => s.name === nc.siteName);
-          const canValidate = _profile?.role === 'siege' ||
-            (_profile?.role === 'chef_secteur' && ncSite?.sector_id === _profile?.sector_id);
-          const clickAttr = canValidate && nc.gmoId
-            ? `onclick="openGMODetail('${nc.gmoId}')" style="padding:8px 0;border-bottom:1px solid #fecaca;display:flex;flex-direction:column;gap:3px;cursor:pointer;border-radius:8px;transition:background .15s;padding:10px 8px" onmouseover="this.style.background='rgba(254,202,202,.3)'" onmouseout="this.style.background=''"` 
-            : `style="padding:8px 0;border-bottom:1px solid #fecaca;display:flex;flex-direction:column;gap:3px"`;
-          return `<div ${clickAttr}>
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span style="font-size:.78rem;font-weight:700;color:#7f1d1d">${escH(nc.siteName)}</span>
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="font-size:.65rem;color:#991b1b">${new Date(nc.visitDate+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})}</span>
-              ${canValidate && nc.gmoId ? '<span style="font-size:.65rem;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:1px 7px;border-radius:8px">Valider →</span>' : ''}
+          const ncSite=_sites.find(s=>s.name===nc.siteName);
+          const canV=_profile?.role==='siege'||(_profile?.role==='chef_secteur'&&ncSite?.sector_id===_profile?.sector_id);
+          return `<div class="ov-nc-row" ${canV&&nc.gmoId?`onclick="openGMODetail('${nc.gmoId}')" style="cursor:pointer"`:''}>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.78rem;font-weight:700">${escH(nc.siteName)}</div>
+              <div style="font-size:.68rem;color:var(--muted)">${escH(nc.axe)} › ${escH(nc.critere)}</div>
             </div>
-          </div>
-          <div style="font-size:.72rem;color:#991b1b;font-weight:600">${escH(nc.axe)} › ${escH(nc.critere)}</div>
-          ${nc.constat?`<div style="font-size:.7rem;color:#7f1d1d;font-style:italic">📝 ${escH(nc.constat)}</div>`:''}
-          ${nc.action?`<div style="font-size:.7rem;color:#2b6cb0">→ ${escH(nc.action)}</div>`:'<div style="font-size:.7rem;color:#a0aec0;font-style:italic">Aucune action corrective définie</div>'}
-        </div>`;}).join('')}
-        ${ncMajeures.length>5?`<div style="font-size:.72rem;color:#991b1b;margin-top:8px;text-align:center;font-weight:700">+ ${ncMajeures.length-5} autre(s) NC majeure(s)</div>`:''}
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+              <span style="font-size:.63rem;color:var(--muted)">${new Date(nc.visitDate+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})}</span>
+              ${canV&&nc.gmoId?'<span style="font-size:.63rem;font-weight:700;color:#1d4ed8;background:#dbeafe;padding:1px 7px;border-radius:6px">Valider →</span>':''}
+            </div>
+          </div>`;
+        }).join('')}
       </div>`;
     }
-
-    // Grille scores GMO ce mois
-    if (gmosMois.length > 0) {
-      html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px">`;
-      gmosMois.slice(0,8).forEach(g => {
-        const site   = _sites.find(s => s.id === g.site_id);
-        const sc     = g.scores || {};
-        const vals   = Object.entries(sc).filter(([k])=>!k.startsWith('_')).map(([,v])=>Number(v));
-        const pct    = sc._global != null ? sc._global : vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
-        const bilan  = sc._bilan || [];
-        const maj    = bilan.filter(n=>n.niveau==='NC majeure').length;
-        const min    = bilan.filter(n=>n.niveau==='NC mineure').length;
-        const col    = pct!=null ? gmoColor(pct) : '#a0aec0';
-        const bg     = pct==null?'#f8fafc':pct>=85?'#f0fdf4':pct>=70?'#fffbeb':'#fff5f5';
-        const bord   = pct==null?'#e2e8f0':pct>=85?'#bbf7d0':pct>=70?'#fde68a':'#fecaca';
-        html += `<div onclick="openGMODetail('${g.id}')" style="background:${bg};border:1.5px solid ${bord};border-radius:14px;padding:12px;cursor:pointer">
+    if(gmosMois.length>0){
+      gmoSection+=`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-bottom:14px">`;
+      gmosMois.slice(0,12).forEach(g=>{
+        const site=_sites.find(s=>s.id===g.site_id);
+        const sc=g.scores||{};
+        const vals=Object.entries(sc).filter(([k])=>!k.startsWith('_')).map(([,v])=>Number(v));
+        const gp=sc._global!=null?sc._global:vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):null;
+        const bilan=sc._bilan||[];
+        const maj=bilan.filter(n=>n.niveau==='NC majeure').length;
+        const min=bilan.filter(n=>n.niveau==='NC mineure').length;
+        const c=gp!=null?gmoColor(gp):'#a0aec0';
+        const bg=gp==null?'#f8fafc':gp>=85?'#f0fdf4':gp>=70?'#fffbeb':'#fff5f5';
+        const brd=gp==null?'#e2e8f0':gp>=85?'#bbf7d0':gp>=70?'#fde68a':'#fecaca';
+        gmoSection+=`<div onclick="openGMODetail('${g.id}')" style="background:${bg};border:1.5px solid ${brd};border-radius:14px;padding:12px;cursor:pointer">
           <div style="font-size:.75rem;font-weight:800;color:var(--navy);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(site?.name||'—')}</div>
-          <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">${new Date(g.visit_date+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})}</div>
-          <div style="font-size:1.8rem;font-weight:900;color:${col};line-height:1">${pct!=null?pct+'%':'—'}</div>
+          <div style="font-size:.63rem;color:var(--muted);margin-bottom:6px">${new Date(g.visit_date+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'long'})}</div>
+          <div style="font-size:1.7rem;font-weight:900;color:${c};line-height:1">${gp!=null?gp+'%':'—'}</div>
           ${(maj||min)?`<div style="display:flex;gap:4px;margin-top:5px;flex-wrap:wrap">
             ${maj?`<span style="font-size:.6rem;font-weight:800;padding:1px 6px;background:#fee2e2;color:#991b1b;border-radius:4px">${maj} maj.</span>`:''}
             ${min?`<span style="font-size:.6rem;font-weight:800;padding:1px 6px;background:#fef3c7;color:#92400e;border-radius:4px">${min} min.</span>`:''}
-          </div>`:`<div style="font-size:.65rem;color:#16a34a;margin-top:4px;font-weight:700">✅ Aucune NC</div>`}
+          </div>`:`<div style="font-size:.63rem;color:#16a34a;margin-top:4px;font-weight:700">✅ Aucune NC</div>`}
         </div>`;
       });
-      html += `</div>`;
+      gmoSection+=`</div>`;
     }
-
-    // Sites sans GMO ce mois
-    if (sitesSansGMO.length > 0) {
-      html += `<div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:14px;padding:12px 14px;margin-bottom:4px">
+    if(sitesSansGMO.length>0)
+      gmoSection+=`<div style="background:#f0f9ff;border:1.5px solid #bae6fd;border-radius:14px;padding:12px 14px;margin-bottom:4px">
         <div style="font-size:.75rem;font-weight:800;color:#0369a1;margin-bottom:8px">📋 ${sitesSansGMO.length} site${sitesSansGMO.length>1?'s':''} sans visite GMO ce mois</div>
-        <div style="display:flex;flex-wrap:wrap;gap:6px">
-          ${sitesSansGMO.map(s=>`<span style="font-size:.7rem;font-weight:700;padding:3px 9px;background:#e0f2fe;color:#0369a1;border-radius:6px">${escH(s.name)}</span>`).join('')}
-        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${sitesSansGMO.map(s=>`<span style="font-size:.7rem;font-weight:700;padding:3px 9px;background:#e0f2fe;color:#0369a1;border-radius:6px">${escH(s.name)}</span>`).join('')}</div>
       </div>`;
-    }
-
-    if (gmosMois.length === 0 && sitesSansGMO.length === 0) {
-      html += `<div style="text-align:center;padding:20px;color:var(--muted);font-size:.8rem;background:#faf6fa;border-radius:14px">
-        Aucune donnée GMO pour cette période</div>`;
-    }
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // ASSEMBLAGE HTML
+  // ══════════════════════════════════════════════════════════════
+  const html = `
+  <style>
+    .ov-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+    @media(max-width:640px){.ov-kpi-row{grid-template-columns:repeat(2,1fr)}}
+    .ov-kpi-card{background:#fff;border:2px solid;border-radius:16px;padding:14px 16px;position:relative;overflow:hidden}
+    .ov-kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+    .ov-kpi-big{font-size:2.2rem;font-weight:900;line-height:1;margin-bottom:4px}
+    .ov-kpi-label{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+    .ov-kpi-sub{font-size:.65rem;color:var(--muted);margin-top:3px}
+    .ov-kpi-bar{height:4px;background:rgba(0,0,0,.07);border-radius:2px;margin-top:8px;overflow:hidden}
+    .ov-kpi-bar-fill{height:100%;border-radius:2px;transition:width .6s}
+    .ov-search-row{display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+    .ov-search-inp{flex:1;min-width:200px;padding:10px 14px;border:1.5px solid var(--border);border-radius:12px;font-size:.85rem;font-family:var(--font);background:#fff;outline:none}
+    .ov-search-inp:focus{border-color:var(--navy)}
+    .ov-period-btns{display:flex;gap:5px;flex-wrap:wrap}
+    .ov-period-btn{padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.75rem;font-weight:700;cursor:pointer;font-family:var(--font);background:#fff;color:var(--text);white-space:nowrap}
+    .ov-period-btn.on{background:var(--navy);color:#fff;border-color:var(--navy)}
+    .ov-period-btn:hover{border-color:var(--navy)}
+    .ov-panel{border-radius:14px;padding:14px 16px}
+    .ov-panel-danger{background:#fff5f5;border:1.5px solid #fecaca}
+    .ov-panel-warn{background:#fffbeb;border:1.5px solid #fde68a}
+    .ov-panel-title{font-size:.82rem;font-weight:800;margin-bottom:10px}
+    .ov-panel-danger .ov-panel-title{color:#991b1b}
+    .ov-panel-warn .ov-panel-title{color:#92400e}
+    .ov-nc-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.06)}
+    .ov-nc-row:last-child{border-bottom:none}
+    .ov-domain-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px}
+    .ov-domain-card{border:1.5px solid var(--border);border-radius:14px;padding:13px;cursor:pointer;transition:transform .15s,box-shadow .15s}
+    .ov-domain-card:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,.1)}
+    .ov-domain-card.ov-dom-empty{background:#faf6fa;opacity:.55;cursor:default}
+    .ov-domain-card.ov-dom-empty:hover{transform:none;box-shadow:none}
+    .ov-dom-ico{font-size:1.25rem;display:block;margin-bottom:4px}
+    .ov-dom-label{font-size:.72rem;font-weight:700;color:var(--text);margin-bottom:2px}
+    .ov-dom-sub{font-size:.62rem;color:var(--muted)}
+    .ov-section{border-radius:14px;border:1.5px solid}
+    .ov-section.crit{border-color:#fecaca}
+    .ov-section.warn{border-color:#fde68a}
+    .ov-section.ok{border-color:#bbf7d0}
+    .ov-section.inactive{border-color:#e2e8f0}
+    .ov-sec-hd{background:rgba(0,0,0,.035)}
+    .ov-section.crit .ov-sec-hd{background:#fff5f5;color:#991b1b}
+    .ov-section.warn .ov-sec-hd{background:#fffbeb;color:#92400e}
+    .ov-section.ok .ov-sec-hd{background:#f0fdf4;color:#166534}
+    .ov-section.inactive .ov-sec-hd{background:#f8fafc;color:var(--muted)}
+    .ov-site-grid{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:12px!important}
+    .ov-site-card{transition:box-shadow .15s,transform .15s}
+  </style>
+
+  ${_alertBanner||''}
+
+  <!-- Search + Period -->
+  <div class="ov-search-row">
+    <input id="ov-search-inp" class="ov-search-inp" type="search" placeholder="🔍 Chercher un établissement…"
+      oninput="(function(q){var lq=q.toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');document.querySelectorAll('.ov-site-card[data-search]').forEach(function(el){el.style.display=!lq||el.dataset.search.includes(lq)?'':'none';});})(this.value)">
+    <div class="ov-period-btns">
+      ${[
+        {lbl:'Ce mois', val: mois0},
+        {lbl:'Mois préc.', val: (()=>{const d=new Date(mois0+'-01');d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})()},
+        {lbl:'3 mois',   val: (()=>{const d=new Date(mois0+'-01');d.setMonth(d.getMonth()-2);return d.toISOString().slice(0,7);})()},
+      ].map(p=>`<button class="ov-period-btn ${f0.mois===p.val||(!f0.mois&&p.val===mois0)?'on':''}" onclick="(function(){var el=document.getElementById('filter-mois');if(el){el.value='${p.val}';applyFilters();}})()">${p.lbl}</button>`).join('')}
+    </div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="ov-kpi-row">
+    <div class="ov-kpi-card" style="border-color:${colGlob}40">
+      <div class="ov-kpi-big" style="color:${colGlob}">${pct}%</div>
+      <div class="ov-kpi-label">Conformité globale</div>
+      <div class="ov-kpi-bar"><div class="ov-kpi-bar-fill" style="width:${pct}%;background:${colGlob}"></div></div>
+      <div class="ov-kpi-sub">${nb} saisies${dernSaisie?' · '+dernSaisie:''}</div>
+    </div>
+    <div class="ov-kpi-card" style="border-color:${sitesEnAlerte>0?'#fecaca':'#bbf7d0'}">
+      <div class="ov-kpi-big" style="color:${sitesEnAlerte>0?'#dc2626':'#16a34a'}">${sitesEnAlerte}</div>
+      <div class="ov-kpi-label">Sites en alerte</div>
+      <div class="ov-kpi-sub">score &lt; 75% · ${rows.length} actifs</div>
+    </div>
+    <div class="ov-kpi-card" style="border-color:${ncActives>0?'#fca5a5':'#bbf7d0'}">
+      <div class="ov-kpi-big" style="color:${ncActives>0?'#dc2626':'#16a34a'}">${ncActives}</div>
+      <div class="ov-kpi-label">NC ouvertes</div>
+      <div class="ov-kpi-sub">${recs.filter(r=>isNC(r)).length} NC ce mois</div>
+    </div>
+    <div class="ov-kpi-card" style="border-color:${sitesInactifs>0?'#e2e8f0':'#bbf7d0'}">
+      <div class="ov-kpi-big" style="color:${sitesInactifs>0?'#64748b':'#16a34a'}">${sitesInactifs}</div>
+      <div class="ov-kpi-label">Sans saisie ce mois</div>
+      <div class="ov-kpi-sub">sur ${allRows.length} site${allRows.length>1?'s':''}</div>
+    </div>
+  </div>
+
+  ${ncBlock}
+  ${domHtml}
+
+  <!-- Sites triés par statut -->
+  ${siteSection('🔴 Critiques — score &lt; 70% ou ≥ 6 NC','crit',critiques)}
+  ${siteSection('⚠️ À surveiller — score 70–85% ou NC actives','warn',warnings)}
+  ${siteSection('✅ Conformes','ok',oks,oks.length>6)}
+  ${inactiveRows.length>0?siteSection('⬜ Aucune saisie ce mois','inactive',inactiveRows,true):''}
+
+  ${gmoSection}
+  `;
 
   setContent(html);
 }
