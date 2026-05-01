@@ -37,10 +37,13 @@
 .nav-link-plain:hover{color:#fff}
 .nav-btn-pill{background:#8DC63F;color:#fff;border-radius:20px;padding:9px 22px;font-size:.85rem;font-weight:900;text-decoration:none;display:inline-block;transition:all .2s;box-shadow:0 2px 10px rgba(141,198,63,.35);margin-left:8px;white-space:nowrap}
 .nav-btn-pill:hover{background:#6fa832;transform:translateY(-1px)}
+.nav-link-login{color:rgba(255,255,255,.6);font-size:.82rem;font-weight:700;text-decoration:none;padding:7px 10px;border-radius:8px;transition:color .2s;white-space:nowrap}
+.nav-link-login:hover{color:#fff}
 @media(max-width:640px){
   .nav-inner{padding:12px 16px}
-  .nav-links .nav-link-plain{display:none}
-  .nav-btn-pill{padding:8px 16px;font-size:.8rem;margin-left:4px}
+  .nav-hide-mobile{display:none}
+  .nav-btn-pill{padding:8px 14px;font-size:.78rem;margin-left:4px}
+  .nav-link-login{font-size:.78rem;padding:6px 8px}
 }
 </style>
 
@@ -126,10 +129,10 @@
       <span class="nav-logo-name">HACC<span>.PRO</span></span>
     </a>
     <div class="nav-links">
-      <a href="#features" class="nav-link-plain">Fonctionnalités</a>
-      <a href="#pricing" class="nav-link-plain">Tarifs</a>
-      <a href="faq/index.html" class="nav-link-plain">Guide HACCP</a>
-      <a href="login.html" class="nav-link-plain">Se connecter</a>
+      <a href="#features" class="nav-link-plain nav-hide-mobile">Fonctionnalités</a>
+      <a href="#pricing" class="nav-link-plain nav-hide-mobile">Tarifs</a>
+      <a href="faq/index.html" class="nav-link-plain nav-hide-mobile">Guide HACCP</a>
+      <a href="login.html" class="nav-link-login">Se connecter</a>
       <a href="signup.html" class="nav-btn-pill">Commencer →</a>
     </div>
   </div>
@@ -145,7 +148,7 @@
       </h1>
       <p class="hero-sub">
         Traçabilité alimentaire, plats témoins, relevés de températures et dashboard multi-sites.
-        Conçu pour les cuisiniers, conçu pour survivre aux contrôles DSV. Zéro papier.
+        Conçu pour les cuisiniers, conçu pour survivre aux contrôles DDPP. Zéro papier.
       </p>
       <div class="hero-ctas">
         <a href="signup.html" class="btn-hero-primary">Commencer gratuitement →</a>
@@ -226,14 +229,8 @@
 <!-- ── TRUST BAR ── -->
 <div class="trust-bar">
   <div class="trust-bar-inner">
-    <p class="trust-label">Utilisé par des centaines de cuisines en France</p>
-    <div class="trust-types">
-      <span>🍽️ Restaurants</span>
-      <span>🏫 Cantines scolaires</span>
-      <span>🏥 EHPAD</span>
-      <span>🎂 Traiteurs</span>
-      <span>🏨 Hôtels</span>
-    </div>
+    <p class="trust-headline">Rejoignez le mouvement</p>
+    <p class="trust-sub">Sécurisez votre traçabilité et passez vos contrôles DDPP sans stress — restaurants, cantines, EHPAD, traiteurs.</p>
   </div>
 </div>
 
@@ -265,7 +262,7 @@
     <div class="section-header">
       <div class="section-tag">Le problème</div>
       <h2 class="section-h2" id="problem-h2">La gestion HACCP sur papier, c'est terminé</h2>
-      <p class="section-sub">Les cahiers de traçabilité se perdent, les relevés de température s'oublient, et les contrôles DSV deviennent un cauchemar.</p>
+      <p class="section-sub">Les cahiers de traçabilité se perdent, les relevés de température s'oublient, et les contrôles DDPP deviennent un cauchemar.</p>
     </div>
     <div class="problem-grid">
       <div class="problem-card">
@@ -281,11 +278,11 @@
       <div class="problem-card">
         <div class="problem-card-before">
           <div class="problem-label before">✗ Avant HACC.PRO</div>
-          <div class="problem-text">Contrôle DSV : fouiller dans les classeurs pour prouver la traçabilité d'un plat servi il y a 3 semaines. Stress maximal, risque de fermeture.</div>
+          <div class="problem-text">Contrôle DDPP : fouiller dans les classeurs pour prouver la traçabilité d'un plat servi il y a 3 semaines. Stress maximal, risque de fermeture.</div>
         </div>
         <div class="problem-card-after">
           <div class="problem-label after">✓ Avec HACC.PRO</div>
-          <div class="problem-text">Toute la traçabilité accessible en temps réel avec historique complet et export PDF pour l'inspecteur. Contrôle DSV en 5 minutes, zéro sueur.</div>
+          <div class="problem-text">Toute la traçabilité accessible en temps réel avec historique complet et export PDF pour l'inspecteur. Contrôle DDPP en 5 minutes, zéro sueur.</div>
         </div>
       </div>
       <div class="problem-card">
@@ -334,7 +331,7 @@
       <article class="feature-card">
         <div class="feature-icon" aria-hidden="true">📋</div>
         <h3 class="feature-h3">Traçabilité alimentaire</h3>
-        <p class="feature-p">Traçabilité bidirectionnelle complète des matières premières aux plats servis. Numéros de lot, DLUO/DDM, fournisseurs. Prêt pour l'inspection DGAL/DSV en 5 minutes.</p>
+        <p class="feature-p">Traçabilité bidirectionnelle complète des matières premières aux plats servis. Numéros de lot, DLUO/DDM, fournisseurs. Prêt pour l'inspection DDPP en 5 minutes.</p>
         <div class="feature-tags">
           <span class="feature-tag">Lots</span>
           <span class="feature-tag">DLC/DLUO</span>
@@ -409,7 +406,7 @@
         <div class="how-num">4</div>
         <div class="how-body">
           <h3 class="how-h3">Pilotez depuis le dashboard</h3>
-          <p class="how-p">Responsables et directeurs supervisent toutes les cuisines depuis un seul écran. Score HACCP en temps réel, alertes non-conformités, export PDF pour les contrôles DSV.</p>
+          <p class="how-p">Responsables et directeurs supervisent toutes les cuisines depuis un seul écran. Score HACCP en temps réel, alertes non-conformités, export PDF pour les contrôles DDPP.</p>
         </div>
       </div>
     </div>
@@ -427,7 +424,7 @@
     <div class="testimonials-grid">
       <div class="testi-card">
         <div class="testi-stars">★★★★★</div>
-        <p class="testi-text">"Avant HACC.PRO, je passais 2 heures par semaine à remplir les cahiers. Maintenant, tout est fait en 10 minutes sur mon téléphone. Le contrôle DSV a été un jeu d'enfant — l'inspecteur était bluffé."</p>
+        <p class="testi-text">"Avant HACC.PRO, je passais 2 heures par semaine à remplir les cahiers. Maintenant, tout est fait en 10 minutes sur mon téléphone. Le contrôle DDPP a été un jeu d'enfant — l'inspecteur était bluffé."</p>
         <div class="testi-author">
           <div class="testi-avatar">ML</div>
           <div>
