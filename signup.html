@@ -285,27 +285,27 @@ body{
         <div class="step-title">Choisissez votre plan</div>
         <div class="step-sub">Étape 3 sur 4 — Essai gratuit 14 jours inclus, sans carte bancaire</div>
         <div class="plan-grid">
-          <div class="plan-card" id="plan-starter" onclick="selectPlan('starter')">
+          <div class="plan-card" id="plan-solo" onclick="selectPlan('solo')">
             <div class="plan-radio"></div>
             <div class="plan-info">
-              <div class="plan-name">Starter</div>
-              <div class="plan-desc">1 cuisine · Toutes les fonctionnalités HACCP</div>
+              <div class="plan-name">Solo</div>
+              <div class="plan-desc">1 cuisine · Toutes les fonctionnalités HACCP incluses</div>
+            </div>
+            <div class="plan-price">29€<span>/mois</span></div>
+          </div>
+          <div class="plan-card selected" id="plan-multi" onclick="selectPlan('multi')">
+            <div class="plan-radio"></div>
+            <div class="plan-info">
+              <div class="plan-name">Multi <span class="plan-badge">Populaire</span></div>
+              <div class="plan-desc">Jusqu'à 3 cuisines · +19€/cuisine supp.</div>
             </div>
             <div class="plan-price">49€<span>/mois</span></div>
-          </div>
-          <div class="plan-card selected" id="plan-pro" onclick="selectPlan('pro')">
-            <div class="plan-radio"></div>
-            <div class="plan-info">
-              <div class="plan-name">Pro <span class="plan-badge">Populaire</span></div>
-              <div class="plan-desc">Jusqu'à 20 cuisines · Dashboard multi-sites</div>
-            </div>
-            <div class="plan-price">149€<span>/mois</span></div>
           </div>
           <div class="plan-card" id="plan-enterprise" onclick="selectPlan('enterprise')">
             <div class="plan-radio"></div>
             <div class="plan-info">
               <div class="plan-name">Entreprise</div>
-              <div class="plan-desc">Sites illimités · API · SSO · Accompagnement</div>
+              <div class="plan-desc">Cuisines illimitées · API · SSO · Accompagnement</div>
             </div>
             <div class="plan-price">Sur devis</div>
           </div>

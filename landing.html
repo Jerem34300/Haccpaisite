@@ -37,8 +37,8 @@
   "inLanguage":"fr",
   "url":"https://hacc.pro",
   "offers":[
-    {"@type":"Offer","name":"Starter","price":"49","priceCurrency":"EUR","priceSpecification":{"@type":"UnitPriceSpecification","price":"49","priceCurrency":"EUR","unitText":"MONTH"}},
-    {"@type":"Offer","name":"Pro","price":"149","priceCurrency":"EUR"}
+    {"@type":"Offer","name":"Solo","price":"29","priceCurrency":"EUR","priceSpecification":{"@type":"UnitPriceSpecification","price":"29","priceCurrency":"EUR","unitText":"MONTH"}},
+    {"@type":"Offer","name":"Multi","price":"49","priceCurrency":"EUR","priceSpecification":{"@type":"UnitPriceSpecification","price":"49","priceCurrency":"EUR","unitText":"MONTH"}}
   ],
   "featureList":["Gestion des plats témoins","Relevés de températures HACCP","Traçabilité alimentaire","Plan de Maîtrise Sanitaire automatique","Dashboard multi-sites","Alertes en temps réel"],
   "publisher":{"@type":"Organization","name":"HACC.PRO","url":"https://hacc.pro"}
@@ -111,11 +111,25 @@
       <a href="#features" class="nav-link-plain">Fonctionnalités</a>
       <a href="#pricing" class="nav-link-plain">Tarifs</a>
       <a href="faq/index.html" class="nav-link-plain">Guide HACCP</a>
-      <a href="login.html" class="nav-btn-outline">Connexion</a>
-      <a href="signup.html" class="nav-btn-green">Essai gratuit →</a>
+      <a href="login.html" class="nav-link-plain">Se connecter</a>
+      <a href="signup.html" class="nav-btn-pill">Commencer →</a>
     </div>
+    <button class="nav-hamburger" onclick="toggleDrawer()" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
   </div>
 </nav>
+
+<!-- Mobile drawer -->
+<div class="nav-drawer" id="nav-drawer">
+  <button class="nav-drawer-close" onclick="toggleDrawer()">✕</button>
+  <a href="#features" class="nav-drawer-link" onclick="toggleDrawer()">Fonctionnalités</a>
+  <a href="#pricing" class="nav-drawer-link" onclick="toggleDrawer()">Tarifs</a>
+  <a href="faq/index.html" class="nav-drawer-link">Guide HACCP</a>
+  <a href="login.html" class="nav-drawer-link">Se connecter</a>
+  <a href="signup.html" class="nav-drawer-cta">Commencer gratuitement →</a>
+</div>
+<script>function toggleDrawer(){document.getElementById('nav-drawer').classList.toggle('open');}</script>
 
 <!-- ── HERO ── -->
 <section class="hero" aria-labelledby="hero-h1">
@@ -204,6 +218,20 @@
     </div>
   </div>
 </section>
+
+<!-- ── TRUST BAR ── -->
+<div class="trust-bar">
+  <div class="trust-bar-inner">
+    <p class="trust-label">Utilisé par des centaines de cuisines en France</p>
+    <div class="trust-types">
+      <span>🍽️ Restaurants</span>
+      <span>🏫 Cantines scolaires</span>
+      <span>🏥 EHPAD</span>
+      <span>🎂 Traiteurs</span>
+      <span>🏨 Hôtels</span>
+    </div>
+  </div>
+</div>
 
 <!-- ── STATS ── -->
 <section class="stats" aria-label="Chiffres clés HACC.PRO">
@@ -439,35 +467,40 @@
   </div>
   <div class="pricing-inner">
     <div class="pricing-grid">
+
+      <!-- Plan Solo -->
       <div class="price-card">
-        <div class="price-name">Starter</div>
+        <div class="price-name">Solo</div>
         <div class="price-amount">
-          <span class="price-eur">49€</span>
+          <span class="price-eur">29€</span>
           <span class="price-period">/ mois</span>
         </div>
-        <p class="price-desc">Idéal pour un restaurant indépendant ou une petite cuisine collective.</p>
+        <p class="price-desc">Pour un restaurant ou une cuisine indépendante. Toutes les fonctionnalités HACCP incluses.</p>
         <ul class="price-features">
-          <li>1 site / cuisine</li>
+          <li>1 cuisine / site</li>
           <li>Plats témoins illimités</li>
           <li>Relevés de températures</li>
           <li>Traçabilité alimentaire</li>
           <li>PMS auto-configuré</li>
           <li>Accès multi-utilisateurs</li>
-          <li class="na">Dashboard multi-sites</li>
-          <li class="na">Support prioritaire</li>
+          <li>Dashboard &amp; rapports PDF</li>
+          <li>Support par email</li>
         </ul>
-        <a href="signup.html?plan=starter" class="price-cta secondary">Commencer l'essai gratuit</a>
+        <a href="signup.html?plan=solo" class="price-cta secondary">Commencer l'essai gratuit</a>
       </div>
+
+      <!-- Plan Multi (featured) -->
       <div class="price-card featured">
         <div class="price-badge">Le plus populaire</div>
-        <div class="price-name">Pro</div>
+        <div class="price-name">Multi</div>
         <div class="price-amount">
-          <span class="price-eur">149€</span>
+          <span class="price-eur">49€</span>
           <span class="price-period">/ mois</span>
         </div>
-        <p class="price-desc">Pour les groupes, franchises et collectivités gérant plusieurs cuisines.</p>
+        <div class="price-extra">+ 19€ par cuisine supplémentaire</div>
+        <p class="price-desc">Pour les groupes et collectivités. 3 cuisines incluses — toutes les options sans restriction.</p>
         <ul class="price-features">
-          <li>Jusqu'à 20 sites</li>
+          <li>Jusqu'à 3 cuisines incluses</li>
           <li>Plats témoins illimités</li>
           <li>Relevés de températures</li>
           <li>Traçabilité alimentaire</li>
@@ -476,26 +509,29 @@
           <li>Dashboard multi-sites</li>
           <li>Support prioritaire</li>
         </ul>
-        <a href="signup.html?plan=pro" class="price-cta primary">Commencer l'essai gratuit</a>
+        <a href="signup.html?plan=multi" class="price-cta primary">Commencer l'essai gratuit</a>
       </div>
+
+      <!-- Plan Entreprise -->
       <div class="price-card">
         <div class="price-name">Entreprise</div>
         <div class="price-amount">
-          <span class="price-eur" style="font-size:1.55rem">Sur devis</span>
+          <span class="price-eur price-custom">Sur devis</span>
         </div>
-        <p class="price-desc">Pour les grandes enseignes, centrales d'achat et groupes multi-territoires.</p>
+        <p class="price-desc">Pour les grandes enseignes et groupes multi-territoires. Accompagnement dédié inclus.</p>
         <ul class="price-features">
-          <li>Sites illimités</li>
-          <li>API &amp; intégrations</li>
+          <li>Cuisines illimitées</li>
+          <li>API &amp; intégrations métier</li>
           <li>SSO / LDAP</li>
-          <li>SLA garanti 99,9%</li>
-          <li>Accompagnement HACCP</li>
+          <li>SLA garanti 99,9 %</li>
+          <li>Accompagnement HACCP dédié</li>
           <li>Formation équipes incluse</li>
           <li>Dashboard personnalisé</li>
           <li>Contrat sur-mesure</li>
         </ul>
-        <a href="mailto:contact@hacc.pro" class="price-cta secondary">Nous contacter</a>
+        <a href="mailto:contact@hacc.pro" class="price-cta secondary">Nous contacter →</a>
       </div>
+
     </div>
   </div>
 </section>
@@ -570,6 +606,16 @@
         </button>
         <div class="faq-a">
           Oui. HACC.PRO repose sur une infrastructure cloud hébergée en <strong>Europe</strong>, conforme RGPD. Chaque client dispose d'un espace de données isolé (Row Level Security) : vos données ne sont jamais accessibles par d'autres établissements. Les communications sont chiffrées TLS. Vos données de traçabilité sont archivées pendant au moins <strong>3 ans</strong>, conformément aux obligations légales françaises.
+        </div>
+      </div>
+    </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Comment fonctionne la tarification par cuisine ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Le plan <strong>Solo</strong> (29€/mois) couvre <strong>1 cuisine</strong> avec toutes les fonctionnalités incluses. Le plan <strong>Multi</strong> (49€/mois) inclut jusqu'à <strong>3 cuisines</strong>, puis <strong>+19€/mois par cuisine supplémentaire</strong>. Toutes les options HACCP sont incluses dans les deux plans — aucune fonctionnalité cachée. Pour les groupes multi-territoires, le plan Entreprise est disponible sur devis avec accompagnement dédié.
         </div>
       </div>
     </div>

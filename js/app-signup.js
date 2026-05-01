@@ -7,13 +7,13 @@ const _SU = SUPABASE_URL;
 const _SK = SUPABASE_ANON_KEY;
 
 let _step = 1;
-const _data = { email:'', password:'', company:'', type:'restaurant', sites:1, plan:'pro' };
+const _data = { email:'', password:'', company:'', type:'restaurant', sites:1, plan:'multi' };
 
 // ── Init ──────────────────────────────────────────────────────
 (function init(){
   // Pre-select plan from URL param (?plan=starter|pro|enterprise)
   const urlPlan = new URLSearchParams(location.search).get('plan');
-  if(urlPlan && ['starter','pro','enterprise'].includes(urlPlan)){
+  if(urlPlan && ['solo','multi','enterprise'].includes(urlPlan)){
     _data.plan = urlPlan;
     document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
     const card = document.getElementById('plan-'+urlPlan);
@@ -76,6 +76,7 @@ function validateStep(n){
   }
   if(n===3){
     if(!_data.plan) return showErr(3,'Veuillez choisir un plan pour continuer');
+    if(!['solo','multi','enterprise'].includes(_data.plan)) return showErr(3,'Veuillez choisir un plan pour continuer');
     return true;
   }
   return true;
@@ -83,6 +84,7 @@ function validateStep(n){
 
 // ── Plan selection ────────────────────────────────────────────
 function selectPlan(plan){
+  if(!['solo','multi','enterprise'].includes(plan)) return;
   _data.plan = plan;
   document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
   const card = document.getElementById('plan-'+plan);
@@ -100,7 +102,7 @@ function _fillRecap(){
     hotellerie:'Hôtellerie / Restauration', autre:'Autre établissement'
   };
   _set('recap-type', typeLabels[_data.type] || _data.type);
-  const planLabels = { starter:'Starter — 49€/mois', pro:'Pro — 149€/mois', enterprise:'Entreprise — Sur devis' };
+  const planLabels = { solo:'Solo — 29€/mois · 1 cuisine', multi:'Multi — 49€/mois · jusqu\'à 3 cuisines', enterprise:'Entreprise — Sur devis' };
   _set('recap-plan', planLabels[_data.plan] || _data.plan);
 }
 
@@ -171,7 +173,7 @@ async function doSignup(){
       }).catch(()=>{});
 
       // 4. Créer l'abonnement (essai)
-      const planPrices = { starter:49, pro:149, enterprise:0 };
+      const planPrices = { solo:29, multi:49, enterprise:0 };
       const trialEnd = new Date(Date.now() + 14*24*60*60*1000).toISOString();
       await fetch(`${_SU}/rest/v1/subscriptions`, {
         method:'POST',
