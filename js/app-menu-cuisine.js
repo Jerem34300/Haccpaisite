@@ -666,7 +666,7 @@ function _menuAutoOnSave(menu){
     try { if(typeof SupaEngine !== 'undefined' && SupaEngine.flush) SupaEngine.flush(); } catch(e){}
   }
 
-  // Ajouter les étiquettes au lot d'impression ENR34 (_e34batch)
+  // Ajouter les plats témoins au lot d'impression ENR33 (_e33batch)
   let count34 = 0;
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
@@ -678,19 +678,20 @@ function _menuAutoOnSave(menu){
         ...(plat.variants?.hp       ? [{ nom: plat.nom+' (HP)',      variant: 'HP',       profil: plat.profil_haccp }] : []),
       ];
       variants.forEach(v => {
-        // Pousser dans le lot d'impression (_e34batch = variable globale de printservice.js)
-        if(typeof _e34batch !== 'undefined'){
-          _e34batch.push({
-            produit:  v.nom,
-            nb:       1,
-            dlc:      dateDestruct,
-            date_fab: datePrelev,
-            heure_fab:heure,
-            statut:   'Fabriqué',
-            _plat_id: plat.plat_id,
+        // Pousser dans le lot plats témoins (_e33batch = variable globale de app-cuisine.js)
+        if(typeof _e33batch !== 'undefined'){
+          _e33batch.push({
+            produit:      v.nom,
+            service:      serviceTxt,
+            date_prelev:  datePrelev,
+            heure_prelev: heure,
+            date_destruct:dateDestruct,
+            operateur:    chef,
+            nb:           1,
+            _plat_id:     plat.plat_id,
             _plat_profil: v.profil || null,
-            _variant: v.variant || null,
-            _from_menu: true,
+            _variant:     v.variant || null,
+            _from_menu:   true,
           });
         }
         count34++;
@@ -700,8 +701,8 @@ function _menuAutoOnSave(menu){
   if(typeof renderNav === 'function') renderNav(); // mettre à jour le badge du lot
 
   const msg = count33 > 0
-    ? `✅ Menu enregistré · ${count33} plat${count33>1?'s':''} témoin${count33>1?'s':''} créé${count33>1?'s':''} · ${count34} étiquette${count34>1?'s':''} dans le lot`
-    : `✅ Menu enregistré · ${count34} étiquette${count34>1?'s':''} mises à jour dans le lot`;
+    ? `✅ Menu enregistré · ${count33} plat${count33>1?'s':''} témoin${count33>1?'s':''} créé${count33>1?'s':''} · ${count34} étiquette${count34>1?'s':''} dans le lot témoins`
+    : `✅ Menu enregistré · ${count34} étiquette${count34>1?'s':''} dans le lot témoins`;
   if(typeof toast === 'function') toast(msg, 'success');
 }
 
