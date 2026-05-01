@@ -884,5 +884,16 @@
   <!-- Tracabilité HACCP bidirectionnelle + IA recettes -->
   <script src="js/tracabilite.js?v=1"></script>
 
+  <!-- Catalogue widgets — overlay modal requis par wgCatalogOpen() -->
+  <div id="wg-catalog-ov" onclick="if(event.target===this)wgCatalogClose()">
+    <div class="wg-catalog-sheet">
+      <div class="wg-catalog-hd">
+        <h3>🧩 Ajouter un widget</h3>
+        <button onclick="wgCatalogClose()" style="background:none;border:none;font-size:1.3rem;cursor:pointer;color:#b89ab6;padding:4px 8px;line-height:1">✕</button>
+      </div>
+      <div id="wg-catalog-list"></div>
+    </div>
+  </div>
+
 </body>
   </html>

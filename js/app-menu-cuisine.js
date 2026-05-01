@@ -297,7 +297,7 @@ function renderPlatRow(catId, plat, idx){
   const variants = plat.variants || {};
   const mxp = PROFILS[variants.mixe_profil || mixeProfil(plat)];
   const mxBadge = variants.mixe
-    ? ` <span style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 5px;border-radius:5px;font-weight:800;vertical-align:middle">${mxp.label}</span>`
+    ? ` <button onclick="event.preventDefault();event.stopPropagation();window._menuToggleMixeProfil('${catId}',${idx})" style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 7px;border-radius:5px;font-weight:800;vertical-align:middle;border:none;cursor:pointer;font-family:inherit;touch-action:manipulation">${mxp.label} ⇄</button>`
     : '';
   return `
   <div class="mn-plat">
@@ -330,10 +330,8 @@ function renderPlatRow(catId, plat, idx){
 function computePlatStatus(plat){
   if(plat.statut_auto === 'preparé_minute') return { cls:'auto', label:'⚡ Préparé minute' };
   const linked = countEnrLinkedToPlat(plat.plat_id);
-  const expected = (PROFILS[plat.profil_haccp]||PROFILS.BF_CUIT).enr.length;
   if(linked === 0) return { cls:'todo', label:'À tracer' };
-  if(linked >= expected) return { cls:'ok', label:`✓ ${linked}/${expected} tracé`};
-  return { cls:'partial', label:`⏳ ${linked}/${expected} tracé` };
+  return { cls:'ok', label:`✓ ${linked} tracé${linked>1?'s':''}` };
 }
 
 function countEnrLinkedToPlat(platId){
@@ -359,22 +357,19 @@ function renderCoverageCard(cov){
   <div class="mn-cov ${cls}">
     <div class="mn-cov-tit">${ico} Couverture HACCP du menu — ${pct}%</div>
     <div class="mn-cov-bar"><div class="mn-cov-fill" style="width:${pct}%"></div></div>
-    <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''} • ${cov.tracked} ENR enregistré${cov.tracked>1?'s':''} sur ${cov.expected} attendu${cov.expected>1?'s':''}</div>
+    <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''} • ${cov.tracked} tracé${cov.tracked>1?'s':''} sur ${cov.total}</div>
   </div>`;
 }
 
 function computeMenuCoverage(menu){
-  let total=0, expected=0, tracked=0;
+  let total=0, tracked=0;
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(p => {
       total++;
-      const prof = PROFILS[p.profil_haccp] || PROFILS.BF_CUIT;
-      expected += prof.enr.length;
-      if(p.statut_auto === 'preparé_minute') tracked += prof.enr.length;
-      else tracked += countEnrLinkedToPlat(p.plat_id);
+      if(p.statut_auto === 'preparé_minute' || countEnrLinkedToPlat(p.plat_id) > 0) tracked++;
     });
   });
-  return { total, expected, tracked };
+  return { total, expected: total, tracked };
 }
 
 // ════════════════════════════════════════════════════
@@ -553,6 +548,17 @@ window._menuToggleVariant = function(catId, idx, variant, checked){
   setMenu(_menuState.date, _menuState.service, menu);
   if(typeof renderMain === 'function') renderMain();
 };
+window._menuToggleMixeProfil = function(catId, idx){
+  const menu = getMenu(_menuState.date, _menuState.service);
+  if(!menu) return;
+  const plat = menu.categories[catId]?.[idx];
+  if(!plat || !plat.variants?.mixe) return;
+  const cur = plat.variants.mixe_profil || mixeProfil(plat);
+  plat.variants.mixe_profil = cur === 'BF_CUIT' ? 'BF_CRU' : 'BF_CUIT';
+  setMenu(_menuState.date, _menuState.service, menu);
+  if(typeof renderMain === 'function') renderMain();
+  if(typeof toast === 'function') toast('Mixé → ' + (PROFILS[plat.variants.mixe_profil]?.label||'?'), 'info');
+};
 window._menuRecopierHier = function(){
   const dStr = addDays(_menuState.date, -1);
   const hier = getMenu(dStr, _menuState.service);
@@ -660,8 +666,7 @@ function _menuAutoOnSave(menu){
     try { if(typeof SupaEngine !== 'undefined' && SupaEngine.flush) SupaEngine.flush(); } catch(e){}
   }
 
-  // Ajouter les étiquettes au lot ENR34 (sans imprimer)
-  S.enr34 = S.enr34 || {}; S.enr34.lignes = S.enr34.lignes || [];
+  // Ajouter les étiquettes au lot d'impression ENR34 (_e34batch)
   let count34 = 0;
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
@@ -673,23 +678,26 @@ function _menuAutoOnSave(menu){
         ...(plat.variants?.hp       ? [{ nom: plat.nom+' (HP)',      variant: 'HP',       profil: plat.profil_haccp }] : []),
       ];
       variants.forEach(v => {
-        const ts = new Date().toISOString();
-        const rec = {
-          produit: v.nom, association: v.nom, service: serviceTxt,
-          date: datePrelev, heure_prelev: heure, date_destruct: dateDestruct,
-          operateur: chef, nb_etiq: 1,
-          _sec: 'enr34', _ts: ts,
-          _plat_id: plat.plat_id, _plat_nom: plat.nom, _menu_id: menu.menu_id,
-          _plat_profil: v.profil || null,
-          _variant: v.variant || null, _from_menu: true,
-        };
-        S.enr34.lignes.unshift(rec);
-        try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr34', rec); } catch(e){}
+        // Pousser dans le lot d'impression (_e34batch = variable globale de printservice.js)
+        if(typeof _e34batch !== 'undefined'){
+          _e34batch.push({
+            produit:  v.nom,
+            nb:       1,
+            dlc:      dateDestruct,
+            date_fab: datePrelev,
+            heure_fab:heure,
+            statut:   'Fabriqué',
+            _plat_id: plat.plat_id,
+            _plat_profil: v.profil || null,
+            _variant: v.variant || null,
+            _from_menu: true,
+          });
+        }
         count34++;
       });
     });
   });
-  save();
+  if(typeof renderNav === 'function') renderNav(); // mettre à jour le badge du lot
 
   const msg = count33 > 0
     ? `✅ Menu enregistré · ${count33} plat${count33>1?'s':''} témoin${count33>1?'s':''} créé${count33>1?'s':''} · ${count34} étiquette${count34>1?'s':''} dans le lot`
