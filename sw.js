@@ -8,15 +8,13 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v363-r1';
-const CDN_CACHE_NAME = 'haccpro-cdn-v363-r1';
+const CACHE_NAME = 'haccpro-v365-r1';
+const CDN_CACHE_NAME = 'haccpro-cdn-v365-r1';
 
 // Assets à mettre en cache dès l'installation
+// ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
+//   pour toujours servir la version la plus récente.
 const PRECACHE_ASSETS = [
-  '/',
-  '/index.html',
-  '/cuisine.html',
-  '/dashboard.html',
   '/manifest.json',
   '/favicon.ico',
   '/favicon-32.png',
@@ -26,6 +24,8 @@ const PRECACHE_ASSETS = [
   '/css/login.css',
   '/css/cuisine.css',
   '/css/dashboard.css',
+  '/css/landing.css',
+  '/css/guide.css',
   '/js/utils.js',
   '/js/supabaseconfig.js',
   '/js/supabaseclientinit.js',
@@ -37,6 +37,9 @@ const PRECACHE_ASSETS = [
   '/js/app-dashboard.js',
   '/js/app-menu-cuisine.js',
   '/js/app-menu-dashboard.js',
+  '/js/app-signup.js',
+  '/js/app-onboarding.js',
+  '/js/app-pms.js',
 ];
 
 // Patterns à NE PAS mettre en cache (réseau uniquement)
@@ -123,26 +126,39 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Assets statiques : Cache-First avec fallback réseau
-  event.respondWith(
-    caches.match(request).then((cached) => {
-      if (cached) return cached;
-
-      return fetch(request).then((response) => {
-        // Mettre en cache uniquement les réponses valides
-        if (response && response.status === 200 && response.type === 'basic') {
+  // Pages HTML : Network-First (toujours la dernière version déployée)
+  if (request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response && response.status === 200) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
         return response;
       }).catch(() => {
-        // Hors-ligne et asset non caché : fallback par type de page
-        if (request.headers.get('accept')?.includes('text/html')) {
+        // Hors-ligne : fallback cache
+        return caches.match(request).then((cached) => {
+          if (cached) return cached;
           const u = new URL(request.url);
           if (u.pathname.includes('dashboard')) return caches.match('/dashboard.html');
-          if (u.pathname === '/' || u.pathname.includes('index')) return caches.match('/index.html');
-          return caches.match('/cuisine.html');
+          if (u.pathname.includes('cuisine'))   return caches.match('/cuisine.html');
+          return caches.match('/landing.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // Assets statiques (JS/CSS/images) : Cache-First avec fallback réseau
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      if (cached) return cached;
+      return fetch(request).then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }
+        return response;
       });
     })
   );

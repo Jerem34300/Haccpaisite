@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>HACC.PRO — Configuration initiale</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<meta name="theme-color" content="#0F2240">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#0F2240;--navy2:#1a3558;--green:#8DC63F;--green2:#6fa832;--plum:#5C1E5A;--bg:#F7F2F7;--border:#DDD0DD;--text:#3D2A3C;--muted:#7A6579;--font:'Nunito',sans-serif}
+html,body{min-height:100%;font-family:var(--font)}
+body{background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 20px 60px}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;gap:10px;text-decoration:none;margin-bottom:28px;align-self:flex-start}
+.logo-name{font-size:1.1rem;font-weight:900;color:var(--navy)}
+.logo-name span{color:var(--green)}
+
+/* ── Card ── */
+.card{background:#fff;border-radius:24px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 4px 32px rgba(15,34,64,.12),0 0 0 1px rgba(15,34,64,.06)}
+.card-hd{background:var(--navy);padding:24px 28px;position:relative;overflow:hidden}
+.card-hd::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 80% 0%,rgba(141,198,63,.14),transparent 60%)}
+.hd-inner{position:relative;z-index:1}
+.hd-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.hd-title{font-size:1rem;font-weight:900;color:#fff}
+.hd-step{font-size:.75rem;font-weight:700;color:rgba(255,255,255,.45)}
+.progress-bar{height:4px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:14px;overflow:hidden}
+.progress-fill{height:100%;background:var(--green);border-radius:2px;transition:width .4s}
+
+/* ── Body ── */
+.card-body{padding:28px}
+.step{display:none}
+.step.active{display:block}
+
+/* ── Welcome ── */
+.welcome-icon{font-size:2.5rem;margin-bottom:14px;text-align:center}
+.welcome-title{font-size:1.2rem;font-weight:900;color:var(--navy);text-align:center;margin-bottom:8px}
+.welcome-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.65;margin-bottom:24px}
+.welcome-plan{display:inline-flex;align-items:center;gap:8px;background:rgba(141,198,63,.1);border:1px solid rgba(141,198,63,.3);border-radius:10px;padding:10px 16px;font-size:.82rem;font-weight:800;color:var(--green2);margin-bottom:20px;width:100%;justify-content:center}
+.what-next{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+.what-next-item{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg);border-radius:10px;font-size:.85rem;font-weight:700;color:var(--text)}
+.what-next-num{width:24px;height:24px;border-radius:50%;background:var(--navy);color:#fff;font-size:.7rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* ── Sites ── */
+.step-title{font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:6px}
+.step-sub{font-size:.82rem;color:var(--muted);margin-bottom:20px;line-height:1.5}
+.item-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;min-height:40px}
+.item-row{display:flex;gap:8px;align-items:center}
+.item-input{flex:1;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
+.item-input:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.item-input::placeholder{color:#94a3b8}
+.item-del{width:34px;height:34px;border:none;background:rgba(192,57,43,.1);color:#c0392b;border-radius:8px;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s}
+.item-del:hover{background:rgba(192,57,43,.2)}
+.btn-add{display:flex;align-items:center;gap:8px;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px 14px;font-size:.85rem;font-weight:800;color:var(--muted);cursor:pointer;font-family:var(--font);width:100%;transition:all .2s}
+.btn-add:hover{border-color:var(--green);color:var(--green)}
+
+/* ── Enceintes ── */
+.enc-card{background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:16px;margin-bottom:8px;position:relative}
+.enc-del{position:absolute;top:12px;right:12px;width:28px;height:28px;border:none;background:rgba(192,57,43,.1);color:#c0392b;border-radius:6px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center}
+.enc-del:hover{background:rgba(192,57,43,.2)}
+.enc-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+.enc-row:last-child{margin-bottom:0}
+.field-lbl{display:block;font-size:.65rem;font-weight:800;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
+.enc-input,.enc-select{width:100%;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:.85rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s;appearance:none;-webkit-appearance:none}
+.enc-input:focus,.enc-select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.enc-temps{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.enc-temp-label{font-size:.68rem;color:var(--muted);font-weight:700;margin-bottom:3px}
+.enc-temp-input{width:100%;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-size:.88rem;color:var(--text);font-family:var(--font);outline:none;text-align:center;font-weight:800}
+.enc-temp-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+
+/* ── Buttons ── */
+.btn-primary{width:100%;padding:14px;margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(15,34,64,.2)}
+.btn-primary:hover{background:var(--navy2);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.6;pointer-events:none}
+.btn-primary.green{background:var(--green);box-shadow:0 4px 20px rgba(141,198,63,.35)}
+.btn-primary.green:hover{background:var(--green2)}
+.btn-back{width:100%;padding:12px;margin-top:8px;background:var(--bg);color:var(--muted);border:none;border-radius:14px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-back:hover{background:#ece7ec}
+.btn-skip{width:100%;padding:10px;margin-top:6px;background:none;border:none;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;font-family:var(--font);text-decoration:underline;text-underline-offset:3px}
+.spinner{width:16px;height:16px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err{font-size:.75rem;color:#dc2626;font-weight:700;text-align:center;margin-top:10px;display:none;padding:8px 12px;background:#fee2e2;border-radius:8px}
+
+/* ── Équipe ── */
+.invite-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
+.invite-row{display:grid;grid-template-columns:1fr auto 34px;gap:8px;align-items:center}
+.invite-role{background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:11px 10px;font-size:.82rem;font-family:var(--font);outline:none;color:var(--text);appearance:none}
+.invite-role:focus{border-color:var(--green)}
+
+/* ── Terminé ── */
+.done-icon{font-size:3rem;text-align:center;margin-bottom:16px}
+.done-title{font-size:1.15rem;font-weight:900;color:var(--navy);text-align:center;margin-bottom:10px}
+.done-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.6;margin-bottom:24px}
+</style>
+</head>
+<body>
+
+<a href="landing.html" class="topbar">
+  <svg width="28" height="28" viewBox="0 0 90 90" fill="none" aria-hidden="true">
+    <circle cx="45" cy="33" r="16" fill="#0F2240"/>
+    <circle cx="29" cy="38" r="11" fill="#0F2240"/>
+    <circle cx="61" cy="38" r="11" fill="#0F2240"/>
+    <path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>
+  <span class="logo-name">HACC<span>.PRO</span></span>
+</a>
+
+<div class="card">
+  <div class="card-hd">
+    <div class="hd-inner">
+      <div class="hd-top">
+        <div class="hd-title" id="hd-title">Configuration de votre HACCP</div>
+        <div class="hd-step" id="hd-step">Étape 1/4</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progress" style="width:25%"></div></div>
+    </div>
+  </div>
+
+  <div class="card-body">
+
+    <!-- Step 1: Bienvenue -->
+    <div class="step active" id="step-1">
+      <div class="welcome-icon">🎉</div>
+      <div class="welcome-title">Bienvenue sur HACC.PRO !</div>
+      <div class="welcome-sub">Votre compte est créé. Configurons votre système HACCP en 3 étapes rapides pour que vous puissiez commencer à tracer dès aujourd'hui.</div>
+      <div class="welcome-plan" id="welcome-plan">🎁 Essai gratuit 14 jours activé</div>
+      <div class="what-next">
+        <div class="what-next-item"><div class="what-next-num">1</div>Ajouter vos cuisines / sites</div>
+        <div class="what-next-item"><div class="what-next-num">2</div>Configurer vos enceintes réfrigérées</div>
+        <div class="what-next-item"><div class="what-next-num">3</div>Générer votre PMS automatiquement</div>
+      </div>
+      <button class="btn-primary green" onclick="goStep(2)">C'est parti →</button>
+    </div>
+
+    <!-- Step 2: Sites/Cuisines -->
+    <div class="step" id="step-2">
+      <div class="step-title">Vos cuisines</div>
+      <div class="step-sub">Ajoutez le nom de chaque cuisine ou site que vous gérez. Vous pourrez en ajouter d'autres plus tard.</div>
+      <div class="item-list" id="sites-list"></div>
+      <button class="btn-add" onclick="addSite()">+ Ajouter une cuisine</button>
+      <div class="err" id="err-2"></div>
+      <button class="btn-primary" style="margin-top:20px" onclick="goStep(3)">Continuer →</button>
+    </div>
+
+    <!-- Step 3: Enceintes -->
+    <div class="step" id="step-3">
+      <div class="step-title">Enceintes réfrigérées</div>
+      <div class="step-sub">Ajoutez vos chambres froides, congélateurs et vitrines. Les températures de référence sont pré-remplies selon le type.</div>
+      <div id="enc-list"></div>
+      <button class="btn-add" style="margin-bottom:0" onclick="addEnceinte()">+ Ajouter une enceinte</button>
+      <div class="err" id="err-3"></div>
+      <button class="btn-primary" style="margin-top:20px" onclick="goStep(4)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(2)">← Retour</button>
+    </div>
+
+    <!-- Step 4: Terminé / PMS setup -->
+    <div class="step" id="step-4">
+      <div class="done-icon">✅</div>
+      <div class="done-title">Configuration enregistrée !</div>
+      <div class="done-sub" id="done-summary">Vos cuisines et enceintes ont été créées. Dernière étape : répondez au questionnaire HACCP pour générer automatiquement votre Plan de Maîtrise Sanitaire.</div>
+      <button class="btn-primary green" id="btn-save" onclick="saveAndContinue()">
+        <span id="btn-save-label">Générer mon PMS →</span>
+        <div class="spinner" id="btn-save-spin"></div>
+      </button>
+      <button class="btn-skip" onclick="window.location.href='dashboard.html'">Passer, configurer le PMS plus tard</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="js/supabaseconfig.js"></script>
+<script src="js/app-onboarding.js"></script>
+</body>
+</html>

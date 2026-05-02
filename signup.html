@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Créer un compte HACC.PRO — Inscription gratuite</title>
+<meta name="description" content="Créez votre compte HACC.PRO et démarrez votre essai gratuit de 14 jours. Logiciel HACCP pour restaurants et restauration collective.">
+<meta name="robots" content="noindex, follow">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<meta name="theme-color" content="#0F2240">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0F2240;--navy2:#1a3558;
+  --green:#8DC63F;--green2:#6fa832;
+  --plum:#5C1E5A;
+  --bg:#F7F2F7;--border:#DDD0DD;
+  --text:#3D2A3C;--muted:#7A6579;
+  --font:'Nunito',sans-serif;
+}
+html,body{height:100%;font-family:var(--font)}
+body{
+  background:var(--navy);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:100vh;padding:20px;
+  background-image:
+    radial-gradient(ellipse at 20% 50%,rgba(92,30,90,.4) 0%,transparent 55%),
+    radial-gradient(ellipse at 80% 20%,rgba(141,198,63,.1) 0%,transparent 50%);
+}
+.signup-wrap{width:100%;max-width:480px}
+.back-link{
+  display:inline-flex;align-items:center;gap:6px;
+  color:rgba(255,255,255,.4);font-size:.78rem;font-weight:700;
+  text-decoration:none;margin-bottom:16px;
+  transition:color .2s;
+}
+.back-link:hover{color:rgba(255,255,255,.8)}
+.card{
+  background:#fff;border-radius:24px;
+  overflow:hidden;
+  box-shadow:0 20px 60px rgba(15,34,64,.3),0 0 0 1px rgba(15,34,64,.08);
+}
+/* Header */
+.card-hd{
+  background:var(--navy);padding:28px 28px 24px;
+  position:relative;overflow:hidden;
+}
+.card-hd::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 80% 0%,rgba(141,198,63,.14),transparent 60%);
+}
+.hd-top{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between}
+.logo-wrap{display:flex;align-items:center;gap:10px}
+.logo-name{font-size:1.15rem;font-weight:900;color:#fff}
+.logo-name span{color:var(--green)}
+.login-link{color:rgba(255,255,255,.5);font-size:.78rem;font-weight:700;text-decoration:none;transition:color .2s}
+.login-link:hover{color:#fff}
+/* Stepper */
+.stepper{
+  position:relative;z-index:1;
+  display:flex;align-items:center;gap:0;
+  margin-top:22px;
+}
+.step-item{
+  display:flex;align-items:center;gap:0;flex:1;
+}
+.step-item:last-child .step-line{display:none}
+.step-dot{
+  width:28px;height:28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.7rem;font-weight:900;
+  flex-shrink:0;transition:all .3s;
+  background:rgba(255,255,255,.12);
+  color:rgba(255,255,255,.4);border:2px solid rgba(255,255,255,.15);
+}
+.step-dot.active{background:var(--green);color:#fff;border-color:var(--green);box-shadow:0 0 0 4px rgba(141,198,63,.25)}
+.step-dot.done{background:rgba(141,198,63,.25);color:var(--green);border-color:rgba(141,198,63,.4)}
+.step-line{flex:1;height:2px;background:rgba(255,255,255,.1);margin:0 4px;transition:background .3s}
+.step-line.done{background:rgba(141,198,63,.4)}
+.step-lbl{
+  display:none;
+}
+/* Body */
+.card-body{padding:28px}
+.step{display:none}
+.step.active{display:block}
+.step-title{font-size:1.05rem;font-weight:900;color:var(--navy);margin-bottom:6px}
+.step-sub{font-size:.82rem;color:var(--muted);margin-bottom:24px;line-height:1.5}
+/* Fields */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.67rem;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.field input,.field select{
+  width:100%;background:#f8fafc;
+  border:1.5px solid var(--border);border-radius:12px;
+  padding:12px 14px;font-size:.9rem;
+  color:var(--text);font-family:var(--font);
+  outline:none;transition:all .2s;
+  appearance:none;-webkit-appearance:none;
+}
+.field input:focus,.field select:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.field input::placeholder{color:#94a3b8}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.field-hint{font-size:.7rem;color:var(--muted);margin-top:5px;font-weight:700}
+/* Buttons */
+.btn-primary{
+  width:100%;padding:14px;margin-top:8px;
+  background:var(--navy);color:#fff;border:none;border-radius:14px;
+  font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);
+  transition:all .2s;box-shadow:0 4px 20px rgba(15,34,64,.3);
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-primary:hover{background:var(--navy2);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.6;pointer-events:none}
+.btn-primary.green{background:var(--green);box-shadow:0 4px 20px rgba(141,198,63,.4)}
+.btn-primary.green:hover{background:var(--green2)}
+.btn-back{
+  width:100%;padding:12px;margin-top:8px;
+  background:var(--bg);color:var(--muted);border:none;border-radius:14px;
+  font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);
+  transition:all .2s;
+}
+.btn-back:hover{background:#ece7ec}
+.spinner{width:16px;height:16px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Error */
+.err{font-size:.75rem;color:#dc2626;font-weight:700;text-align:center;margin-top:10px;display:none;padding:8px 12px;background:#fee2e2;border-radius:8px}
+/* Plan cards */
+.plan-grid{display:flex;flex-direction:column;gap:10px;margin-bottom:4px}
+.plan-card{
+  border:2px solid var(--border);border-radius:14px;padding:16px;
+  cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:14px;
+  background:#fff;
+}
+.plan-card:hover{border-color:#bbb;background:var(--bg)}
+.plan-card.selected{border-color:var(--green);background:rgba(141,198,63,.06);box-shadow:0 0 0 1px var(--green)}
+.plan-radio{
+  width:20px;height:20px;border-radius:50%;border:2px solid var(--border);
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  transition:all .2s;
+}
+.plan-card.selected .plan-radio{border-color:var(--green);background:var(--green)}
+.plan-card.selected .plan-radio::after{content:'';width:8px;height:8px;border-radius:50%;background:#fff}
+.plan-info{flex:1}
+.plan-name{font-size:.88rem;font-weight:900;color:var(--navy)}
+.plan-desc{font-size:.75rem;color:var(--muted);font-weight:700;margin-top:2px}
+.plan-price{font-size:.9rem;font-weight:900;color:var(--navy);flex-shrink:0}
+.plan-price span{font-size:.7rem;color:var(--muted);font-weight:700}
+.plan-badge{
+  display:inline-block;background:var(--green);color:#fff;
+  border-radius:6px;padding:2px 7px;font-size:.62rem;
+  font-weight:900;text-transform:uppercase;letter-spacing:.3px;
+  margin-left:6px;vertical-align:middle;
+}
+/* Recap */
+.recap-box{
+  background:var(--bg);border-radius:14px;padding:18px;
+  margin-bottom:18px;
+}
+.recap-row{
+  display:flex;justify-content:space-between;
+  font-size:.85rem;padding:6px 0;border-bottom:1px solid var(--border);
+}
+.recap-row:last-child{border-bottom:none}
+.recap-label{color:var(--muted);font-weight:700}
+.recap-val{color:var(--text);font-weight:800}
+.trial-badge{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(141,198,63,.1);border:1px solid rgba(141,198,63,.3);
+  border-radius:10px;padding:12px 14px;margin-bottom:18px;
+}
+.trial-badge-icon{font-size:1.2rem}
+.trial-badge-text{font-size:.8rem;color:var(--text);font-weight:700;line-height:1.4}
+.trial-badge-text strong{color:var(--green2)}
+/* Success */
+.success-screen{text-align:center;padding:8px 0}
+.success-icon{font-size:3rem;margin-bottom:16px}
+.success-title{font-size:1.2rem;font-weight:900;color:var(--navy);margin-bottom:8px}
+.success-text{font-size:.85rem;color:var(--muted);line-height:1.6;margin-bottom:24px}
+/* Version */
+.version-txt{text-align:center;margin-top:14px;font-size:.6rem;color:rgba(255,255,255,.2);letter-spacing:.5px}
+</style>
+</head>
+<body>
+<div class="signup-wrap">
+  <a href="landing.html" class="back-link">← Retour à l'accueil</a>
+  <div class="card">
+    <!-- Header -->
+    <div class="card-hd">
+      <div class="hd-top">
+        <div class="logo-wrap">
+          <svg width="28" height="28" viewBox="0 0 90 90" fill="none" aria-hidden="true">
+            <rect x="20" y="54" width="50" height="13" rx="4" fill="rgba(255,255,255,.18)"/>
+            <rect x="23" y="47" width="44" height="10" rx="2" fill="rgba(255,255,255,.14)"/>
+            <circle cx="45" cy="33" r="16" fill="white"/>
+            <circle cx="29" cy="38" r="11" fill="white"/>
+            <circle cx="61" cy="38" r="11" fill="white"/>
+            <path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </svg>
+          <span class="logo-name">HACC<span>.PRO</span></span>
+        </div>
+        <a href="login.html" class="login-link">Déjà un compte ? Connexion →</a>
+      </div>
+      <!-- Stepper -->
+      <div class="stepper" role="progressbar" aria-label="Étapes d'inscription">
+        <div class="step-item">
+          <div class="step-dot active" id="dot-1">1</div>
+          <div class="step-line" id="line-1"></div>
+        </div>
+        <div class="step-item">
+          <div class="step-dot" id="dot-2">2</div>
+          <div class="step-line" id="line-2"></div>
+        </div>
+        <div class="step-item">
+          <div class="step-dot" id="dot-3">3</div>
+          <div class="step-line" id="line-3"></div>
+        </div>
+        <div class="step-item">
+          <div class="step-dot" id="dot-4">4</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="card-body">
+
+      <!-- Step 1 : Compte -->
+      <div class="step active" id="step-1">
+        <div class="step-title">Créez votre compte</div>
+        <div class="step-sub">Étape 1 sur 4 — Informations de connexion</div>
+        <div class="field">
+          <label for="su-email">Adresse email professionnelle</label>
+          <input type="email" id="su-email" placeholder="prenom@restaurant.fr" autocomplete="email" onkeydown="if(event.key==='Enter')goStep(2)">
+        </div>
+        <div class="field">
+          <label for="su-pass">Mot de passe</label>
+          <input type="password" id="su-pass" placeholder="8 caractères minimum" autocomplete="new-password">
+          <div class="field-hint">Minimum 8 caractères</div>
+        </div>
+        <div class="field">
+          <label for="su-pass2">Confirmer le mot de passe</label>
+          <input type="password" id="su-pass2" placeholder="Répétez votre mot de passe" autocomplete="new-password" onkeydown="if(event.key==='Enter')goStep(2)">
+        </div>
+        <div class="err" id="err-1"></div>
+        <button class="btn-primary" onclick="goStep(2)">Continuer →</button>
+      </div>
+
+      <!-- Step 2 : Établissement -->
+      <div class="step" id="step-2">
+        <div class="step-title">Votre établissement</div>
+        <div class="step-sub">Étape 2 sur 4 — Informations sur votre cuisine</div>
+        <div class="field">
+          <label for="su-company">Nom de l'enseigne / groupe</label>
+          <input type="text" id="su-company" placeholder="Ex : Restaurant Le Provençal" autocomplete="organization">
+        </div>
+        <div class="field">
+          <label for="su-type">Type d'établissement</label>
+          <select id="su-type">
+            <option value="restaurant">Restaurant commercial</option>
+            <option value="collectivite">Restauration collective (cantine, EHPAD, hôpital)</option>
+            <option value="traiteur">Traiteur / Événementiel</option>
+            <option value="boulangerie">Boulangerie / Pâtisserie</option>
+            <option value="hotellerie">Hôtellerie / Restauration</option>
+            <option value="autre">Autre établissement alimentaire</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="su-sites">Nombre de cuisines / sites</label>
+          <select id="su-sites">
+            <option value="1">1 cuisine (site unique)</option>
+            <option value="2">2 à 5 cuisines</option>
+            <option value="6">6 à 20 cuisines</option>
+            <option value="21">Plus de 20 cuisines</option>
+          </select>
+        </div>
+        <div class="err" id="err-2"></div>
+        <button class="btn-primary" onclick="goStep(3)">Continuer →</button>
+        <button class="btn-back" onclick="goStep(1)">← Retour</button>
+      </div>
+
+      <!-- Step 3 : Plan -->
+      <div class="step" id="step-3">
+        <div class="step-title">Choisissez votre plan</div>
+        <div class="step-sub">Étape 3 sur 4 — Essai gratuit 14 jours inclus, sans carte bancaire</div>
+        <div class="plan-grid">
+          <div class="plan-card" id="plan-solo" onclick="selectPlan('solo')">
+            <div class="plan-radio"></div>
+            <div class="plan-info">
+              <div class="plan-name">Solo</div>
+              <div class="plan-desc">1 cuisine · Toutes les fonctionnalités HACCP incluses</div>
+            </div>
+            <div class="plan-price">29€<span>/mois</span></div>
+          </div>
+          <div class="plan-card selected" id="plan-multi" onclick="selectPlan('multi')">
+            <div class="plan-radio"></div>
+            <div class="plan-info">
+              <div class="plan-name">Multi <span class="plan-badge">Populaire</span></div>
+              <div class="plan-desc">Jusqu'à 3 cuisines · +19€/cuisine supp.</div>
+            </div>
+            <div class="plan-price">49€<span>/mois</span></div>
+          </div>
+          <div class="plan-card" id="plan-enterprise" onclick="selectPlan('enterprise')">
+            <div class="plan-radio"></div>
+            <div class="plan-info">
+              <div class="plan-name">Entreprise</div>
+              <div class="plan-desc">Cuisines illimitées · API · SSO · Accompagnement</div>
+            </div>
+            <div class="plan-price">Sur devis</div>
+          </div>
+        </div>
+        <div class="err" id="err-3"></div>
+        <button class="btn-primary" onclick="goStep(4)">Continuer →</button>
+        <button class="btn-back" onclick="goStep(2)">← Retour</button>
+      </div>
+
+      <!-- Step 4 : Confirmation -->
+      <div class="step" id="step-4">
+        <div class="step-title">Démarrez votre essai gratuit</div>
+        <div class="step-sub">Étape 4 sur 4 — Récapitulatif de votre inscription</div>
+        <div class="recap-box">
+          <div class="recap-row">
+            <span class="recap-label">Email</span>
+            <span class="recap-val" id="recap-email">—</span>
+          </div>
+          <div class="recap-row">
+            <span class="recap-label">Établissement</span>
+            <span class="recap-val" id="recap-company">—</span>
+          </div>
+          <div class="recap-row">
+            <span class="recap-label">Type</span>
+            <span class="recap-val" id="recap-type">—</span>
+          </div>
+          <div class="recap-row">
+            <span class="recap-label">Plan choisi</span>
+            <span class="recap-val" id="recap-plan">—</span>
+          </div>
+        </div>
+        <div class="trial-badge">
+          <div class="trial-badge-icon">🎁</div>
+          <div class="trial-badge-text"><strong>14 jours d'essai gratuit</strong> — Toutes les fonctionnalités, aucune carte bancaire requise. Vous choisissez de continuer ou non à la fin de l'essai.</div>
+        </div>
+        <div class="err" id="err-4"></div>
+        <button class="btn-primary green" id="btn-signup" onclick="doSignup()">
+          <span id="btn-signup-label">Démarrer mon essai gratuit →</span>
+          <div class="spinner" id="btn-signup-spin"></div>
+        </button>
+        <button class="btn-back" onclick="goStep(3)">← Retour</button>
+      </div>
+
+      <!-- Success -->
+      <div class="step" id="step-success">
+        <div class="success-screen">
+          <div class="success-icon">🎉</div>
+          <div class="success-title">Compte créé avec succès !</div>
+          <div class="success-text" id="success-msg">Votre essai gratuit de 14 jours est activé. Vous allez être redirigé vers la configuration de votre HACCP…</div>
+          <button class="btn-primary green" onclick="window.location.href='onboarding.html'">Configurer mon HACCP →</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <div class="version-txt">HACC.PRO · Essai gratuit 14 jours · Aucun engagement</div>
+</div>
+
+<script src="js/supabaseconfig.js"></script>
+<script src="js/app-signup.js"></script>
+</body>
+</html>

@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>HACC.PRO — Générer mon PMS</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<meta name="theme-color" content="#0F2240">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--navy:#0F2240;--navy2:#1a3558;--green:#8DC63F;--green2:#6fa832;--plum:#5C1E5A;--bg:#F7F2F7;--border:#DDD0DD;--text:#3D2A3C;--muted:#7A6579;--font:'Nunito',sans-serif}
+html,body{min-height:100%;font-family:var(--font)}
+body{background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 20px 80px}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;gap:10px;text-decoration:none;margin-bottom:28px;align-self:flex-start}
+.logo-name{font-size:1.1rem;font-weight:900;color:var(--navy)}
+.logo-name span{color:var(--green)}
+
+/* ── Card ── */
+.card{background:#fff;border-radius:24px;width:100%;max-width:640px;overflow:hidden;box-shadow:0 4px 32px rgba(15,34,64,.12),0 0 0 1px rgba(15,34,64,.06)}
+.card-hd{background:var(--navy);padding:24px 28px;position:relative;overflow:hidden}
+.card-hd::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 80% 0%,rgba(141,198,63,.14),transparent 60%)}
+.hd-inner{position:relative;z-index:1}
+.hd-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+.hd-title{font-size:1rem;font-weight:900;color:#fff}
+.hd-step{font-size:.75rem;font-weight:700;color:rgba(255,255,255,.45)}
+.progress-bar{height:4px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:14px;overflow:hidden}
+.progress-fill{height:100%;background:var(--green);border-radius:2px;transition:width .4s}
+
+/* ── Body ── */
+.card-body{padding:28px}
+.section{display:none}
+.section.active{display:block}
+.section-title{font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:6px}
+.section-sub{font-size:.83rem;color:var(--muted);margin-bottom:22px;line-height:1.55}
+
+/* ── Field groups ── */
+.field-group{margin-bottom:18px}
+.field-lbl{display:block;font-size:.68rem;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+.field-input,.field-select{width:100%;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s;appearance:none;-webkit-appearance:none}
+.field-input:focus,.field-select:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.field-input::placeholder{color:#94a3b8}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* ── Checkboxes / radio tiles ── */
+.tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
+.tile-grid.cols3{grid-template-columns:1fr 1fr 1fr}
+.tile{background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:10px}
+.tile:hover{border-color:var(--green)}
+.tile.selected{background:rgba(141,198,63,.08);border-color:var(--green);color:var(--green2)}
+.tile-icon{font-size:1.3rem;flex-shrink:0}
+.tile-label{font-size:.82rem;font-weight:800;color:var(--text);line-height:1.3}
+.tile.selected .tile-label{color:var(--green2)}
+
+/* ── Checkbox list ── */
+.check-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
+.check-item{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg);border-radius:10px;cursor:pointer;transition:background .15s}
+.check-item:hover{background:#ece7ec}
+.check-item input[type=checkbox]{width:17px;height:17px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.check-item label{font-size:.87rem;font-weight:700;color:var(--text);cursor:pointer;flex:1}
+
+/* ── Number picker ── */
+.num-row{display:flex;align-items:center;gap:12px}
+.num-btn{width:36px;height:36px;border:1.5px solid var(--border);background:#fff;border-radius:8px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--navy);transition:all .15s}
+.num-btn:hover{border-color:var(--green);color:var(--green)}
+.num-val{font-size:1.1rem;font-weight:900;color:var(--navy);min-width:28px;text-align:center}
+
+/* ── Summary ── */
+.summary-block{background:var(--bg);border-radius:14px;padding:18px;margin-bottom:16px}
+.summary-title{font-size:.78rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.summary-item{display:flex;align-items:flex-start;gap:8px;font-size:.87rem;margin-bottom:8px;color:var(--text)}
+.summary-item:last-child{margin-bottom:0}
+.summary-check{color:var(--green);font-weight:900;flex-shrink:0;margin-top:1px}
+.summary-list{margin-left:18px;margin-top:4px;font-size:.82rem;color:var(--muted)}
+.summary-list li{margin-bottom:3px}
+
+/* ── Progress indicator ── */
+.step-dots{display:flex;gap:6px;justify-content:center;margin-bottom:20px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all .2s}
+.dot.active{background:var(--navy);transform:scale(1.2)}
+.dot.done{background:var(--green)}
+
+/* ── Buttons ── */
+.btn-primary{width:100%;padding:14px;margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(15,34,64,.2)}
+.btn-primary:hover{background:var(--navy2);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.6;pointer-events:none}
+.btn-primary.green{background:var(--green);box-shadow:0 4px 20px rgba(141,198,63,.35)}
+.btn-primary.green:hover{background:var(--green2)}
+.btn-back{width:100%;padding:12px;margin-top:8px;background:var(--bg);color:var(--muted);border:none;border-radius:14px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-back:hover{background:#ece7ec}
+.btn-skip{width:100%;padding:10px;margin-top:8px;background:none;border:none;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;font-family:var(--font);text-decoration:underline;text-underline-offset:3px}
+.spinner{width:16px;height:16px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err{font-size:.75rem;color:#dc2626;font-weight:700;text-align:center;margin-top:10px;display:none;padding:8px 12px;background:#fee2e2;border-radius:8px}
+
+/* ── Done ── */
+.done-icon{font-size:3rem;text-align:center;margin-bottom:16px}
+.done-title{font-size:1.15rem;font-weight:900;color:var(--navy);text-align:center;margin-bottom:10px}
+.done-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.6;margin-bottom:24px}
+.pms-stat{display:flex;justify-content:center;gap:24px;margin-bottom:24px}
+.pms-stat-item{text-align:center}
+.pms-stat-num{font-size:1.6rem;font-weight:900;color:var(--green)}
+.pms-stat-lbl{font-size:.75rem;color:var(--muted);font-weight:700}
+
+@media(max-width:480px){
+  .tile-grid,.tile-grid.cols3{grid-template-columns:1fr 1fr}
+  .field-row{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<a href="landing.html" class="topbar">
+  <svg width="28" height="28" viewBox="0 0 90 90" fill="none" aria-hidden="true">
+    <circle cx="45" cy="33" r="16" fill="#0F2240"/>
+    <circle cx="29" cy="38" r="11" fill="#0F2240"/>
+    <circle cx="61" cy="38" r="11" fill="#0F2240"/>
+    <path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </svg>
+  <span class="logo-name">HACC<span>.PRO</span></span>
+</a>
+
+<div class="card">
+  <div class="card-hd">
+    <div class="hd-inner">
+      <div class="hd-top">
+        <div class="hd-title" id="hd-title">Générer mon Plan de Maîtrise Sanitaire</div>
+        <div class="hd-step" id="hd-step">Section A / 5</div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progress" style="width:20%"></div></div>
+    </div>
+  </div>
+
+  <div class="card-body">
+
+    <div class="step-dots" id="step-dots">
+      <div class="dot active" id="dot-1"></div>
+      <div class="dot" id="dot-2"></div>
+      <div class="dot" id="dot-3"></div>
+      <div class="dot" id="dot-4"></div>
+      <div class="dot" id="dot-5"></div>
+    </div>
+
+    <!-- Section A : Type d'établissement -->
+    <div class="section active" id="sec-1">
+      <div class="section-title">A — Votre établissement</div>
+      <div class="section-sub">Ces informations servent à configurer les seuils HACCP, les fréquences de contrôle et les modèles de documents réglementaires.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nom de l'établissement</label>
+        <input class="field-input" type="text" id="a-nom" placeholder="Restaurant Le Vieux-Port, Cantine scolaire…">
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Type d'établissement</label>
+        <div class="tile-grid" id="a-type-tiles">
+          <div class="tile selected" data-val="restaurant" onclick="selectTile('a-type','restaurant',this)">
+            <span class="tile-icon">🍽️</span>
+            <span class="tile-label">Restaurant traditionnel</span>
+          </div>
+          <div class="tile" data-val="collectivite" onclick="selectTile('a-type','collectivite',this)">
+            <span class="tile-icon">🏫</span>
+            <span class="tile-label">Restauration collective</span>
+          </div>
+          <div class="tile" data-val="traiteur" onclick="selectTile('a-type','traiteur',this)">
+            <span class="tile-icon">🎂</span>
+            <span class="tile-label">Traiteur / événementiel</span>
+          </div>
+          <div class="tile" data-val="boulangerie" onclick="selectTile('a-type','boulangerie',this)">
+            <span class="tile-icon">🥖</span>
+            <span class="tile-label">Boulangerie / pâtisserie</span>
+          </div>
+          <div class="tile" data-val="fast_food" onclick="selectTile('a-type','fast_food',this)">
+            <span class="tile-icon">🍔</span>
+            <span class="tile-label">Restauration rapide</span>
+          </div>
+          <div class="tile" data-val="autre" onclick="selectTile('a-type','autre',this)">
+            <span class="tile-icon">🏢</span>
+            <span class="tile-label">Autre</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nombre de couverts par service (environ)</label>
+        <select class="field-select" id="a-couverts">
+          <option value="lt50">Moins de 50 couverts</option>
+          <option value="50-150" selected>50 à 150 couverts</option>
+          <option value="150-400">150 à 400 couverts</option>
+          <option value="gt400">Plus de 400 couverts</option>
+        </select>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Numéro SIRET (optionnel)</label>
+        <input class="field-input" type="text" id="a-siret" placeholder="123 456 789 00012" maxlength="18">
+      </div>
+
+      <div class="err" id="err-1"></div>
+      <button class="btn-primary" onclick="goSec(2)">Continuer →</button>
+    </div>
+
+    <!-- Section B : Process de production -->
+    <div class="section" id="sec-2">
+      <div class="section-title">B — Processus de production</div>
+      <div class="section-sub">Cochez toutes les activités réalisées dans votre établissement. Cela détermine quels points de contrôle HACCP seront générés.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Activités pratiquées</label>
+        <div class="check-list" id="b-activities">
+          <label class="check-item"><input type="checkbox" value="reception" checked><label>Réception de matières premières</label></label>
+          <label class="check-item"><input type="checkbox" value="stockage_froid" checked><label>Stockage au froid positif et négatif</label></label>
+          <label class="check-item"><input type="checkbox" value="decongelation"><label>Décongélation avant cuisson</label></label>
+          <label class="check-item"><input type="checkbox" value="preparation_froide"><label>Préparation de plats froids (salades, charcuterie…)</label></label>
+          <label class="check-item"><input type="checkbox" value="cuisson" checked><label>Cuisson (four, plaque, vapeur…)</label></label>
+          <label class="check-item"><input type="checkbox" value="refroidissement"><label>Refroidissement rapide (cellule de refroidissement)</label></label>
+          <label class="check-item"><input type="checkbox" value="remise_en_temp"><label>Remise en température de plats cuisinés</label></label>
+          <label class="check-item"><input type="checkbox" value="plats_temoins" checked><label>Plats témoins obligatoires</label></label>
+          <label class="check-item"><input type="checkbox" value="livraison"><label>Livraison / portage de repas</label></label>
+          <label class="check-item"><input type="checkbox" value="produits_allergenes"><label>Gestion des allergènes (14 allergènes majeurs)</label></label>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nombre de services par jour</label>
+        <div class="tile-grid cols3">
+          <div class="tile selected" data-val="1" onclick="selectTile('b-services','1',this)">
+            <span class="tile-label" style="width:100%;text-align:center">1 service</span>
+          </div>
+          <div class="tile" data-val="2" onclick="selectTile('b-services','2',this)">
+            <span class="tile-label" style="width:100%;text-align:center">2 services</span>
+          </div>
+          <div class="tile" data-val="3+" onclick="selectTile('b-services','3+',this)">
+            <span class="tile-label" style="width:100%;text-align:center">3+ services</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="err" id="err-2"></div>
+      <button class="btn-primary" onclick="goSec(3)">Continuer →</button>
+      <button class="btn-back" onclick="goSec(1)">← Retour</button>
+    </div>
+
+    <!-- Section C : Enceintes & équipements -->
+    <div class="section" id="sec-3">
+      <div class="section-title">C — Enceintes réfrigérées</div>
+      <div class="section-sub">Indiquez le nombre de chaque type d'enceinte. Les fréquences de relevé de température seront calculées automatiquement selon le volume.</div>
+
+      <div class="field-group">
+        <div id="c-enc-list">
+          <!-- Rendu dynamique -->
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Avez-vous un système de sonde automatique ?</label>
+        <div class="tile-grid">
+          <div class="tile" data-val="oui" onclick="selectTile('c-sonde','oui',this)">
+            <span class="tile-icon">📡</span>
+            <span class="tile-label">Oui — sondes connectées</span>
+          </div>
+          <div class="tile selected" data-val="non" onclick="selectTile('c-sonde','non',this)">
+            <span class="tile-icon">📋</span>
+            <span class="tile-label">Non — relevé manuel</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="err" id="err-3"></div>
+      <button class="btn-primary" onclick="goSec(4)">Continuer →</button>
+      <button class="btn-back" onclick="goSec(2)">← Retour</button>
+    </div>
+
+    <!-- Section D : Équipe & hygiène -->
+    <div class="section" id="sec-4">
+      <div class="section-title">D — Équipe & hygiène</div>
+      <div class="section-sub">Ces informations permettent de configurer les formations HACCP obligatoires et les procédures de nettoyage-désinfection.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nombre de personnes en cuisine</label>
+        <div class="num-row">
+          <button class="num-btn" onclick="changeNum('d-staff', -1)">−</button>
+          <span class="num-val" id="d-staff-val">2</span>
+          <button class="num-btn" onclick="changeNum('d-staff', +1)">+</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Un responsable HACCP est-il désigné ?</label>
+        <div class="tile-grid">
+          <div class="tile selected" data-val="oui" onclick="selectTile('d-resp','oui',this)">
+            <span class="tile-icon">✅</span>
+            <span class="tile-label">Oui — responsable désigné</span>
+          </div>
+          <div class="tile" data-val="non" onclick="selectTile('d-resp','non',this)">
+            <span class="tile-icon">⚠️</span>
+            <span class="tile-label">Non — à définir</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Protocoles déjà en place</label>
+        <div class="check-list" id="d-protocoles">
+          <label class="check-item"><input type="checkbox" value="nettoyage"><label>Plan de nettoyage-désinfection</label></label>
+          <label class="check-item"><input type="checkbox" value="lutte_nuisibles"><label>Lutte contre les nuisibles</label></label>
+          <label class="check-item"><input type="checkbox" value="eau"><label>Qualité de l'eau (contrôle réseau)</label></label>
+          <label class="check-item"><input type="checkbox" value="formation"><label>Formations HACCP du personnel</label></label>
+          <label class="check-item"><input type="checkbox" value="allergenes"><label>Procédure allergènes documentée</label></label>
+        </div>
+      </div>
+
+      <div class="err" id="err-4"></div>
+      <button class="btn-primary" onclick="goSec(5)">Continuer →</button>
+      <button class="btn-back" onclick="goSec(3)">← Retour</button>
+    </div>
+
+    <!-- Section E : Récapitulatif & génération -->
+    <div class="section" id="sec-5">
+      <div class="section-title">E — Récapitulatif</div>
+      <div class="section-sub">Vérifiez vos informations. Cliquez sur "Générer mon PMS" pour créer automatiquement votre Plan de Maîtrise Sanitaire.</div>
+
+      <div class="summary-block" id="recap-block">
+        <!-- Rendu par JS -->
+      </div>
+
+      <div class="err" id="err-5"></div>
+      <button class="btn-primary green" id="btn-generate" onclick="generatePMS()">
+        <span id="btn-gen-label">Générer mon PMS →</span>
+        <div class="spinner" id="btn-gen-spin"></div>
+      </button>
+      <button class="btn-back" onclick="goSec(4)">← Retour</button>
+      <button class="btn-skip" onclick="window.location.href='dashboard.html'">Passer, configurer plus tard</button>
+    </div>
+
+    <!-- Done -->
+    <div class="section" id="sec-done">
+      <div class="done-icon">🎉</div>
+      <div class="done-title">Votre PMS est prêt !</div>
+      <div class="done-sub">Votre Plan de Maîtrise Sanitaire a été généré et votre espace de travail HACC.PRO est configuré. Vous pouvez commencer à tracer dès maintenant.</div>
+      <div class="pms-stat">
+        <div class="pms-stat-item">
+          <div class="pms-stat-num" id="stat-enc">—</div>
+          <div class="pms-stat-lbl">Enceintes</div>
+        </div>
+        <div class="pms-stat-item">
+          <div class="pms-stat-num" id="stat-points">—</div>
+          <div class="pms-stat-lbl">Points de contrôle</div>
+        </div>
+        <div class="pms-stat-item">
+          <div class="pms-stat-num" id="stat-docs">—</div>
+          <div class="pms-stat-lbl">Documents générés</div>
+        </div>
+      </div>
+      <button class="btn-primary green" onclick="window.location.href='dashboard.html'">Accéder à mon tableau de bord →</button>
+    </div>
+
+  </div>
+</div>
+
+<script src="js/supabaseconfig.js"></script>
+<script src="js/app-pms.js"></script>
+</body>
+</html>
