@@ -194,6 +194,26 @@ footer{background:#08172e;border-top:1px solid rgba(255,255,255,.06);padding:52p
 .footer-bottom{border-top:1px solid rgba(255,255,255,.07);padding-top:24px;display:flex;justify-content:space-between;align-items:center;font-size:.75rem;flex-wrap:wrap;gap:12px}
 .footer-bottom a{color:rgba(255,255,255,.35);text-decoration:none}
 
+/* ── CONTACT ── */
+.contact-section{background:var(--white);padding:80px 24px;border-top:1px solid var(--border)}
+.contact-inner{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:start}
+.contact-text .section-tag{margin-bottom:12px}
+.contact-sub{color:var(--muted);font-size:.92rem;line-height:1.75;margin:12px 0 24px}
+.contact-infos{list-style:none;display:flex;flex-direction:column;gap:10px}
+.contact-infos li{font-size:.88rem;color:var(--text);font-weight:700}
+.contact-infos a{color:var(--navy);text-decoration:none;font-weight:800}
+.contact-infos a:hover{color:var(--plum)}
+.contact-form{display:flex;flex-direction:column;gap:16px}
+.contact-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.contact-field{display:flex;flex-direction:column;gap:6px}
+.contact-label{font-size:.8rem;font-weight:800;color:var(--navy)}
+.contact-input{font-family:var(--font);font-size:.9rem;padding:11px 14px;border:1.5px solid var(--border);border-radius:10px;background:#fff;color:var(--text);transition:border-color .2s;outline:none;width:100%}
+.contact-input:focus{border-color:var(--green)}
+.contact-textarea{resize:vertical;min-height:110px}
+.contact-submit{background:var(--green);color:#fff;border:none;border-radius:12px;padding:14px 28px;font-family:var(--font);font-size:.95rem;font-weight:900;cursor:pointer;transition:all .2s;align-self:flex-start}
+.contact-submit:hover{background:var(--green2);transform:translateY(-1px)}
+.contact-submit:disabled{opacity:.6;cursor:default;transform:none}
+
 /* ── RESPONSIVE ── */
 @media(max-width:960px){
   .hero-inner{grid-template-columns:1fr;gap:40px}
@@ -208,6 +228,10 @@ footer{background:#08172e;border-top:1px solid rgba(255,255,255,.06);padding:52p
   .nav-links .nav-link-plain{display:none}
   .nav-btn-pill{padding:8px 16px;font-size:.8rem;margin-left:4px}
 }
+@media(max-width:760px){
+  .contact-inner{grid-template-columns:1fr;gap:36px}
+  .contact-row{grid-template-columns:1fr}
+}
 @media(max-width:600px){
   .hero{padding:60px 16px 48px}
   .hero h1{font-size:1.75rem}
@@ -218,4 +242,5 @@ footer{background:#08172e;border-top:1px solid rgba(255,255,255,.06);padding:52p
   .how-steps::before{display:none}
   .trust-types{gap:8px}
   .trust-types span{font-size:.75rem;padding:5px 10px}
+  .contact-submit{width:100%;align-self:stretch;text-align:center}
 }

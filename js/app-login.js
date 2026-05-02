@@ -131,21 +131,28 @@ function showErr(msg) {
 }
 
 async function doForgot() {
-  const url = document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
-  const key = document.getElementById('cfg-key').value.trim();
   const email = document.getElementById('login-email').value.trim();
-  if (!url || !key) { showErr('Configurez Supabase d\'abord'); return; }
   if (!email) { showErr('Entrez votre email d\'abord'); return; }
+  const errEl = document.getElementById('login-err');
+  errEl.textContent = 'Envoi en cours…';
+  errEl.style.display  = 'block';
+  errEl.style.color    = '#7A6579';
+  errEl.style.background = '#F7F2F7';
   try {
-    await fetch(`${url}/auth/v1/recover`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': key },
-      body: JSON.stringify({ email })
+    await fetch('/.netlify/functions/send-email', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ type: 'reset', to: email })
     });
-    showErr('📧 Email de réinitialisation envoyé !');
-    document.getElementById('login-err').style.color = '#166534';
-    document.getElementById('login-err').style.background = '#f0fdf4';
-  } catch(e) { showErr('Erreur : ' + e.message); }
+    errEl.textContent  = '📧 Lien envoyé — vérifiez vos emails (et vos spams).';
+    errEl.style.color  = '#166534';
+    errEl.style.background = '#f0fdf4';
+    errEl.style.border = '1px solid #bbf7d0';
+  } catch(e) {
+    errEl.textContent  = 'Erreur réseau. Réessayez dans quelques instants.';
+    errEl.style.color  = '#991b1b';
+    errEl.style.background = '#fef2f2';
+  }
 }
 
 loadCfg();
