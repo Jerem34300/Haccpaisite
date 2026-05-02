@@ -40,7 +40,7 @@
     {"@type":"Question","name":"À quelle température minimale doit-on maintenir les plats chauds en service ?","acceptedAnswer":{"@type":"Answer","text":"Les plats chauds maintenus en température avant ou pendant le service doivent rester à une température à cœur supérieure ou égale à 63 °C. En dessous de cette limite, des bactéries pathogènes peuvent se multiplier rapidement. Un relevé de température doit être effectué à chaque service pour valider ce CCP."}},
     {"@type":"Question","name":"En combien de temps doit-on refroidir un plat après cuisson ?","acceptedAnswer":{"@type":"Answer","text":"Le refroidissement rapide est un point critique majeur. La température d'un plat chaud doit passer de +63 °C à +10 °C en moins de 2 heures. Ce refroidissement doit être réalisé en cellule de refroidissement rapide (blast chiller). L'utilisation d'un bac de glace ou d'un réfrigérateur classique n'est pas réglementairement conforme pour des volumes importants."}},
     {"@type":"Question","name":"Quelle est la température minimale à cœur pour la cuisson de la volaille ?","acceptedAnswer":{"@type":"Answer","text":"La volaille (poulet, dinde, pintade, canard) doit être cuite jusqu'à une température à cœur d'au moins 80 °C pour détruire la Salmonella et Campylobacter jejuni, les pathogènes les plus fréquents de cette viande. Cette mesure doit être effectuée avec un thermomètre à sonde dans la partie la plus épaisse, à distance de l'os."}},
-    {"@type":"Question","name":"Quelle est la fréquence minimale de relevé de température réglementaire ?","acceptedAnswer":{"@type":"Answer","text":"Pour les enceintes réfrigérées (froids positifs et négatifs), la fréquence minimale réglementaire est de 2 fois par jour : une mesure le matin à l'ouverture et une mesure en fin de service. Pour les plats maintenus en chaud, une mesure à cœur est obligatoire à chaque service. Avec HACC.PRO, ces relevés sont automatisés par des sondes connectées qui enregistrent en continu."}}
+    {"@type":"Question","name":"Quelle est la fréquence minimale de relevé de température réglementaire ?","acceptedAnswer":{"@type":"Answer","text":"Pour les enceintes réfrigérées (froids positifs et négatifs), la fréquence minimale réglementaire est de 2 fois par jour : une mesure le matin à l'ouverture et une mesure en fin de service. Pour les plats maintenus en chaud, une mesure à cœur est obligatoire à chaque service. Avec HACC.PRO, le cuisinier saisit chaque relevé sur son smartphone depuis l'enceinte — l'application horodate automatiquement et envoie un rappel si un relevé est manquant."}}
   ]
 }
 </script>
@@ -264,17 +264,16 @@
 
     <h3>Avantages du relevé numérique HACC.PRO</h3>
     <ul>
-      <li><strong>Sondes connectées en temps réel</strong> : HACC.PRO s'intègre avec les sondes IoT de vos enceintes et enregistre automatiquement les températures en continu, 24 h/24.</li>
-      <li><strong>Alertes immédiates</strong> : toute dérive thermique déclenche une notification push et un SMS au responsable de quart, même la nuit ou le week-end. Vous intervenez avant que les produits soient perdus.</li>
-      <li><strong>Relevés manuels sur mobile</strong> : pour la cuisson et le maintien en chaud, l'application mobile HACC.PRO permet de saisir les relevés à la sonde en quelques secondes, avec horodatage automatique et signature électronique.</li>
-      <li><strong>Registres infalsifiables</strong> : chaque relevé est horodaté avec le fuseau horaire, l'identifiant de l'appareil et le profil de l'utilisateur. Un relevé saisi à 15 h ne peut pas prétendre avoir été pris à 10 h.</li>
+      <li><strong>Saisie manuelle horodatée et signée</strong> : le cuisinier mesure physiquement la température avec sa sonde, puis la saisit sur son smartphone. HACC.PRO enregistre automatiquement l'heure exacte, la date et l'identifiant de l'utilisateur. Un relevé saisi à 15h ne peut pas prétendre avoir été pris à 10h.</li>
+      <li><strong>Infalsifiable par nature</strong> : contrairement aux sondes connectées automatiques, la saisie manuelle oblige un vrai passage physique devant chaque enceinte. Pas moyen de valider un relevé depuis le bureau ou le canapé. Le registre numérique ne peut pas être rempli "après coup" comme un cahier papier.</li>
+      <li><strong>Alertes immédiates en cas d'écart</strong> : si la valeur saisie dépasse le seuil réglementaire, une alerte est envoyée instantanément au responsable. Vous intervenez avant que les produits soient perdus.</li>
+      <li><strong>Rappels automatiques</strong> : HACC.PRO envoie une notification à l'heure prévue si le relevé n'a pas été effectué. Fini les oublis les jours de rush.</li>
       <li><strong>Export instantané pour contrôles</strong> : en cas d'inspection ou d'incident, exportez en PDF l'intégralité de vos relevés pour n'importe quelle période, en quelques clics depuis n'importe quel appareil.</li>
-      <li><strong>Rapports automatiques</strong> : HACC.PRO génère un rapport mensuel de conformité thermique par enceinte, identifiant les équipements présentant des dérives récurrentes avant qu'elles ne deviennent des pannes.</li>
     </ul>
 
     <div class="info-box">
-      <div class="info-box-title">💡 Résultat terrain</div>
-      <p style="margin:0;font-size:.88rem;line-height:1.65">Nos établissements connectés détectent en moyenne <strong>3 fois plus de dérives thermiques nocturnes</strong> qu'avant l'installation des sondes connectées — non pas parce que leurs équipements sont moins fiables, mais parce qu'avant, ces dérives passaient simplement inaperçues jusqu'au relevé du matin.</p>
+      <div class="info-box-title">💡 Pourquoi pas de sondes connectées automatiques ?</div>
+      <p style="margin:0;font-size:.88rem;line-height:1.65">Les sondes IoT enregistrent automatiquement les températures — ce qui semble pratique, mais crée un angle mort : <strong>elles ne vérifient pas que quelqu'un a bien regardé le frigo</strong>. Une sonde peut enregistrer des données sans que personne ne remarque une denrée abîmée, un joint défaillant ou un empilement inadapté. HACC.PRO fait le choix du relevé manuel parce qu'il force un vrai passage humain devant chaque enceinte — la seule façon de détecter ce qu'un capteur ne voit pas.</p>
     </div>
 
     <h2 id="faq">Questions fréquentes sur les températures HACCP</h2>
@@ -312,14 +311,14 @@
           <span class="faq-q-text">Quelle est la fréquence minimale de relevé de température réglementaire ?</span>
           <span class="faq-q-arrow">▼</span>
         </button>
-        <div class="faq-a">Pour les enceintes réfrigérées (froids positifs et négatifs), la fréquence minimale réglementaire est de 2 fois par jour : une mesure le matin à l'ouverture et une mesure en fin de service. Pour les plats maintenus en chaud, une mesure à cœur est obligatoire à chaque service. Avec HACC.PRO, ces relevés sont automatisés par des sondes connectées qui enregistrent en continu.</div>
+        <div class="faq-a">Pour les enceintes réfrigérées (froids positifs et négatifs), la fréquence minimale réglementaire est de 2 fois par jour : une mesure le matin à l'ouverture et une mesure en fin de service. Pour les plats maintenus en chaud, une mesure à cœur est obligatoire à chaque service. Avec HACC.PRO, le cuisinier saisit chaque relevé sur son smartphone depuis l'enceinte — l'application horodate automatiquement et envoie un rappel si un relevé est manquant.</div>
       </div>
     </div>
 
     <div class="article-cta">
       <div class="article-cta-inner">
         <h3>Maîtrisez vos températures HACCP avec HACC.PRO</h3>
-        <p>Sondes connectées, alertes temps réel, relevés horodatés et registres exportables en PDF. Zéro dérive non détectée, zéro relevé manquant. Essai gratuit 14 jours, sans carte bancaire.</p>
+        <p>Relevés manuels horodatés et infalsifiables, alertes en cas d'écart, rappels automatiques, registres exportables en PDF. Zéro relevé manquant, zéro falsification possible. Essai gratuit 14 jours, sans carte bancaire.</p>
         <a href="../signup.html" class="article-cta-btn">Commencer gratuitement →</a>
       </div>
     </div>
@@ -342,8 +341,8 @@
       <a href="#faq" class="toc-link">Questions fréquentes</a>
     </div>
     <div class="toc-cta">
-      <div class="toc-cta-h">Relevés auto 24 h/24</div>
-      <div class="toc-cta-p">Sondes connectées + alertes immédiates. Zéro relevé manquant, zéro dérive non détectée.</div>
+      <div class="toc-cta-h">Relevés horodatés &amp; signés</div>
+      <div class="toc-cta-p">Saisie manuelle infalsifiable. Rappels automatiques. Alertes en cas d'écart. Export PDF en 1 clic.</div>
       <a href="../signup.html" class="toc-cta-btn">Essai gratuit →</a>
     </div>
   </aside>
