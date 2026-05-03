@@ -72,7 +72,7 @@
   "name":"HACC.PRO",
   "url":"https://hacc.pro",
   "logo":"https://hacc.pro/icon-192.png",
-  "description":"Éditeur de logiciel HACCP pour la restauration française",
+  "description":"Éditeur de logiciel HACCP pour la restauration",
   "foundingDate":"2024",
   "areaServed":"FR",
   "contactPoint":{"@type":"ContactPoint","contactType":"customer support","email":"contact@hacc.pro","availableLanguage":"fr"}
@@ -232,6 +232,13 @@
   <div class="trust-bar-inner">
     <p class="trust-headline">Rejoignez le mouvement</p>
     <p class="trust-sub">Sécurisez votre traçabilité et passez vos contrôles DDPP sans stress — restaurants, cantines, EHPAD, traiteurs.</p>
+    <div class="trust-badges">
+      <span class="trust-badge">🍽️ Restaurants</span>
+      <span class="trust-badge">🏫 Cantines</span>
+      <span class="trust-badge">🏥 EHPAD</span>
+      <span class="trust-badge">🎂 Traiteurs</span>
+      <span class="trust-badge trust-badge-lang">🌐 Disponible dans toutes les langues</span>
+    </div>
   </div>
 </div>
 
@@ -625,50 +632,79 @@
   </div>
 </section>
 
+<!-- ── MULTILINGUE ── -->
+<section class="multilang-section" aria-label="Application multilingue">
+  <div class="multilang-inner">
+    <div class="multilang-icon">🌐</div>
+    <div class="multilang-text">
+      <h3 class="multilang-title">L'application parle la langue de vos équipes</h3>
+      <p class="multilang-sub">HACC.PRO est une web app — Chrome et les navigateurs modernes la traduisent automatiquement dans n'importe quelle langue en un clic. Vos cuisiniers, qu'ils soient francophones, anglophones, hispanophones ou autres, peuvent l'utiliser dans leur propre langue sans aucune configuration. Une même cuisine, plusieurs nationalités : zéro barrière.</p>
+    </div>
+    <div class="multilang-flags">
+      <span title="Français">🇫🇷</span>
+      <span title="English">🇬🇧</span>
+      <span title="Español">🇪🇸</span>
+      <span title="Português">🇵🇹</span>
+      <span title="Italiano">🇮🇹</span>
+      <span title="العربية">🇲🇦</span>
+      <span title="Română">🇷🇴</span>
+      <span title="Polski">🇵🇱</span>
+    </div>
+  </div>
+</section>
+
 <!-- ── CONTACT ── -->
 <section class="contact-section" id="contact" aria-labelledby="contact-h2">
   <div class="contact-inner">
     <div class="contact-text">
       <div class="section-tag">Contact</div>
-      <h2 class="section-h2" id="contact-h2">Une question ? Parlons-en.</h2>
+      <h2 class="section-h2" id="contact-h2">Une question ?<br>Parlons-en.</h2>
       <p class="contact-sub">Notre équipe répond sous 24h ouvrées. Vous pouvez aussi démarrer votre essai gratuit directement — aucune carte bancaire requise.</p>
       <ul class="contact-infos">
-        <li>📧 <a href="mailto:contact@hacc.pro">contact@hacc.pro</a></li>
-        <li>⏱ Réponse sous 24h ouvrées</li>
-        <li>🇫🇷 Équipe basée en France</li>
+        <li><span>📧</span> <a href="mailto:contact@hacc.pro">contact@hacc.pro</a></li>
+        <li><span>⏱</span> Réponse sous 24h ouvrées</li>
+        <li><span>🇫🇷</span> Équipe basée en France</li>
       </ul>
+      <div class="contact-reassure">
+        <div class="contact-reassure-item"><span class="contact-reassure-ico">🔒</span>Vos données sont sécurisées et confidentielles</div>
+        <div class="contact-reassure-item"><span class="contact-reassure-ico">🚀</span>Essai gratuit 14 jours sans carte bancaire</div>
+        <div class="contact-reassure-item"><span class="contact-reassure-ico">🌐</span>Compatible Chrome Translate — utilisable dans n'importe quelle langue</div>
+      </div>
     </div>
-    <form class="contact-form" id="contact-form" onsubmit="submitContact(event)">
-      <div class="contact-row">
-        <div class="contact-field">
-          <label class="contact-label">Nom *</label>
-          <input type="text" id="c-name" class="contact-input" placeholder="Marie Dupont" required maxlength="120">
+    <div class="contact-form-card">
+      <form class="contact-form" id="contact-form" onsubmit="submitContact(event)">
+        <div class="contact-row">
+          <div class="contact-field">
+            <label class="contact-label" for="c-name">Votre nom</label>
+            <input type="text" id="c-name" class="contact-input" placeholder="Marie Dupont" required maxlength="120">
+          </div>
+          <div class="contact-field">
+            <label class="contact-label" for="c-email">Votre email</label>
+            <input type="email" id="c-email" class="contact-input" placeholder="marie@restaurant.fr" required maxlength="200">
+          </div>
         </div>
         <div class="contact-field">
-          <label class="contact-label">Email *</label>
-          <input type="email" id="c-email" class="contact-input" placeholder="marie@restaurant.fr" required maxlength="200">
+          <label class="contact-label" for="c-type">Type d'établissement</label>
+          <select id="c-type" class="contact-input">
+            <option value="restaurant">Restaurant</option>
+            <option value="collectivite">Restauration collective</option>
+            <option value="ehpad">EHPAD / Maison de retraite</option>
+            <option value="traiteur">Traiteur</option>
+            <option value="autre">Autre</option>
+          </select>
         </div>
-      </div>
-      <div class="contact-field">
-        <label class="contact-label">Type d'établissement</label>
-        <select id="c-type" class="contact-input">
-          <option value="restaurant">Restaurant</option>
-          <option value="collectivite">Restauration collective</option>
-          <option value="ehpad">EHPAD / Maison de retraite</option>
-          <option value="traiteur">Traiteur</option>
-          <option value="autre">Autre</option>
-        </select>
-      </div>
-      <div class="contact-field">
-        <label class="contact-label">Message *</label>
-        <textarea id="c-message" class="contact-input contact-textarea" placeholder="Votre question ou demande…" required maxlength="3000" rows="4"></textarea>
-      </div>
-      <div id="contact-feedback" style="display:none;padding:12px 16px;border-radius:10px;font-size:.85rem;font-weight:700;margin-bottom:12px;"></div>
-      <button type="submit" class="contact-submit" id="contact-btn">
-        <span id="contact-btn-label">Envoyer le message</span>
-        <span id="contact-btn-spin" style="display:none">⏳</span>
-      </button>
-    </form>
+        <div class="contact-field">
+          <label class="contact-label" for="c-message">Votre message</label>
+          <textarea id="c-message" class="contact-input contact-textarea" placeholder="Décrivez votre besoin, votre type d'établissement, vos questions…" required maxlength="3000" rows="5"></textarea>
+        </div>
+        <div id="contact-feedback" style="display:none;padding:12px 16px;border-radius:10px;font-size:.85rem;font-weight:700;"></div>
+        <button type="submit" class="contact-submit" id="contact-btn">
+          <span id="contact-btn-label">Envoyer le message →</span>
+          <span id="contact-btn-spin" style="display:none">⏳</span>
+        </button>
+        <p style="font-size:.72rem;color:var(--muted);text-align:center;margin-top:8px">Un accusé de réception vous sera envoyé par email</p>
+      </form>
+    </div>
   </div>
 </section>
 
@@ -690,7 +726,7 @@
     <div class="footer-top">
       <div class="footer-brand">
         <span class="footer-brand-name">HACC<span>.PRO</span></span>
-        <p>Le logiciel HACCP qui simplifie la traçabilité alimentaire pour les restaurants et la restauration collective française.</p>
+        <p>Le logiciel HACCP qui simplifie la traçabilité alimentaire pour les professionnels de la restauration.</p>
       </div>
       <div class="footer-col">
         <h4>Produit</h4>

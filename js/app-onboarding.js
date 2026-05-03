@@ -154,16 +154,24 @@ window.saveAndContinue = async function() {
       'Prefer':        'return=representation'
     };
 
-    // Insérer les sites et récupérer leurs IDs
+    // Insérer les sites et récupérer leurs IDs (timeout 10s)
     var rows = sitesToInsert.map(function(nom){
       return { tenant_id: tenantId, nom: nom };
     });
 
-    var rSites = await fetch(SUPABASE_URL + '/rest/v1/sites', {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(rows)
-    });
+    var _ctrl = new AbortController();
+    var _tid  = setTimeout(function(){ _ctrl.abort(); }, 10000);
+    var rSites;
+    try {
+      rSites = await fetch(SUPABASE_URL + '/rest/v1/sites', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(rows),
+        signal: _ctrl.signal
+      });
+    } finally {
+      clearTimeout(_tid);
+    }
 
     var createdSites = [];
     if (rSites.ok) {
