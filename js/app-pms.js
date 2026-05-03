@@ -29,6 +29,25 @@ var ENC_TYPES = [
 /* ─── Init ─── */
 document.addEventListener('DOMContentLoaded', function(){
   try { _session = JSON.parse(localStorage.getItem('haccpro_session') || '{}'); } catch(e){}
+
+  // Pré-remplir section A depuis les données d'inscription
+  try {
+    var sd = JSON.parse(localStorage.getItem('haccpro_signup_data') || '{}');
+    if (sd.company) {
+      _data.nom = sd.company;
+      var nomEl = document.getElementById('a-nom');
+      if (nomEl) nomEl.value = sd.company;
+    }
+    if (sd.type) {
+      _data.type = sd.type;
+      // Sélectionner la tuile correspondante
+      var tiles = document.querySelectorAll('#a-type-tiles .tile');
+      tiles.forEach(function(t) {
+        t.classList.toggle('selected', t.dataset.val === sd.type);
+      });
+    }
+  } catch(e) {}
+
   _renderEncSection();
   _updateDots();
 });

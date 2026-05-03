@@ -193,7 +193,8 @@ async function doSignup(){
     // 5. Sauvegarder la session et rediriger
     localStorage.setItem('haccpro_session', JSON.stringify({
       token, userId, role:'directeur',
-      tenantId, fullName:_data.company
+      tenantId, fullName:_data.company,
+      plan: _data.plan
     }));
     localStorage.setItem('haccpro_signup_data', JSON.stringify({
       company:_data.company, type:_data.type,

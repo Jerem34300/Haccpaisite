@@ -8571,6 +8571,7 @@ async function renderSuperAdmin() {
   <div class="sa-tabs">
     <button class="sa-tab active" onclick="saSwitchTab('stats',this)">📊 Statistiques</button>
     <button class="sa-tab" onclick="saSwitchTab('entreprises',this)">🏢 Entreprises</button>
+    <button class="sa-tab" onclick="saSwitchTab('inscrits',this)">👥 Inscrits</button>
     <button class="sa-tab" onclick="saSwitchTab('plans',this)">💰 Plans & Tarifs</button>
   </div>
 
@@ -8688,9 +8689,9 @@ async function renderSuperAdmin() {
       <div class="sa-field">
         <span class="sa-label">Plan tarifaire</span>
         <select class="sa-input" id="sa-modal-plan" style="cursor:pointer">
-          <option value="starter">Starter — 49€/mois (1–3 sites)</option>
-          <option value="pro" selected>Pro — 149€/mois (4–15 sites)</option>
-          <option value="enterprise">Enterprise — Sur devis (illimité)</option>
+          <option value="solo">Solo — 29€/mois (1 cuisine)</option>
+          <option value="multi" selected>Multi — 49€/mois (jusqu'à 3 cuisines)</option>
+          <option value="enterprise">Entreprise — Sur devis (illimité)</option>
         </select>
       </div>
 
@@ -8725,9 +8726,9 @@ async function renderSuperAdmin() {
       <div class="sa-card-title">💰 Plans tarifaires</div>
       <div class="sa-plan-grid">
         ${[
-          {name:'Starter',price:'49€',period:'/mois',sites:'1–3 sites',users:'5 utilisateurs',col:'#0369a1',sel:false},
-          {name:'Pro',price:'149€',period:'/mois',sites:'4–15 sites',users:'20 utilisateurs',col:'#7c3aed',sel:true},
-          {name:'Enterprise',price:'Sur devis',period:'',sites:'Illimité',users:'Illimité',col:'#0f2240',sel:false},
+          {name:'Solo',price:'29€',period:'/mois',sites:'1 cuisine',users:'Toutes options',col:'#0369a1',sel:false},
+          {name:'Multi',price:'49€',period:'/mois',sites:'3 cuisines',users:'+19€/cuisine supp.',col:'#7c3aed',sel:true},
+          {name:'Entreprise',price:'Sur devis',period:'',sites:'Illimité',users:'Illimité',col:'#0f2240',sel:false},
         ].map(p=>`
         <div class="sa-plan-card ${p.sel?'sel':''}">
           <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;color:${p.col};letter-spacing:.5px;margin-bottom:4px">${p.name}</div>
@@ -8744,6 +8745,17 @@ async function renderSuperAdmin() {
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Inscrits -->
+  <div id="sa-tab-inscrits" style="display:none">
+    <div class="sa-card">
+      <div class="sa-card-title" style="justify-content:space-between">
+        <span>👥 Nouveaux inscrits</span>
+        <button onclick="saLoadInscrits()" style="background:none;border:none;font-size:.75rem;color:var(--muted);cursor:pointer;font-family:var(--font)">🔄 Actualiser</button>
+      </div>
+      <div id="sa-inscrits-content"><div class="loading"><div class="spinner"></div>Chargement…</div></div>
+    </div>
   </div>`;
 
   setContent(html);
@@ -8751,12 +8763,53 @@ async function renderSuperAdmin() {
 
 // ── Fonctions Super Admin ─────────────────────────────────────
 function saSwitchTab(tab, btn) {
-  ['stats','entreprises','plans'].forEach(t => {
+  ['stats','entreprises','plans','inscrits'].forEach(t => {
     const el = document.getElementById('sa-tab-'+t);
     if (el) el.style.display = t===tab ? 'block' : 'none';
   });
   document.querySelectorAll('.sa-tab').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+  if (tab === 'inscrits') saLoadInscrits();
+}
+
+async function saLoadInscrits() {
+  const el = document.getElementById('sa-inscrits-content');
+  if (!el) return;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Chargement…</div>';
+  try {
+    const profiles = await supaAdmin('GET',
+      '/rest/v1/profiles?select=id,full_name,role,created_at,tenant_id,tenants(name)&order=created_at.desc&limit=100',
+      null, {'Accept':'application/json'}
+    );
+    if (!profiles || !profiles.length) {
+      el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)">Aucun inscrit pour l\'instant.</div>';
+      return;
+    }
+    const ROLE_LABELS = { directeur:'Directeur', chef_secteur:'Chef de secteur', siege:'Siège', super_admin:'Super Admin', cuisinier:'Cuisinier' };
+    const rows = profiles.map(p => {
+      const d = p.created_at ? new Date(p.created_at).toLocaleDateString('fr-FR') : '—';
+      const tenant = p.tenants?.name || p.tenant_id || '—';
+      const role   = ROLE_LABELS[p.role] || p.role || '—';
+      return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 80px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:.82rem">
+        <div style="font-weight:800;color:var(--navy)">${_esc(p.full_name||'—')}</div>
+        <div style="color:var(--muted)">${_esc(tenant)}</div>
+        <div><span style="background:#f3e8f3;color:var(--navy);border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:800">${_esc(role)}</span></div>
+        <div style="color:var(--muted);font-size:.72rem">${d}</div>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 80px;gap:8px;padding:6px 0 8px;border-bottom:2px solid var(--border);font-size:.65rem;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)">
+        <div>Nom</div><div>Entreprise</div><div>Rôle</div><div>Inscrit le</div>
+      </div>
+      ${rows}
+      <div style="font-size:.72rem;color:var(--muted);margin-top:10px;text-align:right">${profiles.length} profil(s)</div>`;
+  } catch(e) {
+    el.innerHTML = '<div style="padding:16px;color:#dc2626;font-size:.82rem">Erreur : ' + _esc(e.message) + '</div>';
+  }
+}
+
+function _esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ── Gestion des entreprises (localStorage) ────────────────────
@@ -9011,9 +9064,8 @@ async function saSaveCompany() {
           slug: data.name.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'') },
         {'Prefer':'return=representation'}
       );
-      const r_ok = !!r_raw;
-      if (r_ok) {
-        const rows = await r.json();
+      if (r_raw) {
+        const rows = Array.isArray(r_raw) ? r_raw : (r_raw ? [r_raw] : []);
         if (rows?.[0]?.id) data.id = rows[0].id;
       }
     } catch(e) { console.warn('[tenant POST]', e); }

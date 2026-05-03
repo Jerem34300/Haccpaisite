@@ -115,7 +115,7 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
     <div class="hd-inner">
       <div class="hd-top">
         <div class="hd-title" id="hd-title">Configuration de votre HACCP</div>
-        <div class="hd-step" id="hd-step">Étape 1/4</div>
+        <div class="hd-step" id="hd-step">Étape 1/3</div>
       </div>
       <div class="progress-bar"><div class="progress-fill" id="progress" style="width:25%"></div></div>
     </div>
@@ -130,9 +130,9 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
       <div class="welcome-sub">Votre compte est créé. Configurons votre système HACCP en 3 étapes rapides pour que vous puissiez commencer à tracer dès aujourd'hui.</div>
       <div class="welcome-plan" id="welcome-plan">🎁 Essai gratuit 14 jours activé</div>
       <div class="what-next">
-        <div class="what-next-item"><div class="what-next-num">1</div>Ajouter vos cuisines / sites</div>
-        <div class="what-next-item"><div class="what-next-num">2</div>Configurer vos enceintes réfrigérées</div>
-        <div class="what-next-item"><div class="what-next-num">3</div>Générer votre PMS automatiquement</div>
+        <div class="what-next-item"><div class="what-next-num">1</div>Nommer vos cuisines / sites</div>
+        <div class="what-next-item"><div class="what-next-num">2</div>Répondre au questionnaire HACCP (5 min)</div>
+        <div class="what-next-item"><div class="what-next-num">3</div>Votre PMS est généré automatiquement</div>
       </div>
       <button class="btn-primary green" onclick="goStep(2)">C'est parti →</button>
     </div>
@@ -140,32 +140,24 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
     <!-- Step 2: Sites/Cuisines -->
     <div class="step" id="step-2">
       <div class="step-title">Vos cuisines</div>
-      <div class="step-sub">Ajoutez le nom de chaque cuisine ou site que vous gérez. Vous pourrez en ajouter d'autres plus tard.</div>
+      <div class="step-sub" id="step2-sub">Ajoutez le nom de chaque cuisine ou site que vous gérez. Vous pourrez en ajouter d'autres plus tard.</div>
       <div class="item-list" id="sites-list"></div>
-      <button class="btn-add" onclick="addSite()">+ Ajouter une cuisine</button>
+      <button class="btn-add" id="btn-add-site" onclick="addSite()">+ Ajouter une cuisine</button>
       <div class="err" id="err-2"></div>
-      <button class="btn-primary" style="margin-top:20px" onclick="goStep(3)">Continuer →</button>
+      <button class="btn-primary" style="margin-top:20px" id="btn-continue-2" onclick="saveAndContinue()">
+        <span id="btn-continue-label">Enregistrer et continuer →</span>
+        <div class="spinner" id="btn-continue-spin"></div>
+      </button>
+      <div class="err" id="err-save"></div>
     </div>
 
-    <!-- Step 3: Enceintes -->
+    <!-- Step 3: Terminé / PMS setup -->
     <div class="step" id="step-3">
-      <div class="step-title">Enceintes réfrigérées</div>
-      <div class="step-sub">Ajoutez vos chambres froides, congélateurs et vitrines. Les températures de référence sont pré-remplies selon le type.</div>
-      <div id="enc-list"></div>
-      <button class="btn-add" style="margin-bottom:0" onclick="addEnceinte()">+ Ajouter une enceinte</button>
-      <div class="err" id="err-3"></div>
-      <button class="btn-primary" style="margin-top:20px" onclick="goStep(4)">Continuer →</button>
-      <button class="btn-back" onclick="goStep(2)">← Retour</button>
-    </div>
-
-    <!-- Step 4: Terminé / PMS setup -->
-    <div class="step" id="step-4">
       <div class="done-icon">✅</div>
-      <div class="done-title">Configuration enregistrée !</div>
-      <div class="done-sub" id="done-summary">Vos cuisines et enceintes ont été créées. Dernière étape : répondez au questionnaire HACCP pour générer automatiquement votre Plan de Maîtrise Sanitaire.</div>
-      <button class="btn-primary green" id="btn-save" onclick="saveAndContinue()">
-        <span id="btn-save-label">Générer mon PMS →</span>
-        <div class="spinner" id="btn-save-spin"></div>
+      <div class="done-title">Cuisines enregistrées !</div>
+      <div class="done-sub" id="done-summary">Vos cuisines ont été créées. Répondez maintenant au questionnaire HACCP pour générer automatiquement votre Plan de Maîtrise Sanitaire.</div>
+      <button class="btn-primary green" onclick="window.location.href='pms-setup.html'">
+        Générer mon PMS →
       </button>
       <button class="btn-skip" onclick="window.location.href='dashboard.html'">Passer, configurer le PMS plus tard</button>
     </div>
