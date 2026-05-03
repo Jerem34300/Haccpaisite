@@ -123,9 +123,13 @@ window.removeSite = function(idx, btn) {
 };
 
 /* ─── Sauvegarde ─── */
-window.saveAndContinue = async function() {
+window.saveAndContinue = function() {
+  // Chercher le bouton par tous les IDs possibles (compatibilité cache SW)
+  var btn   = document.getElementById('btn-continue-2') || document.getElementById('btn-save');
+  var label = document.getElementById('btn-continue-label') || document.getElementById('btn-save-label');
+  var spin  = document.getElementById('btn-continue-spin')  || document.getElementById('btn-save-spin');
+
   hideErr('err-2');
-  hideErr('err-save');
 
   // Validation : au moins une cuisine nommée
   var sitesToInsert = _sites.filter(function(s){ return s && s.trim(); })
@@ -136,80 +140,61 @@ window.saveAndContinue = async function() {
     return;
   }
 
-  var btn   = document.getElementById('btn-continue-2');
-  var label = document.getElementById('btn-continue-label');
-  var spin  = document.getElementById('btn-continue-spin');
-  btn.disabled = true;
+  // Désactiver visuellement le bouton
+  if (btn)   btn.disabled = true;
   if (label) label.style.display = 'none';
   if (spin)  spin.style.display  = 'block';
 
+  // Sauvegarder les noms en localStorage immédiatement (pas de blocage réseau)
   try {
-    var token    = _session.token || _session.userToken || '';
-    var tenantId = _session.tenantId || '';
+    var sd = JSON.parse(localStorage.getItem('haccpro_signup_data') || '{}');
+    sd.siteNames = sitesToInsert;
+    localStorage.setItem('haccpro_signup_data', JSON.stringify(sd));
+  } catch(e) {}
 
-    var headers = {
+  // Avancer IMMÉDIATEMENT à l'étape suivante — pas d'attente Supabase
+  var nb = sitesToInsert.length;
+  var sumEl = document.getElementById('done-summary');
+  if (sumEl) {
+    sumEl.textContent = nb + ' cuisine' + (nb > 1 ? 's' : '') +
+      ' enregistrée' + (nb > 1 ? 's' : '') +
+      '. Répondez maintenant au questionnaire HACCP pour générer automatiquement votre Plan de Maîtrise Sanitaire.';
+  }
+  goStep(3);
+
+  // Envoyer à Supabase en arrière-plan (non bloquant)
+  _saveSitesBackground(sitesToInsert);
+};
+
+function _saveSitesBackground(siteNames) {
+  var token    = _session.token || _session.userToken || '';
+  var tenantId = _session.tenantId || '';
+  if (!token || !tenantId) return;
+
+  var rows = siteNames.map(function(nom){ return { tenant_id: tenantId, nom: nom }; });
+  var ctrl = new AbortController();
+  setTimeout(function(){ ctrl.abort(); }, 8000);
+
+  fetch(SUPABASE_URL + '/rest/v1/sites', {
+    method:  'POST',
+    headers: {
       'Content-Type':  'application/json',
       'apikey':        SUPABASE_ANON_KEY,
       'Authorization': 'Bearer ' + token,
       'Prefer':        'return=representation'
-    };
-
-    // Insérer les sites et récupérer leurs IDs (timeout 10s)
-    var rows = sitesToInsert.map(function(nom){
-      return { tenant_id: tenantId, nom: nom };
-    });
-
-    var _ctrl = new AbortController();
-    var _tid  = setTimeout(function(){ _ctrl.abort(); }, 10000);
-    var rSites;
-    try {
-      rSites = await fetch(SUPABASE_URL + '/rest/v1/sites', {
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(rows),
-        signal: _ctrl.signal
-      });
-    } finally {
-      clearTimeout(_tid);
-    }
-
-    var createdSites = [];
-    if (rSites.ok) {
-      try { createdSites = await rSites.json(); } catch(e) {}
-    } else {
-      console.warn('[Onboarding] sites insert:', rSites.status);
-    }
-
-    // Stocker les IDs des sites créés pour pms-setup
-    if (createdSites && createdSites.length) {
-      var signupData = JSON.parse(localStorage.getItem('haccpro_signup_data') || '{}');
-      signupData.siteIds      = createdSites.map(function(s){ return s.id; });
-      signupData.siteNames    = createdSites.map(function(s){ return s.nom; });
-      signupData.primarySiteId = createdSites[0] && createdSites[0].id;
-      localStorage.setItem('haccpro_signup_data', JSON.stringify(signupData));
-    }
-
-    // Résumé
-    var nb = sitesToInsert.length;
-    var sumEl = document.getElementById('done-summary');
-    if (sumEl) {
-      sumEl.textContent = nb + ' cuisine' + (nb > 1 ? 's' : '') +
-        ' créée' + (nb > 1 ? 's' : '') +
-        '. Répondez maintenant au questionnaire HACCP pour générer automatiquement votre Plan de Maîtrise Sanitaire.';
-    }
-
-    goStep(3);
-
-  } catch(err) {
-    console.error('[Onboarding] saveAndContinue:', err);
-    showErr('err-save', 'Erreur lors de l\'enregistrement. Vous pouvez continuer quand même.');
-    // Avancer quand même pour ne pas bloquer l'utilisateur
-    goStep(3);
-  } finally {
-    btn.disabled = false;
-    if (label) label.style.display = '';
-    if (spin)  spin.style.display  = 'none';
-  }
+    },
+    body:   JSON.stringify(rows),
+    signal: ctrl.signal
+  }).then(function(r) {
+    if (!r.ok) { console.warn('[Onboarding] sites insert:', r.status); return; }
+    return r.json();
+  }).then(function(created) {
+    if (!created || !created.length) return;
+    var sd = JSON.parse(localStorage.getItem('haccpro_signup_data') || '{}');
+    sd.siteIds       = created.map(function(s){ return s.id; });
+    sd.primarySiteId = created[0] && created[0].id;
+    localStorage.setItem('haccpro_signup_data', JSON.stringify(sd));
+  }).catch(function(e){ console.warn('[Onboarding] bg insert failed:', e.message); });
 };
 
 /* ─── Helpers ─── */
