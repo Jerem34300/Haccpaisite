@@ -647,7 +647,6 @@ async function bootApp(){
     // Afficher admin si siège
     if(_profile.role==='super_admin'){
       const nsa = document.getElementById('nav-super'); if(nsa) nsa.style.display='flex';
-      const nsp = document.getElementById('nav-superadmin-page'); if(nsp) nsp.style.display='flex';
       document.getElementById('nav-admin-section').style.display='block';
     }
     if(_profile.role==='siege'||_profile.role==='super_admin'){
