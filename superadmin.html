@@ -47,13 +47,13 @@ button{font-family:var(--font)}
 
 /* ── Main Layout ── */
 #admin-ui{height:100vh;display:flex;flex-direction:column}
-.topbar{height:52px;background:var(--navy);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}
-.topbar-logo{font-size:.9rem;font-weight:900;color:#fff;display:flex;align-items:center;gap:8px;text-decoration:none}
+.topbar{height:52px;background:var(--navy);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}
+.topbar-logo{font-size:.9rem;font-weight:900;color:#fff;display:inline-flex;align-items:center;text-decoration:none;letter-spacing:0;white-space:nowrap}
 .topbar-logo span{color:var(--green)}
-.topbar-badge{background:rgba(141,198,63,.18);color:var(--green);border-radius:6px;padding:2px 9px;font-size:.68rem;font-weight:900;letter-spacing:.5px}
-.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-.topbar-admin{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.5)}
-.btn-logout{background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);border-radius:8px;padding:6px 12px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
+.topbar-badge{background:rgba(141,198,63,.18);color:var(--green);border-radius:6px;padding:2px 9px;font-size:.68rem;font-weight:900;letter-spacing:.5px;white-space:nowrap}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.topbar-admin{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+.btn-logout{background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);border-radius:8px;padding:6px 12px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s;white-space:nowrap}
 .btn-logout:hover{background:rgba(255,255,255,.15);color:#fff}
 .layout{flex:1;display:flex;overflow:hidden}
 
@@ -85,6 +85,7 @@ button{font-family:var(--font)}
 .main-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted)}
 .main-empty-icon{font-size:2.5rem;opacity:.4}
 .main-empty p{font-size:.88rem;font-weight:700}
+.main-empty-hint{display:none;font-size:.78rem;color:var(--muted);font-weight:700;background:rgba(141,198,63,.1);border:1px solid rgba(141,198,63,.25);border-radius:10px;padding:10px 16px;margin-top:4px}
 
 /* Company header */
 .co-header{background:var(--white);border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;gap:14px;flex-shrink:0}
@@ -188,15 +189,19 @@ button{font-family:var(--font)}
   .sidebar{position:fixed;left:-100%;top:52px;bottom:0;z-index:200;transition:left .25s;width:min(280px,85vw)}
   .sidebar.open{left:0;box-shadow:4px 0 24px rgba(0,0,0,.4)}
   .sb-toggle{display:flex!important}
+  .topbar-admin{display:none}
+  .btn-logout{padding:6px 10px;font-size:.7rem}
+  .topbar-badge{font-size:.6rem;padding:2px 6px}
   .info-grid{grid-template-columns:1fr}
   .user-row{grid-template-columns:1fr 90px 80px}
   .user-row .user-email,.user-row .user-since{display:none}
   .co-panel{padding:16px}
   .co-header{flex-wrap:wrap;gap:10px}
   .co-hd-right{flex-basis:100%}
+  .main-empty-hint{display:block}
 }
-.sb-toggle{display:none;background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;align-items:center;justify-content:center;font-size:1.1rem;transition:all .2s}
-.sb-toggle:hover{background:rgba(255,255,255,.18)}
+.sb-toggle{display:none;background:var(--green);border:none;color:#fff;width:38px;height:38px;border-radius:10px;cursor:pointer;align-items:center;justify-content:center;font-size:1.2rem;transition:all .2s;flex-shrink:0}
+.sb-toggle:hover{background:var(--green2)}
 .sb-overlay{display:none;position:fixed;inset:52px 0 0 0;background:rgba(0,0,0,.45);z-index:199;cursor:pointer}
 </style>
 </head>
@@ -231,7 +236,7 @@ button{font-family:var(--font)}
 <div id="admin-ui" style="display:none">
   <div class="topbar">
     <button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()">☰</button>
-    <span class="topbar-logo">HACC<span>.PRO</span></span>
+    <span class="topbar-logo">HACC<span style="color:var(--green)">.PRO</span></span>
     <span class="topbar-badge">SUPER ADMIN</span>
     <div class="topbar-right">
       <span class="topbar-admin" id="topbar-email"></span>
@@ -256,6 +261,7 @@ button{font-family:var(--font)}
       <div class="main-empty" id="main-empty">
         <div class="main-empty-icon">🏢</div>
         <p>Sélectionnez une entreprise</p>
+        <p class="main-empty-hint">☰ Tapez le bouton vert pour ouvrir la liste</p>
       </div>
       <div id="co-detail" style="display:none"></div>
     </div>
@@ -386,7 +392,7 @@ async function api(method, path, body, extraHeaders) {
 async function loadCompanies() {
   document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:rgba(255,255,255,.35);font-size:.8rem;text-align:center">Chargement…</div>';
   try {
-    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,extra_sites,created_at&order=name.asc');
+    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
     _companies = Array.isArray(tenants) ? tenants : [];
     renderSidebar(_companies);
   } catch(e) {
@@ -705,13 +711,28 @@ function openCoModal(id) {
         var extra = parseInt(document.getElementById('m-extra')?.value||'0', 10) || 0;
         if (!name) { showModalMsg('Le nom est obligatoire.', true); return false; }
         if (co) {
-          await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan, extra_sites: extra});
+          // Try with extra_sites; fall back without if column doesn't exist yet
+          try {
+            await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan, extra_sites: extra});
+          } catch(e) {
+            if (e.message.includes('extra_sites') || e.message.includes('column')) {
+              await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan});
+            } else { throw e; }
+          }
           toast('Entreprise mise à jour ✓', 'green');
         } else {
           var email = (document.getElementById('m-coemail')||{}).value||'';
           var pass  = (document.getElementById('m-copass')||{}).value||'';
-          // Create tenant
-          var rows = await api('POST', '/rest/v1/tenants', {name, plan, extra_sites: extra}, {'Prefer':'return=representation'});
+          var payload = {name, plan};
+          // Try with extra_sites; silently omit if column not yet created in Supabase
+          var rows;
+          try {
+            rows = await api('POST', '/rest/v1/tenants', {name, plan, extra_sites: extra}, {'Prefer':'return=representation'});
+          } catch(e) {
+            if (e.message.includes('extra_sites') || e.message.includes('column')) {
+              rows = await api('POST', '/rest/v1/tenants', payload, {'Prefer':'return=representation'});
+            } else { throw e; }
+          }
           var newCo = Array.isArray(rows) ? rows[0] : rows;
           var tenantId = newCo?.id;
           // Create admin user if email provided
