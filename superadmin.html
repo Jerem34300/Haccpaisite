@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Super Admin — HACC.PRO</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0F2240;--navy2:#1a3558;--navy3:#243f66;
+  --green:#8DC63F;--green2:#6fa832;
+  --bg:#F5F6FA;--white:#fff;
+  --border:#E4DEE4;--border2:#d1c8d1;
+  --text:#1a1a2e;--muted:#7A6579;
+  --danger:#dc2626;--danger-bg:#fef2f2;
+  --warn:#d97706;--warn-bg:#fffbeb;
+  --font:'Nunito',sans-serif;
+  --sidebar:264px;
+}
+html,body{height:100%;font-family:var(--font);color:var(--text);background:var(--bg)}
+button{font-family:var(--font)}
+
+/* ── Login Screen ── */
+#login-screen{min-height:100vh;background:var(--navy);display:flex;align-items:center;justify-content:center;padding:20px;
+  background-image:radial-gradient(ellipse at 20% 50%,rgba(92,30,90,.4) 0%,transparent 55%),radial-gradient(ellipse at 80% 20%,rgba(141,198,63,.1) 0%,transparent 50%)}
+.login-box{background:#fff;border-radius:24px;padding:0;width:100%;max-width:360px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(15,34,64,.35)}
+.login-hd{background:var(--navy);padding:28px 28px 24px;text-align:center;position:relative;overflow:hidden}
+.login-hd::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 80% 0%,rgba(141,198,63,.14),transparent 60%)}
+.login-logo{font-size:1.5rem;font-weight:900;color:#fff;position:relative;z-index:1}
+.login-logo span{color:var(--green)}
+.login-sub{font-size:.7rem;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-top:4px;position:relative;z-index:1}
+.login-body{padding:28px}
+.lf{margin-bottom:14px}
+.lf label{display:block;font-size:.67rem;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.lf input{width:100%;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
+.lf input:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.btn-connect{width:100%;padding:14px;margin-top:6px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-connect:hover{background:var(--navy2)}
+.btn-connect:disabled{opacity:.6;pointer-events:none}
+.login-err{font-size:.78rem;font-weight:700;color:var(--danger);background:var(--danger-bg);border-radius:8px;padding:9px 12px;margin-top:12px;display:none;text-align:center}
+.spin{width:15px;height:15px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Main Layout ── */
+#admin-ui{height:100vh;display:flex;flex-direction:column}
+.topbar{height:52px;background:var(--navy);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}
+.topbar-logo{font-size:.9rem;font-weight:900;color:#fff;display:flex;align-items:center;gap:8px;text-decoration:none}
+.topbar-logo span{color:var(--green)}
+.topbar-badge{background:rgba(141,198,63,.18);color:var(--green);border-radius:6px;padding:2px 9px;font-size:.68rem;font-weight:900;letter-spacing:.5px}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.topbar-admin{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.5)}
+.btn-logout{background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);border-radius:8px;padding:6px 12px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-logout:hover{background:rgba(255,255,255,.15);color:#fff}
+.layout{flex:1;display:flex;overflow:hidden}
+
+/* ── Sidebar ── */
+.sidebar{width:var(--sidebar);background:var(--navy);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;border-right:1px solid rgba(255,255,255,.06)}
+.sb-top{padding:12px 12px 6px;flex-shrink:0}
+.sb-search{width:100%;background:rgba(255,255,255,.08);border:1.5px solid rgba(255,255,255,.1);border-radius:10px;padding:8px 12px;font-size:.82rem;color:#fff;font-family:var(--font);outline:none;transition:all .2s}
+.sb-search::placeholder{color:rgba(255,255,255,.35)}
+.sb-search:focus{border-color:var(--green);background:rgba(255,255,255,.12)}
+.sb-label{font-size:.6rem;font-weight:900;color:rgba(255,255,255,.3);letter-spacing:1px;text-transform:uppercase;padding:10px 16px 4px}
+.sb-list{flex:1;overflow-y:auto;padding-bottom:8px}
+.sb-list::-webkit-scrollbar{width:4px}
+.sb-list::-webkit-scrollbar-track{background:transparent}
+.sb-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:2px}
+.co-item{padding:9px 12px;cursor:pointer;border-radius:10px;margin:2px 8px;transition:all .15s;display:flex;align-items:center;gap:9px;color:rgba(255,255,255,.6);font-size:.82rem;font-weight:700}
+.co-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.co-item.active{background:rgba(141,198,63,.15);color:var(--green)}
+.co-avatar{width:28px;height:28px;border-radius:7px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:900;color:#fff;flex-shrink:0;text-transform:uppercase}
+.co-item.active .co-avatar{background:rgba(141,198,63,.25);color:var(--green)}
+.co-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.co-plan{font-size:.6rem;padding:1px 6px;border-radius:4px;font-weight:900;flex-shrink:0;background:rgba(255,255,255,.08);color:rgba(255,255,255,.4)}
+.co-item.active .co-plan{background:rgba(141,198,63,.2);color:var(--green)}
+.sb-footer{padding:10px 12px;flex-shrink:0;border-top:1px solid rgba(255,255,255,.06)}
+.btn-add-co{width:100%;padding:9px;background:rgba(141,198,63,.15);border:1.5px dashed rgba(141,198,63,.35);border-radius:10px;color:var(--green);font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-add-co:hover{background:rgba(141,198,63,.25);border-color:var(--green)}
+
+/* ── Main Content ── */
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.main-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--muted)}
+.main-empty-icon{font-size:2.5rem;opacity:.4}
+.main-empty p{font-size:.88rem;font-weight:700}
+
+/* Company header */
+.co-header{background:var(--white);border-bottom:1px solid var(--border);padding:18px 24px;display:flex;align-items:center;gap:14px;flex-shrink:0}
+.co-hd-avatar{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:900;color:#fff;flex-shrink:0}
+.co-hd-name{font-size:1.05rem;font-weight:900;color:var(--text)}
+.co-hd-meta{font-size:.75rem;color:var(--muted);font-weight:700;margin-top:2px}
+.co-hd-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.badge-plan{border-radius:6px;padding:3px 10px;font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.5px}
+.badge-solo{background:#e0f0ff;color:#1d4ed8}
+.badge-multi{background:#f0fdf4;color:#166534}
+.badge-enterprise{background:#faf0ff;color:#7c3aed}
+
+/* Tabs */
+.co-tabs{background:var(--white);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;flex-shrink:0}
+.co-tab{padding:12px 16px;font-size:.82rem;font-weight:800;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap}
+.co-tab:hover{color:var(--text)}
+.co-tab.active{color:var(--navy);border-bottom-color:var(--green)}
+
+/* Content panels */
+.co-panel{padding:24px;display:none}
+.co-panel.active{display:block}
+
+/* Info panel */
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+.info-card{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:16px}
+.info-card-label{font-size:.65rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.info-card-value{font-size:.95rem;font-weight:800;color:var(--text)}
+.info-card-value.muted{color:var(--muted);font-weight:700}
+.btn-edit-co{padding:8px 18px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-edit-co:hover{background:var(--navy2)}
+
+/* Users panel */
+.users-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.users-bar h3{font-size:.9rem;font-weight:900;color:var(--text)}
+.btn-add-user{padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-add-user:hover{background:var(--green2)}
+.user-table{background:var(--white);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.user-row{display:grid;grid-template-columns:1.2fr 1.8fr 1fr 90px 80px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;font-size:.82rem;transition:background .15s}
+.user-row:last-child{border-bottom:none}
+.user-row:hover{background:#fafafa}
+.user-row.thead{background:#faf7fa;font-size:.63rem;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:8px 16px;border-bottom:2px solid var(--border)}
+.user-name{font-weight:800;color:var(--text)}
+.user-email{color:var(--muted);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.role-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.68rem;font-weight:900}
+.role-directeur{background:#e0f0ff;color:#1d4ed8}
+.role-siege{background:#f3e8ff;color:#7c3aed}
+.role-super_admin{background:#fef3c7;color:#92400e}
+.role-chef_secteur{background:#e0fef0;color:#065f46}
+.role-cuisinier{background:#f3f4f6;color:#374151}
+.user-actions{display:flex;gap:6px;justify-content:flex-end}
+.btn-icon{width:30px;height:30px;border:none;border-radius:8px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.btn-icon.pwd{background:#f0f9ff;color:#0369a1}
+.btn-icon.pwd:hover{background:#0369a1;color:#fff}
+.btn-icon.del{background:#fef2f2;color:var(--danger)}
+.btn-icon.del:hover{background:var(--danger);color:#fff}
+.btn-icon.role{background:#f0fdf4;color:#166534}
+.btn-icon.role:hover{background:#166534;color:#fff}
+.user-since{color:var(--muted);font-size:.75rem}
+.users-loading{padding:32px;text-align:center;color:var(--muted);font-size:.85rem}
+
+/* Stats panel */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:20px}
+.kpi{background:var(--white);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center}
+.kpi-val{font-size:1.8rem;font-weight:900;color:var(--navy)}
+.kpi-lbl{font-size:.68rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+
+/* ── Modals ── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;backdrop-filter:blur(2px)}
+.modal{background:#fff;border-radius:20px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.2);overflow:hidden}
+.modal-hd{background:var(--navy);padding:20px 24px;display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:.95rem;font-weight:900;color:#fff}
+.modal-close{background:rgba(255,255,255,.1);border:none;color:rgba(255,255,255,.7);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.modal-close:hover{background:rgba(255,255,255,.2);color:#fff}
+.modal-body{padding:24px}
+.mf{margin-bottom:14px}
+.mf label{display:block;font-size:.67rem;font-weight:900;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.mf input,.mf select{width:100%;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:10px 14px;font-size:.88rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s;appearance:none}
+.mf input:focus,.mf select:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.1)}
+.modal-footer{padding:0 24px 24px;display:flex;gap:8px}
+.btn-primary{flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:12px;font-size:.88rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+.btn-primary:hover{background:var(--navy2)}
+.btn-primary.green{background:var(--green)}
+.btn-primary.green:hover{background:var(--green2)}
+.btn-primary.danger{background:var(--danger)}
+.btn-primary.danger:hover{background:#b91c1c}
+.btn-primary:disabled{opacity:.6;pointer-events:none}
+.btn-cancel{padding:12px 16px;background:#f3f4f6;color:var(--muted);border:none;border-radius:12px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-cancel:hover{background:#e5e7eb}
+.modal-msg{font-size:.78rem;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-weight:700}
+.modal-msg.err{background:var(--danger-bg);color:var(--danger)}
+.modal-msg.ok{background:#f0fdf4;color:#166534}
+
+/* Toasts */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;font-size:.82rem;font-weight:800;z-index:9999;opacity:0;transform:translateY(10px);transition:all .25s;pointer-events:none;max-width:300px}
+.toast.show{opacity:1;transform:none}
+.toast.green{background:var(--green)}
+.toast.danger{background:var(--danger)}
+
+/* Mobile */
+@media(max-width:640px){
+  .sidebar{position:fixed;left:-264px;top:52px;bottom:0;z-index:200;transition:left .25s}
+  .sidebar.open{left:0}
+  .sb-toggle{display:flex!important}
+  .info-grid{grid-template-columns:1fr}
+  .user-row{grid-template-columns:1fr 1fr 80px}
+  .user-row .user-email,.user-row .user-since{display:none}
+  .co-panel{padding:16px}
+}
+.sb-toggle{display:none;background:rgba(255,255,255,.1);border:none;color:#fff;width:32px;height:32px;border-radius:8px;cursor:pointer;align-items:center;justify-content:center;font-size:1.1rem;transition:all .2s}
+.sb-toggle:hover{background:rgba(255,255,255,.18)}
+</style>
+</head>
+<body>
+
+<!-- ── Login Screen ── -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-hd">
+      <div class="login-logo">HACC<span>.PRO</span></div>
+      <div class="login-sub">Accès Super Admin</div>
+    </div>
+    <div class="login-body">
+      <div class="lf">
+        <label>Email administrateur</label>
+        <input type="email" id="sa-email" placeholder="admin@hacc.pro" autocomplete="email" onkeydown="if(event.key==='Enter')saLogin()">
+      </div>
+      <div class="lf">
+        <label>Mot de passe</label>
+        <input type="password" id="sa-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')saLogin()">
+      </div>
+      <button class="btn-connect" id="sa-btn" onclick="saLogin()">
+        <span id="sa-btn-label">Accéder →</span>
+        <div class="spin" id="sa-spin"></div>
+      </button>
+      <div class="login-err" id="sa-err"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Admin UI ── -->
+<div id="admin-ui" style="display:none">
+  <div class="topbar">
+    <button class="sb-toggle" id="sb-toggle" onclick="toggleSidebar()">☰</button>
+    <span class="topbar-logo">HACC<span>.PRO</span></span>
+    <span class="topbar-badge">SUPER ADMIN</span>
+    <div class="topbar-right">
+      <span class="topbar-admin" id="topbar-email"></span>
+      <button class="btn-logout" onclick="saLogout()">Déconnexion</button>
+    </div>
+  </div>
+  <div class="layout">
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+      <div class="sb-top">
+        <input class="sb-search" id="sb-search" placeholder="🔍 Rechercher..." oninput="filterCompanies(this.value)">
+      </div>
+      <div class="sb-label" id="sb-count">Entreprises</div>
+      <div class="sb-list" id="sb-list"></div>
+      <div class="sb-footer">
+        <button class="btn-add-co" onclick="openCoModal(null)">+ Nouvelle entreprise</button>
+      </div>
+    </div>
+    <!-- Main -->
+    <div class="main" id="main-area">
+      <div class="main-empty" id="main-empty">
+        <div class="main-empty-icon">🏢</div>
+        <p>Sélectionnez une entreprise</p>
+      </div>
+      <div id="co-detail" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modals rendered by JS -->
+<div id="modal-root"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+var SUPA_URL  = 'https://lthxpucxjcwzphshdhmp.supabase.co';
+var SUPA_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0aHhwdWN4amN3enBoc2hkaG1wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMTU5MzIsImV4cCI6MjA4OTY5MTkzMn0._tLh6V35KkWu7p2eUyK0J03MaIqzHmMSYhQFZ3o8c80';
+
+var _token     = '';
+var _adminEmail= '';
+var _companies = [];
+var _allAuthUsers = {}; // id → {email, last_sign_in_at}
+var _authUsersLoaded = false;
+var _selectedCo = null;
+var _coUsers    = [];
+var _activeTab  = 'users';
+
+/* ── Init ── */
+(function(){
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem('haccpro_sa_session') || '{}'); } catch(e){}
+  if (s.token && s.role === 'super_admin') {
+    _token      = s.token;
+    _adminEmail = s.email || '';
+    showAdmin();
+  }
+})();
+
+/* ── Auth ── */
+async function saLogin() {
+  var email = document.getElementById('sa-email').value.trim();
+  var pass  = document.getElementById('sa-pass').value;
+  var err   = document.getElementById('sa-err');
+  var btn   = document.getElementById('sa-btn');
+  var lbl   = document.getElementById('sa-btn-label');
+  var spin  = document.getElementById('sa-spin');
+
+  err.style.display = 'none';
+  if (!email || !pass) { showLoginErr('Email et mot de passe requis'); return; }
+
+  btn.disabled = true; lbl.style.display = 'none'; spin.style.display = 'block';
+  try {
+    var r = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
+      method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_ANON},
+      body: JSON.stringify({email, password:pass})
+    });
+    var d = await r.json();
+    if (!d.access_token) throw new Error(_frErr(d.error_description || d.msg || ''));
+
+    // Verify super_admin role
+    var pr = await fetch(SUPA_URL + '/rest/v1/profiles?id=eq.' + d.user.id + '&select=role&limit=1', {
+      headers:{'apikey':SUPA_ANON,'Authorization':'Bearer '+d.access_token}
+    });
+    var profiles = await pr.json();
+    var role = profiles[0]?.role || '';
+    if (role !== 'super_admin') throw new Error('Accès refusé — rôle insuffisant (' + (role||'inconnu') + ')');
+
+    _token = d.access_token;
+    _adminEmail = email;
+    localStorage.setItem('haccpro_sa_session', JSON.stringify({token:_token, role:'super_admin', email}));
+    showAdmin();
+  } catch(e) {
+    showLoginErr(e.message);
+    btn.disabled = false; lbl.style.display = 'inline'; spin.style.display = 'none';
+  }
+}
+
+function saLogout() {
+  localStorage.removeItem('haccpro_sa_session');
+  _token = ''; _companies = []; _selectedCo = null;
+  document.getElementById('admin-ui').style.display = 'none';
+  document.getElementById('login-screen').style.display = '';
+}
+
+function showLoginErr(msg) {
+  var el = document.getElementById('sa-err');
+  el.textContent = msg; el.style.display = 'block';
+}
+
+function _frErr(msg) {
+  var m = (msg||'').toLowerCase();
+  if (m.includes('invalid login') || m.includes('invalid email')) return 'Email ou mot de passe incorrect.';
+  if (m.includes('too many')) return 'Trop de tentatives. Attendez quelques minutes.';
+  return msg || 'Erreur de connexion.';
+}
+
+/* ── Show Admin UI ── */
+function showAdmin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('admin-ui').style.display = 'flex';
+  document.getElementById('topbar-email').textContent = _adminEmail;
+  loadCompanies();
+}
+
+/* ── API ── */
+async function api(method, path, body, extraHeaders) {
+  var ctrl = new AbortController();
+  var t = setTimeout(function(){ ctrl.abort(); }, 10000);
+  try {
+    var r = await fetch('/.netlify/functions/admin-proxy', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+      body: JSON.stringify({method, path, body: body||null, extraHeaders: extraHeaders||{}}),
+      signal: ctrl.signal
+    });
+    clearTimeout(t);
+    var ct = r.headers.get('content-type')||'';
+    var data = ct.includes('json') ? await r.json() : await r.text();
+    if (!r.ok) {
+      var msg = (typeof data==='object' ? (data.error||data.message||JSON.stringify(data)) : data) || 'Erreur '+r.status;
+      throw new Error(msg.slice(0,200));
+    }
+    return data;
+  } catch(e) {
+    clearTimeout(t);
+    if (e.name === 'AbortError') throw new Error('Délai dépassé — vérifiez votre connexion');
+    throw e;
+  }
+}
+
+/* ── Companies ── */
+async function loadCompanies() {
+  document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:rgba(255,255,255,.35);font-size:.8rem;text-align:center">Chargement…</div>';
+  try {
+    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
+    _companies = Array.isArray(tenants) ? tenants : [];
+    renderSidebar(_companies);
+  } catch(e) {
+    document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:#f87171;font-size:.78rem">Erreur: '+_esc(e.message)+'</div>';
+  }
+}
+
+function renderSidebar(list) {
+  var el = document.getElementById('sb-list');
+  var count = document.getElementById('sb-count');
+  count.textContent = (list.length) + ' entreprise' + (list.length>1?'s':'');
+  if (!list.length) {
+    el.innerHTML = '<div style="padding:20px 16px;color:rgba(255,255,255,.3);font-size:.8rem;text-align:center">Aucune entreprise</div>';
+    return;
+  }
+  el.innerHTML = list.map(function(co) {
+    var initials = (co.name||'?').slice(0,2).toUpperCase();
+    var planLbl  = co.plan === 'enterprise' ? 'ENT' : co.plan === 'multi' ? 'MULTI' : 'SOLO';
+    var isActive = _selectedCo && _selectedCo.id === co.id;
+    return '<div class="co-item'+(isActive?' active':'')+'" onclick="selectCompany('+JSON.stringify(co.id)+')">'
+      +'<div class="co-avatar">'+initials+'</div>'
+      +'<div class="co-name">'+_esc(co.name||'—')+'</div>'
+      +'<div class="co-plan">'+planLbl+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+function filterCompanies(q) {
+  var filtered = q ? _companies.filter(function(c){ return (c.name||'').toLowerCase().includes(q.toLowerCase()); }) : _companies;
+  renderSidebar(filtered);
+}
+
+async function selectCompany(id) {
+  _selectedCo = _companies.find(function(c){ return c.id === id; }) || null;
+  if (!_selectedCo) return;
+  renderSidebar(_companies); // re-render sidebar with active state
+  document.getElementById('main-empty').style.display = 'none';
+  document.getElementById('co-detail').style.display = 'block';
+
+  // Close sidebar on mobile
+  document.getElementById('sidebar').classList.remove('open');
+
+  renderCompanyDetail();
+  if (_activeTab === 'users') loadCompanyUsers(_selectedCo.id);
+  else if (_activeTab === 'stats') loadCompanyStats(_selectedCo.id);
+}
+
+function renderCompanyDetail() {
+  var co = _selectedCo;
+  var planLabels = {solo:'Plan Solo',multi:'Plan Multi',enterprise:'Plan Entreprise'};
+  var planBadge  = {solo:'badge-solo',multi:'badge-multi',enterprise:'badge-enterprise'};
+  var planLbl    = planLabels[co.plan] || co.plan || '—';
+  var initials   = (co.name||'?').slice(0,2).toUpperCase();
+  var since      = co.created_at ? new Date(co.created_at).toLocaleDateString('fr-FR') : '—';
+
+  document.getElementById('co-detail').innerHTML =
+    '<div class="co-header">'
+      +'<div class="co-hd-avatar" style="background:var(--navy2)">'+initials+'</div>'
+      +'<div><div class="co-hd-name">'+_esc(co.name||'—')+'</div>'
+        +'<div class="co-hd-meta">Inscrit le '+since+'</div></div>'
+      +'<div class="co-hd-right">'
+        +'<span class="badge-plan '+(_planBadge(co.plan))+'">'+planLbl+'</span>'
+        +'<button class="btn-edit-co" onclick="openCoModal('+JSON.stringify(co.id)+')">✏️ Modifier</button>'
+      +'</div>'
+    +'</div>'
+    +'<div class="co-tabs">'
+      +'<div class="co-tab'+((_activeTab==='users')?' active':'')+'" onclick="switchTab(\'users\',this)">👥 Utilisateurs</div>'
+      +'<div class="co-tab'+((_activeTab==='infos')?' active':'')+'" onclick="switchTab(\'infos\',this)">ℹ️ Infos</div>'
+      +'<div class="co-tab'+((_activeTab==='stats')?' active':'')+'" onclick="switchTab(\'stats\',this)">📊 Stats</div>'
+    +'</div>'
+    +'<div class="co-panel'+((_activeTab==='users')?' active':'')+'" id="panel-users"></div>'
+    +'<div class="co-panel'+((_activeTab==='infos')?' active':'')+'" id="panel-infos">'+renderInfoPanel(co)+'</div>'
+    +'<div class="co-panel'+((_activeTab==='stats')?' active':'')+'" id="panel-stats"><div class="users-loading">Chargement…</div></div>';
+
+  if (_activeTab === 'users') {
+    document.getElementById('panel-users').innerHTML = '<div class="users-loading">⏳ Chargement des utilisateurs…</div>';
+    loadCompanyUsers(co.id);
+  }
+}
+
+function _planBadge(plan) { return plan==='enterprise'?'badge-enterprise':plan==='multi'?'badge-multi':'badge-solo'; }
+
+function renderInfoPanel(co) {
+  return '<div style="padding:24px"><div class="info-grid">'
+    +'<div class="info-card"><div class="info-card-label">Nom</div><div class="info-card-value">'+_esc(co.name||'—')+'</div></div>'
+    +'<div class="info-card"><div class="info-card-label">Plan</div><div class="info-card-value">'+_esc(co.plan||'—')+'</div></div>'
+    +'<div class="info-card"><div class="info-card-label">Créé le</div><div class="info-card-value muted">'+(co.created_at?new Date(co.created_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}):'—')+'</div></div>'
+    +'<div class="info-card"><div class="info-card-label">ID tenant</div><div class="info-card-value muted" style="font-size:.72rem;word-break:break-all">'+_esc(co.id||'—')+'</div></div>'
+    +'</div>'
+    +'<button class="btn-edit-co" onclick="openCoModal('+JSON.stringify(co.id)+')">✏️ Modifier cette entreprise</button></div>';
+}
+
+function switchTab(tab, el) {
+  _activeTab = tab;
+  document.querySelectorAll('.co-tab').forEach(function(t){ t.classList.remove('active'); });
+  el.classList.add('active');
+  document.querySelectorAll('.co-panel').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('panel-'+tab).classList.add('active');
+  if (tab === 'users' && _selectedCo) loadCompanyUsers(_selectedCo.id);
+  if (tab === 'stats' && _selectedCo) loadCompanyStats(_selectedCo.id);
+}
+
+/* ── Users ── */
+async function loadCompanyUsers(tenantId) {
+  var el = document.getElementById('panel-users');
+  if (!el) return;
+  el.innerHTML = '<div class="users-loading">⏳ Chargement des utilisateurs…</div>';
+  try {
+    var profiles = await api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id,full_name,role,created_at&order=created_at.asc');
+    profiles = Array.isArray(profiles) ? profiles : [];
+    _coUsers = profiles;
+
+    // Load auth users once for emails
+    if (!_authUsersLoaded) {
+      try {
+        var authData = await api('GET', '/auth/v1/admin/users?page=1&per_page=1000');
+        var authList = Array.isArray(authData) ? authData : (authData.users || []);
+        authList.forEach(function(u){ _allAuthUsers[u.id] = u; });
+        _authUsersLoaded = true;
+      } catch(e) { /* emails won't show, that's OK */ }
+    }
+    renderUsersPanel(profiles, tenantId);
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:.85rem">Erreur : '+_esc(e.message)+'</div>';
+  }
+}
+
+var ROLE_LABELS = {directeur:'Directeur',chef_secteur:'Chef secteur',siege:'Siège',super_admin:'Super Admin',cuisinier:'Cuisinier'};
+
+function renderUsersPanel(profiles, tenantId) {
+  var el = document.getElementById('panel-users');
+  if (!el) return;
+
+  var rows = profiles.map(function(p) {
+    var authU = _allAuthUsers[p.id] || {};
+    var email  = authU.email || '—';
+    var since  = p.created_at ? new Date(p.created_at).toLocaleDateString('fr-FR') : '—';
+    var rLabel = ROLE_LABELS[p.role] || p.role || '—';
+    var rClass = 'role-'+(p.role||'cuisinier');
+    return '<div class="user-row">'
+      +'<div class="user-name">'+_esc(p.full_name||'—')+'</div>'
+      +'<div class="user-email" title="'+_esc(email)+'">'+_esc(email)+'</div>'
+      +'<div><span class="role-badge '+rClass+'">'+_esc(rLabel)+'</span></div>'
+      +'<div class="user-since">'+since+'</div>'
+      +'<div class="user-actions">'
+        +'<button class="btn-icon role" title="Changer le rôle" onclick="openRoleModal('+JSON.stringify(p.id)+','+JSON.stringify(p.role)+','+JSON.stringify(p.full_name)+')">⚙️</button>'
+        +'<button class="btn-icon pwd" title="Changer le mot de passe" onclick="openPwdModal('+JSON.stringify(p.id)+','+JSON.stringify(p.full_name)+')">🔑</button>'
+        +'<button class="btn-icon del" title="Supprimer" onclick="confirmDelete('+JSON.stringify(p.id)+','+JSON.stringify(p.full_name)+')">🗑️</button>'
+      +'</div>'
+    +'</div>';
+  }).join('');
+
+  el.innerHTML =
+    '<div class="users-bar">'
+      +'<h3>'+profiles.length+' utilisateur'+(profiles.length>1?'s':'')+' <span style="color:var(--muted);font-weight:700">/</span> '+_esc(_selectedCo?.name||'')+' </h3>'
+      +'<button class="btn-add-user" onclick="openAddUserModal('+JSON.stringify(tenantId)+')">+ Ajouter un utilisateur</button>'
+    +'</div>'
+    +'<div class="user-table">'
+      +'<div class="user-row thead"><div>Nom</div><div>Email</div><div>Rôle</div><div>Inscrit le</div><div></div></div>'
+      +(rows || '<div style="padding:24px;text-align:center;color:var(--muted);font-size:.85rem">Aucun utilisateur pour cette entreprise</div>')
+    +'</div>';
+}
+
+/* ── Password Modal ── */
+function openPwdModal(userId, userName) {
+  showModal(
+    '🔑 Changer le mot de passe',
+    '<p style="font-size:.83rem;color:var(--muted);margin-bottom:16px">Utilisateur : <strong>'+_esc(userName||userId)+'</strong></p>'
+    +'<div class="mf"><label>Nouveau mot de passe</label><input type="password" id="m-pass" placeholder="Minimum 8 caractères" autocomplete="new-password"></div>'
+    +'<div class="mf"><label>Confirmer</label><input type="password" id="m-pass2" placeholder="Répéter" autocomplete="new-password"></div>',
+    [
+      {label:'Enregistrer', cls:'btn-primary green', fn: async function() {
+        var p1 = document.getElementById('m-pass').value;
+        var p2 = document.getElementById('m-pass2').value;
+        if (p1.length < 8) { showModalMsg('8 caractères minimum.', true); return false; }
+        if (p1 !== p2)     { showModalMsg('Les mots de passe ne correspondent pas.', true); return false; }
+        await api('PUT', '/auth/v1/admin/users/'+userId, {password:p1});
+        toast('Mot de passe mis à jour ✓', 'green');
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Role Modal ── */
+function openRoleModal(userId, currentRole, userName) {
+  var roles = ['directeur','chef_secteur','siege','cuisinier'];
+  var opts = roles.map(function(r){ return '<option value="'+r+'"'+(r===currentRole?' selected':'')+'>'+ROLE_LABELS[r]+'</option>'; }).join('');
+  showModal(
+    '⚙️ Changer le rôle',
+    '<p style="font-size:.83rem;color:var(--muted);margin-bottom:16px">Utilisateur : <strong>'+_esc(userName||userId)+'</strong></p>'
+    +'<div class="mf"><label>Nouveau rôle</label><select id="m-role">'+opts+'</select></div>',
+    [
+      {label:'Enregistrer', cls:'btn-primary', fn: async function() {
+        var newRole = document.getElementById('m-role').value;
+        await api('PATCH', '/rest/v1/profiles?id=eq.'+userId, {role:newRole});
+        toast('Rôle mis à jour ✓', 'green');
+        loadCompanyUsers(_selectedCo.id);
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Delete Modal ── */
+function confirmDelete(userId, userName) {
+  showModal(
+    '🗑️ Supprimer l\'utilisateur',
+    '<p style="font-size:.88rem;line-height:1.6;color:var(--muted)">Voulez-vous vraiment supprimer <strong>'+_esc(userName||userId)+'</strong> ?<br><span style="color:var(--danger);font-weight:800">Cette action est irréversible.</span></p>',
+    [
+      {label:'Supprimer définitivement', cls:'btn-primary danger', fn: async function() {
+        await api('DELETE', '/auth/v1/admin/users/'+userId, null);
+        try { await api('DELETE', '/rest/v1/profiles?id=eq.'+userId, null); } catch(e){}
+        toast('Utilisateur supprimé', 'danger');
+        loadCompanyUsers(_selectedCo.id);
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Add User Modal ── */
+function openAddUserModal(tenantId) {
+  var roleOpts = ['directeur','chef_secteur','cuisinier'].map(function(r){
+    return '<option value="'+r+'">'+ROLE_LABELS[r]+'</option>';
+  }).join('');
+  showModal(
+    '+ Ajouter un utilisateur',
+    '<div class="mf"><label>Prénom et Nom</label><input type="text" id="m-name" placeholder="Jean Dupont"></div>'
+    +'<div class="mf"><label>Email</label><input type="email" id="m-email" placeholder="jean@entreprise.fr"></div>'
+    +'<div class="mf"><label>Rôle</label><select id="m-urole">'+roleOpts+'</select></div>'
+    +'<div class="mf"><label>Mot de passe temporaire</label><input type="password" id="m-upass" placeholder="Minimum 8 caractères"></div>',
+    [
+      {label:'Créer l\'utilisateur', cls:'btn-primary green', fn: async function() {
+        var name  = document.getElementById('m-name').value.trim();
+        var email = document.getElementById('m-email').value.trim();
+        var role  = document.getElementById('m-urole').value;
+        var pass  = document.getElementById('m-upass').value;
+        if (!name)        { showModalMsg('Nom requis.', true); return false; }
+        if (!email)       { showModalMsg('Email requis.', true); return false; }
+        if (pass.length < 8) { showModalMsg('Mot de passe : 8 caractères minimum.', true); return false; }
+        // Create auth user
+        var authUser = await api('POST', '/auth/v1/admin/users', {email, password:pass, email_confirm:true});
+        var uid = authUser.id;
+        if (!uid) throw new Error('Création compte échouée');
+        // Create profile
+        await api('POST', '/rest/v1/profiles', {id:uid, full_name:name, role:role, tenant_id:tenantId}, {'Prefer':'return=minimal'});
+        toast('Utilisateur créé ✓', 'green');
+        _authUsersLoaded = false; // force reload emails
+        loadCompanyUsers(tenantId);
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Company Modal ── */
+function openCoModal(id) {
+  var co = id ? _companies.find(function(c){ return c.id===id; }) : null;
+  var title = co ? '✏️ Modifier l\'entreprise' : '+ Nouvelle entreprise';
+  var planOpts = ['solo','multi','enterprise'].map(function(p){
+    return '<option value="'+p+'"'+(!co&&p==='solo'?' selected':(co&&co.plan===p?' selected':''))+'>'+(p==='solo'?'Solo — 29€/mois':p==='multi'?'Multi — 49€/mois':'Entreprise — Sur devis')+'</option>';
+  }).join('');
+  showModal(
+    title,
+    '<div class="mf"><label>Nom de l\'entreprise <span style="color:var(--danger)">*</span></label><input type="text" id="m-coname" placeholder="Restaurant Le Provence" value="'+_esc(co?.name||'')+'"></div>'
+    +'<div class="mf"><label>Plan</label><select id="m-coplan">'+planOpts+'</select></div>'
+    +(co ? '' :
+      '<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">'
+      +'<p style="font-size:.75rem;color:var(--muted);margin-bottom:12px;font-weight:700">Compte administrateur (optionnel)</p>'
+      +'<div class="mf"><label>Email admin</label><input type="email" id="m-coemail" placeholder="directeur@restaurant.fr"></div>'
+      +'<div class="mf"><label>Mot de passe temporaire</label><input type="password" id="m-copass" placeholder="Min 8 caractères"></div>'
+    ),
+    [
+      {label: co ? 'Enregistrer' : 'Créer', cls:'btn-primary green', fn: async function() {
+        var name = document.getElementById('m-coname').value.trim();
+        var plan = document.getElementById('m-coplan').value;
+        if (!name) { showModalMsg('Le nom est obligatoire.', true); return false; }
+        if (co) {
+          await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan});
+          toast('Entreprise mise à jour ✓', 'green');
+        } else {
+          var email = (document.getElementById('m-coemail')||{}).value||'';
+          var pass  = (document.getElementById('m-copass')||{}).value||'';
+          // Create tenant
+          var rows = await api('POST', '/rest/v1/tenants', {name, plan}, {'Prefer':'return=representation'});
+          var newCo = Array.isArray(rows) ? rows[0] : rows;
+          var tenantId = newCo?.id;
+          // Create admin user if email provided
+          if (email && pass && pass.length >= 8 && tenantId) {
+            try {
+              var authUser = await api('POST', '/auth/v1/admin/users', {email, password:pass, email_confirm:true});
+              if (authUser.id) {
+                await api('POST', '/rest/v1/profiles', {id:authUser.id, full_name:name, role:'directeur', tenant_id:tenantId});
+              }
+            } catch(e) { /* user creation failed but company was created */ }
+          }
+          toast('Entreprise créée ✓', 'green');
+        }
+        await loadCompanies();
+        return true;
+      }},
+      co ? {label:'🗑️ Supprimer', cls:'btn-primary danger', fn: async function() {
+        if (!confirm('Supprimer "'+co.name+'" et toutes ses données ? Cette action est irréversible.')) return false;
+        await api('DELETE', '/rest/v1/tenants?id=eq.'+co.id, null);
+        _selectedCo = null;
+        document.getElementById('main-empty').style.display = '';
+        document.getElementById('co-detail').style.display = 'none';
+        toast('Entreprise supprimée', 'danger');
+        await loadCompanies();
+        return true;
+      }} : null,
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ].filter(Boolean)
+  );
+}
+
+/* ── Stats Panel ── */
+async function loadCompanyStats(tenantId) {
+  var el = document.getElementById('panel-stats');
+  if (!el) return;
+  el.innerHTML = '<div class="users-loading">⏳ Chargement…</div>';
+  try {
+    var [sites, profiles, records] = await Promise.all([
+      api('GET', '/rest/v1/sites?tenant_id=eq.'+tenantId+'&select=id,nom').catch(function(){return[];}),
+      api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id').catch(function(){return[];}),
+      api('GET', '/rest/v1/pms_records?tenant_id=eq.'+tenantId+'&select=id&limit=1000').catch(function(){return[];})
+    ]);
+    var siteRows = Array.isArray(sites) ? sites : [];
+    el.innerHTML =
+      '<div style="padding:24px">'
+      +'<div class="kpi-grid">'
+        +'<div class="kpi"><div class="kpi-val">'+siteRows.length+'</div><div class="kpi-lbl">Sites</div></div>'
+        +'<div class="kpi"><div class="kpi-val">'+(Array.isArray(profiles)?profiles.length:0)+'</div><div class="kpi-lbl">Utilisateurs</div></div>'
+        +'<div class="kpi"><div class="kpi-val">'+(Array.isArray(records)?records.length:0)+'</div><div class="kpi-lbl">Relevés</div></div>'
+      +'</div>'
+      +(siteRows.length ? '<h3 style="font-size:.82rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Sites déclarés</h3>'
+        +'<div class="user-table">'+siteRows.map(function(s){ return '<div class="user-row" style="grid-template-columns:1fr"><div class="user-name">'+_esc(s.nom||s.name||'Sans nom')+'</div></div>'; }).join('')+'</div>' : '')
+      +'</div>';
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:.85rem">Erreur : '+_esc(e.message)+'</div>';
+  }
+}
+
+/* ── Modal Engine ── */
+function showModal(title, bodyHtml, buttons) {
+  var btns = buttons.map(function(b) {
+    return '<button class="'+b.cls+'" id="mbtn-'+b.label.replace(/\s/g,'')+'" onclick="handleModalBtn('+buttons.indexOf(b)+')">'+b.label+'</button>';
+  }).join('');
+  document.getElementById('modal-root').innerHTML =
+    '<div class="modal-backdrop" onclick="if(event.target===this)closeModal()">'
+    +'<div class="modal">'
+      +'<div class="modal-hd"><div class="modal-title">'+title+'</div><button class="modal-close" onclick="closeModal()">✕</button></div>'
+      +'<div class="modal-body"><div class="modal-msg" id="modal-msg"></div>'+bodyHtml+'</div>'
+      +'<div class="modal-footer">'+btns+'</div>'
+    +'</div>'
+    +'</div>';
+  window._modalBtns = buttons;
+}
+
+async function handleModalBtn(idx) {
+  var b = window._modalBtns[idx];
+  if (!b) return;
+  if (!b.fn) { closeModal(); return; }
+  // Disable all buttons during action
+  document.querySelectorAll('.modal-footer button').forEach(function(el){ el.disabled=true; });
+  try {
+    var ok = await b.fn();
+    if (ok !== false) closeModal();
+  } catch(e) {
+    showModalMsg(e.message, true);
+  } finally {
+    document.querySelectorAll('.modal-footer button').forEach(function(el){ el.disabled=false; });
+  }
+}
+
+function showModalMsg(msg, isErr) {
+  var el = document.getElementById('modal-msg');
+  if (!el) return;
+  el.textContent = msg; el.className = 'modal-msg '+(isErr?'err':'ok'); el.style.display='block';
+}
+
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+  window._modalBtns = [];
+}
+
+/* ── Toast ── */
+var _toastTimer;
+function toast(msg, type) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast '+(type||'');
+  clearTimeout(_toastTimer);
+  requestAnimationFrame(function(){ el.classList.add('show'); });
+  _toastTimer = setTimeout(function(){ el.classList.remove('show'); }, 3000);
+}
+
+/* ── Mobile sidebar toggle ── */
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+/* ── Helpers ── */
+function _esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
