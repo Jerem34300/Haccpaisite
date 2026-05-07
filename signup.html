@@ -30,12 +30,15 @@ body{
     radial-gradient(ellipse at 20% 50%,rgba(92,30,90,.4) 0%,transparent 55%),
     radial-gradient(ellipse at 80% 20%,rgba(141,198,63,.1) 0%,transparent 50%);
 }
-/* Nav — même style que login.html */
-.login-nav{width:100%;padding:14px 22px;display:flex;align-items:center;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}
-.login-nav-logo{display:flex;align-items:center;gap:9px;text-decoration:none;font-size:.92rem;font-weight:900;color:rgba(255,255,255,.7);letter-spacing:-.1px;transition:color .2s}
+/* Nav */
+.login-nav{width:100%;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.06)}
+.login-nav-logo{display:flex;align-items:center;gap:8px;text-decoration:none;font-size:.92rem;font-weight:900;color:rgba(255,255,255,.7);letter-spacing:-.1px;transition:color .2s}
 .login-nav-logo:hover{color:#fff}
 .login-nav-logo svg{flex-shrink:0}
-.login-nav-logo span{color:#8DC63F}
+.login-nav-logo>.nav-brand{color:inherit}
+.nav-brand>span{color:#8DC63F}
+.nav-pill-login{background:rgba(141,198,63,.15);color:#8DC63F;border:1.5px solid rgba(141,198,63,.35);border-radius:20px;padding:7px 16px;font-size:.78rem;font-weight:900;text-decoration:none;transition:all .2s;white-space:nowrap}
+.nav-pill-login:hover{background:#8DC63F;color:#fff;border-color:#8DC63F}
 /* Centrage carte */
 .signup-main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px 48px;width:100%}
 .signup-wrap{width:100%;max-width:480px}
@@ -187,14 +190,15 @@ body{
 <body>
 <nav class="login-nav">
   <a href="landing.html" class="login-nav-logo">
-    <svg width="24" height="24" viewBox="0 0 90 90" fill="none" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" style="opacity:.6;flex-shrink:0"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <svg width="22" height="22" viewBox="0 0 90 90" fill="none" aria-hidden="true">
       <circle cx="45" cy="33" r="16" fill="white"/>
       <circle cx="29" cy="38" r="11" fill="white"/>
       <circle cx="61" cy="38" r="11" fill="white"/>
       <path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    </svg>
-    HACC<span>.PRO</span>
+    </svg><span class="nav-brand">HACC<span>.PRO</span></span>
   </a>
+  <a href="login.html" class="nav-pill-login">Se connecter</a>
 </nav>
 <div class="signup-main">
 <div class="signup-wrap">
@@ -213,7 +217,6 @@ body{
           </svg>
           <span class="logo-name">HACC<span>.PRO</span></span>
         </div>
-        <a href="login.html" class="login-link">Déjà un compte ? Connexion →</a>
       </div>
       <!-- Stepper -->
       <div class="stepper" role="progressbar" aria-label="Étapes d'inscription">

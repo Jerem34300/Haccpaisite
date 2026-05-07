@@ -60,7 +60,7 @@ async function doLogin() {
       body: JSON.stringify({ email, password: pass })
     });
     const data = await r.json();
-    if (!data.access_token) throw new Error(data.error_description || data.msg || 'Identifiants incorrects');
+    if (!data.access_token) throw new Error(_frErr(data.error_description || data.msg || data.error || ''));
 
     // 2. Charger le profil pour connaître le rôle
     const pr = await fetch(`${url}/rest/v1/profiles?id=eq.${data.user?.id}&select=role,tenant_id,site_id,full_name&limit=1`, {
@@ -122,6 +122,23 @@ async function doLogin() {
     label.style.display = 'inline';
     spin.style.display = 'none';
   }
+}
+
+function _frErr(msg) {
+  var m = (msg || '').toLowerCase();
+  if (m.includes('invalid login') || m.includes('invalid email or password') || m.includes('wrong password'))
+    return 'Email ou mot de passe incorrect.';
+  if (m.includes('email not confirmed'))
+    return 'Confirmez votre email avant de vous connecter.';
+  if (m.includes('too many requests') || m.includes('rate limit'))
+    return 'Trop de tentatives. Attendez quelques minutes.';
+  if (m.includes('user not found') || m.includes('no user found'))
+    return 'Aucun compte trouvé avec cet email.';
+  if (m.includes('network') || m.includes('fetch'))
+    return 'Erreur réseau. Vérifiez votre connexion.';
+  if (m.includes('account locked') || m.includes('disabled'))
+    return 'Ce compte a été désactivé. Contactez le support.';
+  return msg || 'Identifiants incorrects.';
 }
 
 function showErr(msg) {
