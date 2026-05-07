@@ -386,7 +386,7 @@ async function api(method, path, body, extraHeaders) {
 async function loadCompanies() {
   document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:rgba(255,255,255,.35);font-size:.8rem;text-align:center">Chargement…</div>';
   try {
-    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
+    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,extra_sites,created_at&order=name.asc');
     _companies = Array.isArray(tenants) ? tenants : [];
     renderSidebar(_companies);
   } catch(e) {
@@ -404,7 +404,7 @@ function renderSidebar(list) {
   }
   el.innerHTML = list.map(function(co) {
     var initials = (co.name||'?').slice(0,2).toUpperCase();
-    var planLbl  = co.plan === 'enterprise' ? 'ENT' : co.plan === 'multi' ? 'MULTI' : 'SOLO';
+    var planLbl  = co.plan === 'enterprise' ? 'ENT' : (co.plan === 'multi' || co.plan === 'pro') ? 'MULTI' : 'SOLO';
     var isActive = _selectedCo && _selectedCo.id === co.id;
     return '<div class="co-item'+(isActive?' active':'')+'" data-coid="'+_esc(co.id)+'">'
       +'<div class="co-avatar">'+_esc(initials)+'</div>'
@@ -437,8 +437,7 @@ async function selectCompany(id) {
 
 function renderCompanyDetail() {
   var co = _selectedCo;
-  var planLabels = {solo:'Plan Solo',multi:'Plan Multi',enterprise:'Plan Entreprise'};
-  var planBadge  = {solo:'badge-solo',multi:'badge-multi',enterprise:'badge-enterprise'};
+  var planLabels = {solo:'Plan Solo',multi:'Plan Multi',enterprise:'Plan Entreprise',starter:'Plan Solo (ancien)',pro:'Plan Multi (ancien)'};
   var planLbl    = planLabels[co.plan] || co.plan || '—';
   var initials   = (co.name||'?').slice(0,2).toUpperCase();
   var since      = co.created_at ? new Date(co.created_at).toLocaleDateString('fr-FR') : '—';
@@ -472,12 +471,18 @@ function renderCompanyDetail() {
   }
 }
 
-function _planBadge(plan) { return plan==='enterprise'?'badge-enterprise':plan==='multi'?'badge-multi':'badge-solo'; }
+function _planBadge(plan) { return plan==='enterprise'?'badge-enterprise':(plan==='multi'||plan==='pro')?'badge-multi':'badge-solo'; }
 
 function renderInfoPanel(co) {
+  var planNames = {solo:'Solo — 29€/mois',multi:'Multi — 49€/mois',enterprise:'Entreprise — Sur devis',starter:'Solo (ancien)',pro:'Multi (ancien)'};
+  var planDisplay = planNames[co.plan] || co.plan || '—';
+  var extraSites = co.extra_sites || 0;
+  var mensuel = (co.plan==='solo'||co.plan==='starter') ? 29 : (co.plan==='multi'||co.plan==='pro') ? 49 + extraSites*19 : 0;
   return '<div style="padding:24px"><div class="info-grid">'
     +'<div class="info-card"><div class="info-card-label">Nom</div><div class="info-card-value">'+_esc(co.name||'—')+'</div></div>'
-    +'<div class="info-card"><div class="info-card-label">Plan</div><div class="info-card-value">'+_esc(co.plan||'—')+'</div></div>'
+    +'<div class="info-card"><div class="info-card-label">Plan</div><div class="info-card-value">'+_esc(planDisplay)+'</div></div>'
+    +'<div class="info-card"><div class="info-card-label">Cuisines supplémentaires</div><div class="info-card-value">'+extraSites+' <span style="color:var(--muted);font-size:.75rem;font-weight:700">'+(extraSites>0?'(+'+extraSites*19+'€/mois)':'')+'</span></div></div>'
+    +(mensuel>0?'<div class="info-card"><div class="info-card-label">Facturation mensuelle</div><div class="info-card-value" style="color:var(--green)">'+mensuel+'€ <span style="color:var(--muted);font-size:.72rem;font-weight:700">/mois</span></div></div>':'')
     +'<div class="info-card"><div class="info-card-label">Créé le</div><div class="info-card-value muted">'+(co.created_at?new Date(co.created_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}):'—')+'</div></div>'
     +'<div class="info-card"><div class="info-card-label">ID tenant</div><div class="info-card-value muted" style="font-size:.72rem;word-break:break-all">'+_esc(co.id||'—')+'</div></div>'
     +'</div>'
@@ -674,13 +679,19 @@ function openAddUserModal(tenantId) {
 function openCoModal(id) {
   var co = id ? _companies.find(function(c){ return c.id===id; }) : null;
   var title = co ? '✏️ Modifier l\'entreprise' : '+ Nouvelle entreprise';
+  var planNorm = (co?.plan === 'starter') ? 'solo' : (co?.plan === 'pro') ? 'multi' : (co?.plan || 'solo');
   var planOpts = ['solo','multi','enterprise'].map(function(p){
-    return '<option value="'+p+'"'+(!co&&p==='solo'?' selected':(co&&co.plan===p?' selected':''))+'>'+(p==='solo'?'Solo — 29€/mois':p==='multi'?'Multi — 49€/mois':'Entreprise — Sur devis')+'</option>';
+    return '<option value="'+p+'"'+(p===planNorm?' selected':'')+'>'+(p==='solo'?'Solo — 29€/mois':p==='multi'?'Multi — 49€/mois':'Entreprise — Sur devis')+'</option>';
   }).join('');
+  var extraVal = (co?.extra_sites || 0);
   showModal(
     title,
     '<div class="mf"><label>Nom de l\'entreprise <span style="color:var(--danger)">*</span></label><input type="text" id="m-coname" placeholder="Restaurant Le Provence" value="'+_esc(co?.name||'')+'"></div>'
-    +'<div class="mf"><label>Plan</label><select id="m-coplan">'+planOpts+'</select></div>'
+    +'<div class="mf"><label>Plan</label><select id="m-coplan" onchange="document.getElementById(\'mf-extra\').style.display=this.value===\'multi\'?\'block\':\'none\'">'+planOpts+'</select></div>'
+    +'<div class="mf" id="mf-extra" style="'+(planNorm==='multi'?'':'display:none')+'">'
+      +'<label>Cuisines supplémentaires <span style="color:var(--green);font-size:.75rem">(+19€/mois chacune)</span></label>'
+      +'<input type="number" id="m-extra" min="0" max="50" value="'+extraVal+'" placeholder="0">'
+    +'</div>'
     +(co ? '' :
       '<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">'
       +'<p style="font-size:.75rem;color:var(--muted);margin-bottom:12px;font-weight:700">Compte administrateur (optionnel)</p>'
@@ -689,17 +700,18 @@ function openCoModal(id) {
     ),
     [
       {label: co ? 'Enregistrer' : 'Créer', cls:'btn-primary green', fn: async function() {
-        var name = document.getElementById('m-coname').value.trim();
-        var plan = document.getElementById('m-coplan').value;
+        var name  = document.getElementById('m-coname').value.trim();
+        var plan  = document.getElementById('m-coplan').value;
+        var extra = parseInt(document.getElementById('m-extra')?.value||'0', 10) || 0;
         if (!name) { showModalMsg('Le nom est obligatoire.', true); return false; }
         if (co) {
-          await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan});
+          await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan, extra_sites: extra});
           toast('Entreprise mise à jour ✓', 'green');
         } else {
           var email = (document.getElementById('m-coemail')||{}).value||'';
           var pass  = (document.getElementById('m-copass')||{}).value||'';
           // Create tenant
-          var rows = await api('POST', '/rest/v1/tenants', {name, plan}, {'Prefer':'return=representation'});
+          var rows = await api('POST', '/rest/v1/tenants', {name, plan, extra_sites: extra}, {'Prefer':'return=representation'});
           var newCo = Array.isArray(rows) ? rows[0] : rows;
           var tenantId = newCo?.id;
           // Create admin user if email provided
