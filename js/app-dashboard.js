@@ -8777,18 +8777,20 @@ async function saLoadInscrits() {
   if (!el) return;
   el.innerHTML = '<div class="loading"><div class="spinner"></div>Chargement…</div>';
   try {
-    const profiles = await supaAdmin('GET',
-      '/rest/v1/profiles?select=id,full_name,role,created_at,tenant_id,tenants(name)&order=created_at.desc&limit=100',
-      null, {'Accept':'application/json'}
-    );
+    const [profiles, tenants] = await Promise.all([
+      supaAdmin('GET', '/rest/v1/profiles?select=id,full_name,role,created_at,tenant_id&order=created_at.desc&limit=100', null),
+      supaAdmin('GET', '/rest/v1/tenants?select=id,name&limit=500', null).catch(() => [])
+    ]);
     if (!profiles || !profiles.length) {
       el.innerHTML = '<div style="text-align:center;padding:20px;color:var(--muted)">Aucun inscrit pour l\'instant.</div>';
       return;
     }
+    const tenantMap = {};
+    (tenants || []).forEach(function(t) { tenantMap[t.id] = t.name; });
     const ROLE_LABELS = { directeur:'Directeur', chef_secteur:'Chef de secteur', siege:'Siège', super_admin:'Super Admin', cuisinier:'Cuisinier' };
     const rows = profiles.map(p => {
       const d = p.created_at ? new Date(p.created_at).toLocaleDateString('fr-FR') : '—';
-      const tenant = p.tenants?.name || p.tenant_id || '—';
+      const tenant = tenantMap[p.tenant_id] || p.tenant_id?.slice(0,8) || '—';
       const role   = ROLE_LABELS[p.role] || p.role || '—';
       return `<div style="display:grid;grid-template-columns:1fr 1fr 1fr 80px;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:.82rem">
         <div style="font-weight:800;color:var(--navy)">${_esc(p.full_name||'—')}</div>
