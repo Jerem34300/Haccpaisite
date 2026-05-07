@@ -60,12 +60,20 @@ exports.handler = async function(event) {
       })
     });
     var linkData = await linkRes.json();
-    if (!linkRes.ok || !linkData.action_link) {
+    if (!linkRes.ok || (!linkData.hashed_token && !linkData.action_link)) {
       console.error('[send-email] generate_link error:', linkData);
       return { statusCode: 502, body: JSON.stringify({ error: 'Impossible de générer le lien de réinitialisation' }) };
     }
+    // Build a direct link using hashed_token — bypasses Supabase redirect allowlist entirely
+    var resetUrl;
+    if (linkData.hashed_token) {
+      resetUrl = 'https://hacc.pro/reset-password.html?token_hash=' + encodeURIComponent(linkData.hashed_token) + '&type=recovery';
+    } else {
+      // Fallback: use action_link (requires Supabase allowlist config)
+      resetUrl = linkData.action_link;
+    }
     subject = 'Réinitialisez votre mot de passe HACC.PRO';
-    html    = _buildResetEmail(to, linkData.action_link);
+    html    = _buildResetEmail(to, resetUrl);
 
   } else {
     return { statusCode: 400, body: JSON.stringify({ error: 'Type inconnu' }) };
