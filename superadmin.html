@@ -416,6 +416,7 @@ function renderSidebar(list) {
   el.querySelectorAll('[data-coid]').forEach(function(item) {
     item.addEventListener('click', function() { selectCompany(this.getAttribute('data-coid')); });
   });
+}
 
 function filterCompanies(q) {
   var filtered = q ? _companies.filter(function(c){ return (c.name||'').toLowerCase().includes(q.toLowerCase()); }) : _companies;
