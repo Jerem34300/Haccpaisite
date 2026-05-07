@@ -187,7 +187,6 @@ button{font-family:var(--font)}
 @media(max-width:700px){
   .sidebar{position:fixed;left:-100%;top:52px;bottom:0;z-index:200;transition:left .25s;width:min(280px,85vw)}
   .sidebar.open{left:0;box-shadow:4px 0 24px rgba(0,0,0,.4)}
-  .sb-overlay{display:block!important}
   .sb-toggle{display:flex!important}
   .info-grid{grid-template-columns:1fr}
   .user-row{grid-template-columns:1fr 90px 80px}
@@ -434,8 +433,6 @@ async function selectCompany(id) {
   closeSidebar();
 
   renderCompanyDetail();
-  if (_activeTab === 'users') loadCompanyUsers(_selectedCo.id);
-  else if (_activeTab === 'stats') loadCompanyStats(_selectedCo.id);
 }
 
 function renderCompanyDetail() {
@@ -507,19 +504,18 @@ async function loadCompanyUsers(tenantId) {
   if (!el) return;
   el.innerHTML = '<div class="users-loading">⏳ Chargement des utilisateurs…</div>';
   try {
-    var profiles = await api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id,full_name,role,created_at&order=created_at.asc');
+    var profiles = await api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id,full_name,role,created_at&order=created_at.asc&limit=500');
     profiles = Array.isArray(profiles) ? profiles : [];
+    // Deduplicate by id (guard against duplicate DB rows)
+    var seen = {}; profiles = profiles.filter(function(p){ if(seen[p.id]) return false; seen[p.id]=1; return true; });
     _coUsers = profiles;
 
-    // Load auth users once for emails
-    if (!_authUsersLoaded) {
-      try {
-        var authData = await api('GET', '/auth/v1/admin/users?page=1&per_page=1000');
-        var authList = Array.isArray(authData) ? authData : (authData.users || []);
-        authList.forEach(function(u){ _allAuthUsers[u.id] = u; });
-        _authUsersLoaded = true;
-      } catch(e) { /* emails won't show, that's OK */ }
-    }
+    // Always (re)load auth users to get fresh emails
+    try {
+      var authData = await api('GET', '/auth/v1/admin/users?page=1&per_page=1000');
+      var authList = Array.isArray(authData) ? authData : (authData.users || []);
+      authList.forEach(function(u){ _allAuthUsers[u.id] = u; });
+    } catch(e) { /* emails won't show if this fails */ }
     renderUsersPanel(profiles, tenantId);
   } catch(e) {
     el.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:.85rem">Erreur : '+_esc(e.message)+'</div>';
