@@ -45,6 +45,27 @@
   .nav-btn-pill{padding:8px 14px;font-size:.78rem;margin-left:4px}
   .nav-link-login{font-size:.78rem;padding:6px 8px}
 }
+/* ── FAB Menu flottant (mobile) ── */
+.fab{display:none;position:fixed;bottom:22px;right:18px;z-index:300;width:52px;height:52px;border-radius:50%;background:#8DC63F;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(141,198,63,.5);flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .2s,transform .2s}
+.fab:hover{background:#6fa832;transform:scale(1.08)}
+.fab span{display:block;width:20px;height:2px;background:#fff;border-radius:2px;transition:all .25s}
+.fab.open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+.fab.open span:nth-child(2){opacity:0}
+.fab.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+.fab-sheet{position:fixed;inset:0;z-index:290;pointer-events:none}
+.fab-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:0;transition:opacity .25s}
+.fab-panel{position:absolute;bottom:0;left:0;right:0;background:#0F2240;border-radius:20px 20px 0 0;padding:20px 20px 32px;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);max-height:82vh;overflow-y:auto}
+.fab-sheet.open .fab-overlay{opacity:1;pointer-events:auto}
+.fab-sheet.open .fab-panel{transform:translateY(0);pointer-events:auto}
+.fab-handle{width:36px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 20px}
+.fab-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fab-link{display:flex;align-items:center;gap:10px;padding:13px 14px;background:rgba(255,255,255,.07);border-radius:12px;text-decoration:none;color:#fff;font-size:.88rem;font-weight:800;transition:background .18s}
+.fab-link:hover{background:rgba(255,255,255,.14)}
+.fab-link-icon{font-size:1.1rem;flex-shrink:0}
+.fab-link.primary{background:rgba(141,198,63,.2);border:1px solid rgba(141,198,63,.3);color:#c8e87a}
+.fab-link.primary:hover{background:rgba(141,198,63,.3)}
+.fab-divider{grid-column:1/-1;border:none;border-top:1px solid rgba(255,255,255,.1);margin:4px 0}
+@media(max-width:640px){.fab{display:flex}}
 
 /* ── App Screenshots section ── */
 .screens-section{padding:72px 0 80px;background:#fff;overflow-x:hidden}
@@ -988,6 +1009,44 @@ function toggleFaq(btn){
     btn.setAttribute('aria-expanded','true');
   }
 }
+function toggleFab(){
+  const fab=document.getElementById('fab');
+  const sheet=document.getElementById('fabSheet');
+  const open=fab.classList.toggle('open');
+  sheet.classList.toggle('open',open);
+  document.body.style.overflow=open?'hidden':'';
+}
+function closeFab(){
+  document.getElementById('fab').classList.remove('open');
+  document.getElementById('fabSheet').classList.remove('open');
+  document.body.style.overflow='';
+}
 </script>
+
+<!-- ── FAB FLOTTANT (mobile) ── -->
+<button class="fab" id="fab" onclick="toggleFab()" aria-label="Menu navigation">
+  <span></span><span></span><span></span>
+</button>
+<div class="fab-sheet" id="fabSheet">
+  <div class="fab-overlay" onclick="closeFab()"></div>
+  <div class="fab-panel">
+    <div class="fab-handle"></div>
+    <div class="fab-grid">
+      <a href="signup.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🚀</span>Inscription</a>
+      <a href="login.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🔑</span>Connexion</a>
+      <hr class="fab-divider">
+      <a href="#features" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">⚡</span>Fonctionnalités</a>
+      <a href="#pricing" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">💳</span>Tarifs</a>
+      <a href="#contact" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">✉️</span>Contact</a>
+      <a href="mode-emploi.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📖</span>Mode d'emploi</a>
+      <hr class="fab-divider">
+      <a href="faq/index.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📋</span>Guide HACCP</a>
+      <a href="guides/plan-maitrise-sanitaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📄</span>PMS</a>
+      <a href="guides/plat-temoin.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🍽️</span>Plats témoins</a>
+      <a href="guides/temperature-haccp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🌡️</span>Températures</a>
+      <a href="guides/tracabilite-alimentaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🔗</span>Traçabilité</a>
+    </div>
+  </div>
+</div>
 </body>
 </html>
