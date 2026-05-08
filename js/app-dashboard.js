@@ -119,6 +119,14 @@ function saveCfg(){
 // ════════════════════════════════════════════════════
 // MOBILE NAV
 // ════════════════════════════════════════════════════
+function setUserAvatar(name) {
+  const el = document.getElementById('sb-avatar');
+  if (!el) return;
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  el.textContent = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : (parts[0] ? parts[0].slice(0, 2).toUpperCase() : '?');
+}
 function toggleSidebar(){
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebar-overlay').classList.toggle('open');
@@ -192,6 +200,7 @@ function activerModeDemo() {
   document.getElementById('app').style.display = 'block';
   document.getElementById('sb-name').textContent = 'Mode Démo';
   document.getElementById('sb-role').textContent = 'Siège';
+  setUserAvatar('Mode Démo');
   ['nav-admin','nav-gmo','nav-compare'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = 'flex';
   });
@@ -612,6 +621,7 @@ async function bootApp(){
     if (_profile.data_locked && _profile.role !== 'super_admin') {
       document.getElementById('sb-name').textContent = _profile.full_name||'Utilisateur';
       document.getElementById('sb-role').textContent = 'Accès restreint';
+      setUserAvatar(_profile.full_name||'Utilisateur');
       // Masquer tout sauf GMO dans la sidebar
       document.querySelectorAll('.nav-item').forEach(el => {
         if (!el.getAttribute('onclick')?.includes('gmo')) el.style.display = 'none';
@@ -632,6 +642,7 @@ async function bootApp(){
     document.getElementById('sb-name').textContent=_profile.full_name||'Utilisateur';
     const roleLabels={cuisinier:'Cuisinier',chef_secteur:'Chef de secteur',directeur:'Directeur',siege:'Siège'};
     document.getElementById('sb-role').textContent=roleLabels[_profile.role]||_profile.role;
+    setUserAvatar(_profile.full_name||'Utilisateur');
 
     // ── Charger le branding depuis tenants ─────────────────────
     if (_profile.tenant_id) {
