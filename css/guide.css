@@ -7,10 +7,9 @@ body{font-family:var(--font);color:var(--text);background:#fff}
 .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
 .logo-name{font-size:1.1rem;font-weight:900;color:#fff}
 .logo-name span{color:var(--green)}
-.nav-links{display:flex;align-items:center;gap:10px}
-.nav-link{color:rgba(255,255,255,.6);font-size:.82rem;font-weight:700;text-decoration:none;transition:color .2s}
-.nav-link:hover{color:#fff}
-.nav-cta{background:var(--green);color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:.82rem;font-weight:900;text-decoration:none;font-family:var(--font)}
+.nav-back{color:#fff;font-size:.82rem;font-weight:900;text-decoration:none;margin-left:auto;margin-right:10px;padding:8px 16px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;transition:all .2s;white-space:nowrap}
+.nav-back:hover{background:rgba(255,255,255,.22)}
+.nav-cta{background:var(--green);color:#fff;border:none;border-radius:20px;padding:8px 16px;font-size:.82rem;font-weight:900;text-decoration:none;font-family:var(--font);white-space:nowrap}
 .page{max-width:1060px;margin:0 auto;padding:40px 24px 80px;display:grid;grid-template-columns:1fr 260px;gap:48px;align-items:start}
 @media(max-width:760px){.page{grid-template-columns:1fr}.toc-sidebar{display:none}}
 .toc-sidebar{position:sticky;top:72px}

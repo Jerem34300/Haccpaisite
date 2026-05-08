@@ -113,7 +113,9 @@ body{font-family:var(--font);color:var(--text);background:var(--bg)}
 .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
 .logo-name{font-size:1.1rem;font-weight:900;color:#fff}
 .logo-name span{color:var(--green)}
-.nav-cta{background:var(--green);color:#fff;border:none;border-radius:10px;padding:8px 16px;font-size:.82rem;font-weight:900;text-decoration:none;font-family:var(--font)}
+.nav-back{color:#fff;font-size:.82rem;font-weight:900;text-decoration:none;margin-left:auto;margin-right:10px;padding:8px 16px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;transition:all .2s;white-space:nowrap}
+.nav-back:hover{background:rgba(255,255,255,.22)}
+.nav-cta{background:var(--green);color:#fff;border:none;border-radius:20px;padding:8px 16px;font-size:.82rem;font-weight:900;text-decoration:none;font-family:var(--font);white-space:nowrap}
 
 /* Layout */
 .page{max-width:1060px;margin:0 auto;padding:40px 24px 80px;display:grid;grid-template-columns:240px 1fr;gap:40px;align-items:start}
@@ -182,6 +184,7 @@ footer a{color:rgba(255,255,255,.5);text-decoration:none;margin:0 10px}
     </svg>
     <span class="logo-name">HACC<span>.PRO</span></span>
   </a>
+  <a href="../landing.html" class="nav-back">← Retour</a>
   <a href="../signup.html" class="nav-cta">Essai gratuit →</a>
 </nav>
 
