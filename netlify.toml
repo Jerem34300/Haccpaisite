@@ -16,3 +16,39 @@
   for = "/netlify/functions/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
+
+# Clean URL redirects (removes .html extension)
+[[redirects]]
+  from = "/landing"
+  to = "/landing.html"
+  status = 200
+
+[[redirects]]
+  from = "/connexion"
+  to = "/login.html"
+  status = 200
+
+[[redirects]]
+  from = "/inscription"
+  to = "/signup.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/pms"
+  to = "/guides/plan-maitrise-sanitaire.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/temperatures"
+  to = "/guides/temperature-haccp.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/plat-temoin"
+  to = "/guides/plat-temoin.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/tracabilite"
+  to = "/guides/tracabilite-alimentaire.html"
+  status = 200

@@ -45,6 +45,63 @@
   .nav-btn-pill{padding:8px 14px;font-size:.78rem;margin-left:4px}
   .nav-link-login{font-size:.78rem;padding:6px 8px}
 }
+
+/* ── App Screenshots section ── */
+.screens-section{padding:72px 0 80px;background:#fff;overflow:hidden}
+.screens-inner{max-width:1100px;margin:0 auto;padding:0 24px}
+.screens-wrap{display:flex;gap:28px;justify-content:center;align-items:flex-end;margin-top:52px;flex-wrap:wrap}
+.screen-item{display:flex;flex-direction:column;align-items:center;gap:14px}
+.screen-item-main .s-phone{transform:translateY(-16px);box-shadow:0 32px 80px rgba(15,34,64,.22)!important}
+.screen-label{font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;background:#f7f2f7;border-radius:20px;padding:5px 14px}
+/* Phone frame */
+.s-phone{width:204px;border-radius:26px;overflow:hidden;box-shadow:0 16px 48px rgba(15,34,64,.14);border:2px solid rgba(15,34,64,.1);background:#fff}
+.s-notch{height:20px;background:#0a1828;display:flex;align-items:center;justify-content:center}
+.s-dot{width:52px;height:5px;background:rgba(255,255,255,.18);border-radius:3px}
+.s-hd{background:linear-gradient(135deg,#0F2240 0%,#1a3558 100%);padding:10px 14px}
+.s-hd-label{font-size:.62rem;font-weight:900;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.6px}
+.s-body{padding:12px}
+/* Dashboard screen */
+.s-score-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.s-site-card{background:#f8f9fc;border-radius:10px;padding:8px 7px;text-align:center;border:1px solid #e8e0e8}
+.s-site-card.s-warn-card{border-color:#fde68a;background:#fffbeb}
+.s-site-name{font-size:.58rem;font-weight:800;color:#7A6579;margin-bottom:4px;line-height:1.3}
+.s-site-score{font-size:1.15rem;font-weight:900;margin-bottom:2px}
+.s-green{color:#6fa832}.s-orange{color:#d97706}.s-red{color:#dc2626}
+.s-site-tag{font-size:.54rem;font-weight:900;color:#7A6579}
+.s-kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.s-kpi{background:#f8f9fc;border-radius:8px;padding:6px 4px;text-align:center;border:1px solid #e8e0e8}
+.s-kpi-val{font-size:.92rem;font-weight:900;color:#0F2240}
+.s-kpi-lbl{font-size:.5rem;font-weight:700;color:#7A6579;line-height:1.3;margin-top:1px}
+/* Temperature screen */
+.s-enceinte{display:flex;align-items:center;gap:8px;background:#e0f0ff;border-radius:10px;padding:8px 10px;margin-bottom:10px}
+.s-enceinte-name{font-size:.63rem;font-weight:900;color:#1d4ed8;line-height:1.3}
+.s-temp-display{text-align:center;padding:8px 0 6px}
+.s-temp-num{font-size:2.2rem;font-weight:900;color:#0F2240;line-height:1}
+.s-temp-seuil{font-size:.58rem;color:#7A6579;font-weight:700;margin-top:4px;margin-bottom:4px}
+.s-temp-ok{display:inline-block;background:#f0fdf4;color:#166534;font-size:.63rem;font-weight:900;border-radius:6px;padding:2px 9px}
+.s-btn-submit{background:#8DC63F;color:#fff;border-radius:10px;padding:8px;text-align:center;font-size:.64rem;font-weight:900;margin:9px 0 8px;cursor:pointer}
+.s-history-mini{border-top:1px solid #e8e0e8;padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.s-history-item{display:flex;justify-content:space-between;font-size:.6rem;color:#7A6579;font-weight:700}
+.s-history-nc .s-red{color:#dc2626}
+/* Plats témoins screen */
+.s-plat{display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid #f3f0f3}
+.s-plat:last-of-type{border-bottom:none}
+.s-plat-icon{font-size:.95rem;width:22px;text-align:center}
+.s-plat-info{flex:1;min-width:0}
+.s-plat-name{font-size:.64rem;font-weight:900;color:#3D2A3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-plat-date{font-size:.57rem;color:#7A6579;font-weight:700;margin-top:1px}
+.s-urgent{color:#dc2626!important;font-weight:900!important}
+.s-plat-badge{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:900;flex-shrink:0}
+.s-badge-ok{background:#f0fdf4;color:#166534}
+.s-badge-warn{background:#fffbeb;color:#92400e}
+.s-badge-danger{background:#fef2f2;color:#dc2626}
+.s-add-btn{background:linear-gradient(135deg,#8DC63F,#6fa832);color:#fff;border-radius:10px;padding:7px;text-align:center;font-size:.62rem;font-weight:900;margin-top:8px}
+@media(max-width:640px){
+  .screens-wrap{gap:14px}
+  .s-phone{width:160px}
+  .s-temp-num{font-size:1.7rem}
+  .s-site-score{font-size:.95rem}
+}
 </style>
 
 <script type="application/ld+json">
@@ -131,7 +188,8 @@
     <div class="nav-links">
       <a href="#features" class="nav-link-plain nav-hide-mobile">Fonctionnalités</a>
       <a href="#pricing" class="nav-link-plain nav-hide-mobile">Tarifs</a>
-      <a href="faq/index.html" class="nav-link-plain nav-hide-mobile">Guide HACCP</a>
+      <a href="faq/index.html" class="nav-link-plain nav-hide-mobile">Guides HACCP</a>
+      <a href="guides/plan-maitrise-sanitaire.html" class="nav-link-plain nav-hide-mobile">Blog</a>
       <a href="mode-emploi.html" class="nav-link-plain nav-hide-mobile">Mode d'emploi</a>
       <a href="login.html" class="nav-link-login">Se connecter</a>
       <a href="signup.html" class="nav-btn-pill">Commencer →</a>
@@ -156,6 +214,7 @@
         <a href="#how" class="btn-hero-secondary">Voir comment ça marche</a>
       </div>
       <div class="hero-trust">
+        <span class="hero-trust-dot"></span><strong style="color:#8DC63F">Dès 29€/mois</strong>
         <span class="hero-trust-dot"></span>14 jours d'essai gratuit
         <span class="hero-trust-dot"></span>Sans carte bancaire
         <span class="hero-trust-dot"></span>Résiliation en 1 clic
@@ -260,6 +319,128 @@
     <div class="stat-card">
       <div class="stat-val">100<span>%</span></div>
       <div class="stat-lbl">Conforme Paquet Hygiène UE</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── APP SCREENSHOTS ── -->
+<section class="screens-section" id="interface" aria-labelledby="screens-h2">
+  <div class="screens-inner">
+    <div class="section-header">
+      <div class="section-tag">L'interface</div>
+      <h2 class="section-h2" id="screens-h2">Simple à utiliser. Puissant en coulisses.</h2>
+      <p class="section-sub">Tout fonctionne sur smartphone — aucune installation, aucune formation. Vos cuisiniers sont opérationnels en 5 minutes.</p>
+    </div>
+    <div class="screens-wrap">
+
+      <!-- Screen 1 : Dashboard -->
+      <div class="screen-item">
+        <div class="s-phone">
+          <div class="s-notch"><div class="s-dot"></div></div>
+          <div class="s-hd"><div class="s-hd-label">📊 Tableau de bord</div></div>
+          <div class="s-body">
+            <div class="s-score-grid">
+              <div class="s-site-card">
+                <div class="s-site-name">Cuisine Centrale</div>
+                <div class="s-site-score s-green">98%</div>
+                <div class="s-site-tag">✓ Conforme</div>
+              </div>
+              <div class="s-site-card s-warn-card">
+                <div class="s-site-name">Brasserie du Parc</div>
+                <div class="s-site-score s-orange">84%</div>
+                <div class="s-site-tag">⚠️ 1 alerte</div>
+              </div>
+              <div class="s-site-card">
+                <div class="s-site-name">EHPAD Les Lilas</div>
+                <div class="s-site-score s-green">96%</div>
+                <div class="s-site-tag">✓ Conforme</div>
+              </div>
+              <div class="s-site-card">
+                <div class="s-site-name">Cantine Scolaire</div>
+                <div class="s-site-score s-green">100%</div>
+                <div class="s-site-tag">✓ Parfait</div>
+              </div>
+            </div>
+            <div class="s-kpi-row">
+              <div class="s-kpi"><div class="s-kpi-val">24</div><div class="s-kpi-lbl">Relevés aujourd'hui</div></div>
+              <div class="s-kpi"><div class="s-kpi-val">7</div><div class="s-kpi-lbl">Plats témoins</div></div>
+              <div class="s-kpi"><div class="s-kpi-val" style="color:#dc2626">1</div><div class="s-kpi-lbl">NC ouverte</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="screen-label">📊 Dashboard multi-sites</div>
+      </div>
+
+      <!-- Screen 2 : Temperature (center, featured) -->
+      <div class="screen-item screen-item-main">
+        <div class="s-phone">
+          <div class="s-notch"><div class="s-dot"></div></div>
+          <div class="s-hd"><div class="s-hd-label">🌡️ Relevé de température</div></div>
+          <div class="s-body">
+            <div class="s-enceinte">
+              <span style="font-size:1rem">❄️</span>
+              <div class="s-enceinte-name">Chambre froide n°1<br><span style="color:rgba(29,78,216,.6);font-weight:700;font-size:.54rem">Seuil : 0°C à +4°C</span></div>
+            </div>
+            <div class="s-temp-display">
+              <div class="s-temp-num">+3,2°C</div>
+              <div class="s-temp-seuil">Température actuelle</div>
+              <div class="s-temp-ok">✓ Dans la plage</div>
+            </div>
+            <div class="s-btn-submit">Valider le relevé →</div>
+            <div class="s-history-mini">
+              <div class="s-history-item"><span style="color:#7A6579">Auj. 08h12</span><span style="color:#6fa832;font-weight:900">+3,1°C ✓</span></div>
+              <div class="s-history-item"><span style="color:#7A6579">Hier 18h00</span><span style="color:#6fa832;font-weight:900">+3,4°C ✓</span></div>
+              <div class="s-history-item s-history-nc"><span style="color:#7A6579">Mardi 08h</span><span class="s-red" style="font-weight:900">+5,8°C ⚠️</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="screen-label">🌡️ Relevé de température</div>
+      </div>
+
+      <!-- Screen 3 : Plats témoins -->
+      <div class="screen-item">
+        <div class="s-phone">
+          <div class="s-notch"><div class="s-dot"></div></div>
+          <div class="s-hd"><div class="s-hd-label">🍽️ Plats témoins</div></div>
+          <div class="s-body">
+            <div class="s-plat">
+              <div class="s-plat-icon">🍖</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Rôti de bœuf sauce</div>
+                <div class="s-plat-date">Détruire avant le <strong>15/05</strong></div>
+              </div>
+              <div class="s-plat-badge s-badge-ok">4j</div>
+            </div>
+            <div class="s-plat">
+              <div class="s-plat-icon">🥗</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Salade niçoise</div>
+                <div class="s-plat-date">Détruire avant le <strong>13/05</strong></div>
+              </div>
+              <div class="s-plat-badge s-badge-warn">2j</div>
+            </div>
+            <div class="s-plat">
+              <div class="s-plat-icon">🍮</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Crème caramel</div>
+                <div class="s-plat-date s-urgent">⚠️ Détruire AUJOURD'HUI</div>
+              </div>
+              <div class="s-plat-badge s-badge-danger">0j</div>
+            </div>
+            <div class="s-plat">
+              <div class="s-plat-icon">🐟</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Cabillaud vapeur</div>
+                <div class="s-plat-date">Détruire avant le <strong>16/05</strong></div>
+              </div>
+              <div class="s-plat-badge s-badge-ok">5j</div>
+            </div>
+            <div class="s-add-btn">+ Enregistrer un plat témoin</div>
+          </div>
+        </div>
+        <div class="screen-label">🍽️ Plats témoins</div>
+      </div>
+
     </div>
   </div>
 </section>
@@ -742,6 +923,7 @@
         <a href="guides/plan-maitrise-sanitaire.html">Le PMS en détail</a>
         <a href="guides/plat-temoin.html">Les plats témoins</a>
         <a href="guides/temperature-haccp.html">Températures HACCP</a>
+        <a href="guides/tracabilite-alimentaire.html">Traçabilité alimentaire</a>
       </div>
       <div class="footer-col">
         <h4>Légal</h4>
