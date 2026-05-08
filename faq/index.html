@@ -514,5 +514,32 @@ function toggleFaq(btn){
   if(!isOpen){item.classList.add('open');btn.setAttribute('aria-expanded','true');}
 }
 </script>
+<script>
+function toggleFab(){const fab=document.getElementById('fab'),sheet=document.getElementById('fabSheet'),open=fab.classList.toggle('open');sheet.classList.toggle('open',open);document.body.style.overflow=open?'hidden':'';}
+function closeFab(){document.getElementById('fab').classList.remove('open');document.getElementById('fabSheet').classList.remove('open');document.body.style.overflow='';}
+</script>
+
+<!-- ── FAB FLOTTANT ── -->
+<button class="fab" id="fab" onclick="toggleFab()" aria-label="Menu navigation">
+  <span></span><span></span><span></span>
+</button>
+<div class="fab-sheet" id="fabSheet">
+  <div class="fab-overlay" onclick="closeFab()"></div>
+  <div class="fab-panel">
+    <div class="fab-handle"></div>
+    <div class="fab-grid">
+      <a href="../signup.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🚀</span>Inscription</a>
+      <a href="../login.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🔑</span>Connexion</a>
+      <hr class="fab-divider">
+      <a href="../landing.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🏠</span>Accueil</a>
+      <a href="../mode-emploi.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📖</span>Mode d'emploi</a>
+      <a href="../faq/index.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📋</span>Guide HACCP</a>
+      <a href="../guides/plan-maitrise-sanitaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📄</span>PMS</a>
+      <a href="../guides/plat-temoin.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🍽️</span>Plats témoins</a>
+      <a href="../guides/temperature-haccp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🌡️</span>Températures</a>
+      <a href="../guides/tracabilite-alimentaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🔗</span>Traçabilité</a>
+    </div>
+  </div>
+</div>
 </body>
 </html>
