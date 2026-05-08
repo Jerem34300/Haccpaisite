@@ -33,6 +33,7 @@ function _showStep(n){
   if(target) target.classList.add('active');
   _step = n;
   _updateStepper();
+  if(n===3) _preselectPlan();
   if(n===4) _fillRecap();
   window.scrollTo(0,0);
 }
@@ -83,6 +84,12 @@ function validateStep(n){
 }
 
 // ── Plan selection ────────────────────────────────────────────
+function _preselectPlan(){
+  const s = _data.sites || 1;
+  const plan = s === 1 ? 'solo' : s > 3 ? 'enterprise' : 'multi';
+  selectPlan(plan);
+}
+
 function selectPlan(plan){
   if(!['solo','multi','enterprise'].includes(plan)) return;
   _data.plan = plan;
