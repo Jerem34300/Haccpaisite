@@ -220,13 +220,48 @@ async function doSignup(){
 
 function _showSuccessEmailConfirm(){
   _showStep('success');
-  _set('success-msg','Un email de confirmation vous a été envoyé à <strong>'+_data.email+'</strong>. Cliquez sur le lien pour activer votre compte, puis connectez-vous pour configurer votre HACCP.');
+  _set('success-msg','Un email de confirmation vous a été envoyé à <strong>'+_data.email+'</strong>. Cliquez sur le lien pour activer votre compte.');
+  const ec = document.getElementById('success-email-confirm');
+  if(ec) ec.style.display = 'block';
 }
 
 function _showSuccessRedirect(){
   _showStep('success');
   _set('success-msg','Votre essai gratuit de 14 jours est activé. Vous allez être redirigé vers la configuration de votre HACCP…');
+  const rd = document.getElementById('success-redirect');
+  if(rd) rd.style.display = 'block';
   setTimeout(()=>{ window.location.href = 'onboarding.html'; }, 2000);
+}
+
+async function resendConfirmEmail(){
+  const btn   = document.getElementById('btn-resend');
+  const label = document.getElementById('btn-resend-label');
+  const spin  = document.getElementById('btn-resend-spin');
+  const errEl = document.getElementById('resend-err');
+  btn.disabled = true;
+  label.style.display = 'none';
+  spin.style.display = 'block';
+  errEl.style.display = 'none';
+  try {
+    const r = await fetch(`${_SU}/auth/v1/resend`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':_SK},
+      body:JSON.stringify({ type:'signup', email:_data.email })
+    });
+    const res = await r.json();
+    if(res.error) throw new Error(res.error.message || res.error_description || 'Erreur lors du renvoi');
+    label.textContent = 'Email renvoyé ✓';
+    label.style.display = 'inline';
+    spin.style.display = 'none';
+    setTimeout(()=>{ btn.disabled = false; label.textContent = 'Renvoyer l\'email de confirmation'; }, 30000);
+  } catch(e){
+    console.error('resendConfirmEmail:', e);
+    errEl.textContent = e.message || 'Erreur lors du renvoi. Réessayez.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    label.style.display = 'inline';
+    spin.style.display = 'none';
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────

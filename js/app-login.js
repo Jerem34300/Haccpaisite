@@ -60,7 +60,17 @@ async function doLogin() {
       body: JSON.stringify({ email, password: pass })
     });
     const data = await r.json();
-    if (!data.access_token) throw new Error(_frErr(data.error_description || data.msg || data.error || ''));
+    if (!data.access_token) {
+      const errRaw = [data.error_description, data.msg, data.error, data.error_code].filter(Boolean).join(' ').toLowerCase();
+      if(errRaw.includes('email not confirmed') || errRaw.includes('email_not_confirmed')){
+        _showEmailNotConfirmedErr(email);
+        btn.disabled = false;
+        label.style.display = 'inline';
+        spin.style.display = 'none';
+        return;
+      }
+      throw new Error(_frErr(data.error_description || data.msg || data.error || ''));
+    }
 
     // 2. Charger le profil pour connaître le rôle
     const pr = await fetch(`${url}/rest/v1/profiles?id=eq.${data.user?.id}&select=role,tenant_id,site_id,full_name&limit=1`, {
@@ -169,6 +179,37 @@ async function doForgot() {
     errEl.textContent  = 'Erreur réseau. Réessayez dans quelques instants.';
     errEl.style.color  = '#991b1b';
     errEl.style.background = '#fef2f2';
+  }
+}
+
+function _showEmailNotConfirmedErr(email) {
+  window._pendingResendEmail = email;
+  const el = document.getElementById('login-err');
+  el.innerHTML = 'Votre compte n\'est pas encore activé. <button onclick="doResendLoginConfirm()" style="background:none;border:none;color:inherit;font-weight:900;cursor:pointer;text-decoration:underline;font-family:inherit;font-size:inherit;padding:0">Renvoyer l\'email →</button>';
+  el.style.display = 'block';
+}
+
+async function doResendLoginConfirm(){
+  const url   = document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
+  const key   = document.getElementById('cfg-key').value.trim();
+  const email = window._pendingResendEmail || document.getElementById('login-email').value.trim();
+  const el    = document.getElementById('login-err');
+  el.textContent = 'Envoi en cours…';
+  try {
+    const r = await fetch(`${url}/auth/v1/resend`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':key},
+      body:JSON.stringify({ type:'signup', email })
+    });
+    const res = await r.json();
+    if(res.error) throw new Error(res.error.message || res.error_description || 'Erreur lors du renvoi');
+    el.textContent = 'Email renvoyé. Vérifiez vos spams si vous ne le recevez pas.';
+    el.style.color      = '#166534';
+    el.style.background = '#f0fdf4';
+    el.style.border     = '1px solid #bbf7d0';
+  } catch(e){
+    console.error('doResendLoginConfirm:', e);
+    el.textContent = e.message || 'Erreur réseau. Réessayez dans quelques instants.';
   }
 }
 

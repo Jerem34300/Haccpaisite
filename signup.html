@@ -369,8 +369,20 @@ body{
         <div class="success-screen">
           <div class="success-icon">🎉</div>
           <div class="success-title">Compte créé avec succès !</div>
-          <div class="success-text" id="success-msg">Votre essai gratuit de 14 jours est activé. Vous allez être redirigé vers la configuration de votre HACCP…</div>
-          <button class="btn-primary green" onclick="window.location.href='onboarding.html'">Configurer mon HACCP →</button>
+          <div class="success-text" id="success-msg"></div>
+          <!-- Affiché quand la confirmation d'email est requise -->
+          <div id="success-email-confirm" style="display:none">
+            <p style="font-size:.8rem;color:var(--muted);margin-bottom:16px;font-weight:700">L'email peut prendre 1 à 2 minutes. Vérifiez vos spams si vous ne le recevez pas.</p>
+            <button class="btn-primary" id="btn-resend" onclick="resendConfirmEmail()">
+              <span id="btn-resend-label">Renvoyer l'email de confirmation</span>
+              <div class="spinner" id="btn-resend-spin"></div>
+            </button>
+            <div class="err" id="resend-err"></div>
+          </div>
+          <!-- Affiché quand le compte est activé immédiatement -->
+          <div id="success-redirect" style="display:none">
+            <button class="btn-primary green" onclick="window.location.href='onboarding.html'">Configurer mon HACCP →</button>
+          </div>
         </div>
       </div>
 
