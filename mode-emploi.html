@@ -24,15 +24,15 @@
 }
 body{font-family:var(--font);background:var(--bg);color:var(--text)}
 
-/* ── NAV ── */
-nav{background:var(--navy);padding:14px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:10}
+/* ── NAV PRINCIPALE ── */
+nav.main-nav{background:var(--navy);padding:14px 24px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:20}
 .nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
 .nav-logo svg{flex-shrink:0}
 .nav-logo-name{font-size:1.1rem;font-weight:900;color:#fff}
 .nav-logo-name span{color:var(--green)}
-.nav-back{color:rgba(255,255,255,.65);font-size:.82rem;font-weight:700;text-decoration:none;margin-left:auto;padding:7px 14px;background:rgba(255,255,255,.08);border-radius:8px;transition:all .2s}
-.nav-back:hover{background:rgba(255,255,255,.15);color:#fff}
-.nav-cta{background:var(--green);color:#fff;border-radius:20px;padding:8px 18px;font-size:.82rem;font-weight:900;text-decoration:none;margin-left:10px;transition:all .2s}
+.nav-back{color:#fff;font-size:.82rem;font-weight:900;text-decoration:none;margin-left:auto;padding:8px 16px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;transition:all .2s;white-space:nowrap}
+.nav-back:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.4)}
+.nav-cta{background:var(--green);color:#fff;border-radius:20px;padding:8px 18px;font-size:.82rem;font-weight:900;text-decoration:none;margin-left:10px;transition:all .2s;white-space:nowrap}
 .nav-cta:hover{background:var(--green2)}
 
 /* ── HERO ── */
@@ -44,8 +44,8 @@ nav{background:var(--navy);padding:14px 24px;display:flex;align-items:center;gap
 .me-hero-badges{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
 .me-badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:8px 14px;font-size:.8rem;color:rgba(255,255,255,.8);font-weight:700}
 
-/* ── SOMMAIRE ── */
-.me-toc{background:var(--white);border-bottom:1px solid var(--border);padding:0;overflow-x:auto}
+/* ── SOMMAIRE STICKY ── */
+.me-toc{background:var(--white);border-bottom:1px solid var(--border);padding:0;overflow-x:auto;position:sticky;top:54px;z-index:10}
 .me-toc-inner{display:flex;gap:0;max-width:900px;margin:0 auto}
 .me-toc-link{padding:14px 18px;font-size:.82rem;font-weight:800;color:var(--muted);text-decoration:none;white-space:nowrap;border-bottom:3px solid transparent;transition:all .2s}
 .me-toc-link:hover,.me-toc-link.active{color:var(--navy);border-bottom-color:var(--green)}
@@ -137,7 +137,7 @@ nav{background:var(--navy);padding:14px 24px;display:flex;align-items:center;gap
 </head>
 <body>
 
-<nav>
+<nav class="main-nav">
   <a href="landing.html" class="nav-logo">
     <svg width="26" height="26" viewBox="0 0 90 90" fill="none"><circle cx="45" cy="33" r="16" fill="white"/><circle cx="29" cy="38" r="11" fill="white"/><circle cx="61" cy="38" r="11" fill="white"/><path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
     <span class="nav-logo-name">HACC<span>.PRO</span></span>
