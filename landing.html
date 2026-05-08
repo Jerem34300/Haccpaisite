@@ -39,11 +39,85 @@
 .nav-btn-pill:hover{background:#6fa832;transform:translateY(-1px)}
 .nav-link-login{color:rgba(255,255,255,.6);font-size:.82rem;font-weight:700;text-decoration:none;padding:7px 10px;border-radius:8px;transition:color .2s;white-space:nowrap}
 .nav-link-login:hover{color:#fff}
+/* ── Hamburger mobile ── */
+.nav-ham{display:none;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:10px;width:38px;height:38px;cursor:pointer;flex-direction:column;align-items:center;justify-content:center;gap:5px;margin-left:8px;flex-shrink:0;transition:background .2s}
+.nav-ham:hover{background:rgba(255,255,255,.2)}
+.nav-ham span{display:block;width:18px;height:2px;background:#fff;border-radius:2px;transition:all .25s}
+.nav-drawer{position:fixed;inset:0;z-index:200;pointer-events:none}
+.nav-drawer-overlay{position:absolute;inset:0;background:rgba(0,0,0,.55);opacity:0;transition:opacity .25s}
+.nav-drawer-panel{position:absolute;top:0;right:0;width:260px;height:100%;background:var(--navy);transform:translateX(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;padding:20px}
+.nav-drawer.open .nav-drawer-overlay{opacity:1;pointer-events:auto}
+.nav-drawer.open .nav-drawer-panel{transform:translateX(0);pointer-events:auto}
+.nav-drawer-close{align-self:flex-end;background:rgba(255,255,255,.1);border:none;border-radius:8px;color:#fff;font-size:1.1rem;width:34px;height:34px;cursor:pointer;margin-bottom:24px}
+.nav-drawer-links{display:flex;flex-direction:column;gap:4px;flex:1}
+.nav-drawer-link{color:rgba(255,255,255,.8);font-size:.95rem;font-weight:700;text-decoration:none;padding:12px 14px;border-radius:10px;transition:background .18s}
+.nav-drawer-link:hover{background:rgba(255,255,255,.1);color:#fff}
+.nav-drawer-divider{border:none;border-top:1px solid rgba(255,255,255,.1);margin:12px 0}
+.nav-drawer-cta{background:var(--green);color:#fff;border-radius:14px;padding:14px;font-size:.95rem;font-weight:900;text-align:center;text-decoration:none;margin-top:8px;transition:background .2s}
+.nav-drawer-cta:hover{background:var(--green2)}
 @media(max-width:640px){
   .nav-inner{padding:12px 16px}
   .nav-hide-mobile{display:none}
-  .nav-btn-pill{padding:8px 14px;font-size:.78rem;margin-left:4px}
-  .nav-link-login{font-size:.78rem;padding:6px 8px}
+  .nav-btn-pill{display:none}
+  .nav-link-login{display:none}
+  .nav-ham{display:flex}
+}
+
+/* ── App Screenshots section ── */
+.screens-section{padding:72px 0 80px;background:#fff;overflow-x:hidden}
+.screens-inner{max-width:1100px;margin:0 auto;padding:0 24px}
+.screens-wrap{display:flex;gap:28px;justify-content:center;align-items:flex-end;margin-top:52px;flex-wrap:wrap}
+.screen-item{display:flex;flex-direction:column;align-items:center;gap:14px}
+.screen-item-main .s-phone{transform:translateY(-16px);box-shadow:0 32px 80px rgba(15,34,64,.22)!important}
+.screen-label{font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;background:#f7f2f7;border-radius:20px;padding:5px 14px}
+/* Phone frame */
+.s-phone{width:204px;border-radius:26px;overflow:hidden;box-shadow:0 16px 48px rgba(15,34,64,.14);border:2px solid rgba(15,34,64,.1);background:#fff}
+.s-notch{height:20px;background:#0a1828;display:flex;align-items:center;justify-content:center}
+.s-dot{width:52px;height:5px;background:rgba(255,255,255,.18);border-radius:3px}
+.s-hd{background:linear-gradient(135deg,#0F2240 0%,#1a3558 100%);padding:10px 14px}
+.s-hd-label{font-size:.62rem;font-weight:900;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.6px}
+.s-body{padding:12px}
+/* Dashboard screen */
+.s-score-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.s-site-card{background:#f8f9fc;border-radius:10px;padding:8px 7px;text-align:center;border:1px solid #e8e0e8}
+.s-site-card.s-warn-card{border-color:#fde68a;background:#fffbeb}
+.s-site-name{font-size:.58rem;font-weight:800;color:#7A6579;margin-bottom:4px;line-height:1.3}
+.s-site-score{font-size:1.15rem;font-weight:900;margin-bottom:2px}
+.s-green{color:#6fa832}.s-orange{color:#d97706}.s-red{color:#dc2626}
+.s-site-tag{font-size:.54rem;font-weight:900;color:#7A6579}
+.s-kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.s-kpi{background:#f8f9fc;border-radius:8px;padding:6px 4px;text-align:center;border:1px solid #e8e0e8}
+.s-kpi-val{font-size:.92rem;font-weight:900;color:#0F2240}
+.s-kpi-lbl{font-size:.5rem;font-weight:700;color:#7A6579;line-height:1.3;margin-top:1px}
+/* Temperature screen */
+.s-enceinte{display:flex;align-items:center;gap:8px;background:#e0f0ff;border-radius:10px;padding:8px 10px;margin-bottom:10px}
+.s-enceinte-name{font-size:.63rem;font-weight:900;color:#1d4ed8;line-height:1.3}
+.s-temp-display{text-align:center;padding:8px 0 6px}
+.s-temp-num{font-size:2.2rem;font-weight:900;color:#0F2240;line-height:1}
+.s-temp-seuil{font-size:.58rem;color:#7A6579;font-weight:700;margin-top:4px;margin-bottom:4px}
+.s-temp-ok{display:inline-block;background:#f0fdf4;color:#166534;font-size:.63rem;font-weight:900;border-radius:6px;padding:2px 9px}
+.s-btn-submit{background:#8DC63F;color:#fff;border-radius:10px;padding:8px;text-align:center;font-size:.64rem;font-weight:900;margin:9px 0 8px;cursor:pointer}
+.s-history-mini{border-top:1px solid #e8e0e8;padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.s-history-item{display:flex;justify-content:space-between;font-size:.6rem;color:#7A6579;font-weight:700}
+.s-history-nc .s-red{color:#dc2626}
+/* Plats témoins screen */
+.s-plat{display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid #f3f0f3}
+.s-plat:last-of-type{border-bottom:none}
+.s-plat-icon{font-size:.95rem;width:22px;text-align:center}
+.s-plat-info{flex:1;min-width:0}
+.s-plat-name{font-size:.64rem;font-weight:900;color:#3D2A3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-plat-date{font-size:.57rem;color:#7A6579;font-weight:700;margin-top:1px}
+.s-urgent{color:#dc2626!important;font-weight:900!important}
+.s-plat-badge{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:900;flex-shrink:0}
+.s-badge-ok{background:#f0fdf4;color:#166534}
+.s-badge-warn{background:#fffbeb;color:#92400e}
+.s-badge-danger{background:#fef2f2;color:#dc2626}
+.s-add-btn{background:linear-gradient(135deg,#8DC63F,#6fa832);color:#fff;border-radius:10px;padding:7px;text-align:center;font-size:.62rem;font-weight:900;margin-top:8px}
+@media(max-width:640px){
+  .screens-wrap{gap:14px}
+  .s-phone{width:160px}
+  .s-temp-num{font-size:1.7rem}
+  .s-site-score{font-size:.95rem}
 }
 </style>
 
@@ -134,9 +208,30 @@
       <a href="faq/index.html" class="nav-link-plain nav-hide-mobile">Guide HACCP</a>
       <a href="login.html" class="nav-link-login">Se connecter</a>
       <a href="signup.html" class="nav-btn-pill">Commencer →</a>
+      <button class="nav-ham" onclick="openDrawer()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
     </div>
   </div>
 </nav>
+
+<!-- ── DRAWER MOBILE ── -->
+<div class="nav-drawer" id="navDrawer">
+  <div class="nav-drawer-overlay" onclick="closeDrawer()"></div>
+  <div class="nav-drawer-panel" role="dialog" aria-label="Menu navigation">
+    <button class="nav-drawer-close" onclick="closeDrawer()">✕</button>
+    <div class="nav-drawer-links">
+      <a href="#features" class="nav-drawer-link" onclick="closeDrawer()">Fonctionnalités</a>
+      <a href="#pricing" class="nav-drawer-link" onclick="closeDrawer()">Tarifs</a>
+      <a href="faq/index.html" class="nav-drawer-link">Guides HACCP</a>
+      <a href="mode-emploi.html" class="nav-drawer-link">Mode d'emploi</a>
+      <a href="guides/plan-maitrise-sanitaire.html" class="nav-drawer-link">Blog</a>
+      <hr class="nav-drawer-divider">
+      <a href="login.html" class="nav-drawer-link">Se connecter</a>
+    </div>
+    <a href="signup.html" class="nav-drawer-cta">Commencer gratuitement →</a>
+  </div>
+</div>
 
 <!-- ── HERO ── -->
 <section class="hero" aria-labelledby="hero-h1">
@@ -762,6 +857,8 @@ function toggleFaq(btn){
     btn.setAttribute('aria-expanded','true');
   }
 }
+function openDrawer(){document.getElementById('navDrawer').classList.add('open');document.body.style.overflow='hidden';}
+function closeDrawer(){document.getElementById('navDrawer').classList.remove('open');document.body.style.overflow='';}
 </script>
 </body>
 </html>
