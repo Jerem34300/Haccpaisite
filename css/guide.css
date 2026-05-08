@@ -73,7 +73,7 @@ footer a{color:rgba(255,255,255,.5);text-decoration:none;margin:0 8px}
 /* ── Table responsive ── */
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:20px 0;border-radius:8px;border:1px solid var(--border)}
 .table-wrap .temp-table{margin:0;min-width:520px}
-body{overflow-x:hidden}
+html,body{overflow-x:hidden}
 
 /* ── FAB flottant (mobile) ── */
 .fab{display:none;position:fixed;bottom:22px;right:18px;z-index:300;width:52px;height:52px;border-radius:50%;background:#8DC63F;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(141,198,63,.5);flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .2s,transform .2s}
