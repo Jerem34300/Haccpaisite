@@ -125,13 +125,36 @@ async function doSignup(){
     });
     const auth = await r1.json();
 
-    if(auth.error || auth.code === 400){
-      const msg = auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription';
-      throw new Error(msg);
+    if(auth.error || auth.code === 400 || auth.code === 422){
+      const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
+      const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
+        || auth.error_code === 'user_already_exists' || auth.code === 422;
+      if(isDup){
+        const el = document.getElementById('err-4');
+        if(el){
+          el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
+          el.style.display = 'block';
+        }
+        btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
+        return;
+      }
+      throw new Error(auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription');
     }
 
     const token  = auth.access_token;
     const userId = auth.user?.id || auth.id;
+
+    // Detect duplicate email: Supabase returns 200 + identities:[] when email already exists
+    // (behaviour when email confirmation is enabled — no error code is thrown)
+    if(auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0){
+      const el = document.getElementById('err-4');
+      if(el){
+        el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:#0F2240;font-weight:900;text-decoration:underline">Se connecter →</a>';
+        el.style.display = 'block';
+      }
+      btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
+      return;
+    }
 
     // Email confirmation required (no token returned)
     if(!token){
