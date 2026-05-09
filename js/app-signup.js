@@ -144,6 +144,18 @@ async function doSignup(){
     const token  = auth.access_token;
     const userId = auth.user?.id || auth.id;
 
+    // Detect duplicate email: Supabase returns 200 + identities:[] when email already exists
+    // (behaviour when email confirmation is enabled — no error code is thrown)
+    if(auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0){
+      const el = document.getElementById('err-4');
+      if(el){
+        el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:#0F2240;font-weight:900;text-decoration:underline">Se connecter →</a>';
+        el.style.display = 'block';
+      }
+      btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
+      return;
+    }
+
     // Email confirmation required (no token returned)
     if(!token){
       _showSuccessEmailConfirm();
