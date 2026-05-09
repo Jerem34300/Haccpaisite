@@ -7,12 +7,12 @@
 <meta name="description" content="HACC.PRO : logiciel HACCP en ligne pour restaurants et restauration collective. Plats témoins, relevés de températures, traçabilité alimentaire. PMS généré automatiquement en 20 minutes. Essai gratuit 14 jours.">
 <meta name="keywords" content="logiciel haccp, plan de maîtrise sanitaire, haccp restaurant, traçabilité alimentaire, plat témoin, registre haccp, application haccp restauration collective">
 <meta name="robots" content="index, follow">
-<link rel="canonical" href="https://hacc.pro/landing.html">
+<link rel="canonical" href="https://hacc.pro/">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="HACC.PRO — Logiciel HACCP pour restaurants, PMS automatique">
 <meta property="og:description" content="Gérez votre HACCP 100% en ligne : plats témoins, températures, traçabilité et PMS généré automatiquement. Essai gratuit 14 jours.">
-<meta property="og:url" content="https://hacc.pro/landing.html">
+<meta property="og:url" content="https://hacc.pro/">
 <meta property="og:image" content="https://hacc.pro/icon-512.png">
 <meta property="og:locale" content="fr_FR">
 <meta name="twitter:card" content="summary_large_image">
@@ -189,6 +189,22 @@
   ]
 }
 </script>
+<script>
+/* Session guard — redirect authenticated users to their app */
+(function(){
+  try {
+    var s1=JSON.parse(localStorage.getItem('haccpro_session')||'{}');
+    var s2=JSON.parse(localStorage.getItem('haccpro_supa_cfg')||'{}');
+    var DASH=['super_admin','siege','directeur','chef_secteur'];
+    if(s1.token&&s1.role){
+      if(DASH.includes(s1.role)){window.location.replace('dashboard.html');return;}
+      if(s1.role==='cuisinier'){window.location.replace('cuisine.html');return;}
+    }
+    if(s2.userToken&&s2.userRole==='cuisinier'){window.location.replace('cuisine.html');return;}
+    if(s2.userToken&&DASH.includes(s2.userRole)){window.location.replace('dashboard.html');return;}
+  }catch(e){}
+})();
+</script>
 </head>
 <body>
 
@@ -231,12 +247,16 @@
         Conçu pour les cuisiniers, conçu pour survivre aux contrôles DDPP. Zéro papier.
       </p>
       <div class="hero-ctas">
-        <a href="signup.html" class="btn-hero-primary">Commencer gratuitement →</a>
+        <a href="signup.html" class="btn-hero-primary">Essai gratuit 14 jours →</a>
         <a href="#how" class="btn-hero-secondary">Voir comment ça marche</a>
+      </div>
+      <div class="hero-free-badge" style="display:flex;align-items:center;gap:10px;margin:14px 0 4px;background:rgba(141,198,63,.13);border:1.5px solid rgba(141,198,63,.35);border-radius:12px;padding:10px 16px;width:fit-content">
+        <span style="font-size:1.4rem">🎁</span>
+        <span style="font-size:1rem;font-weight:900;color:#c8e87a">14 jours GRATUITS</span>
+        <span style="font-size:.82rem;color:rgba(255,255,255,.7);font-weight:600">— Accès complet, sans carte bancaire</span>
       </div>
       <div class="hero-trust">
         <span class="hero-trust-dot"></span><strong style="color:#8DC63F">Dès 29€/mois</strong>
-        <span class="hero-trust-dot"></span>14 jours d'essai gratuit
         <span class="hero-trust-dot"></span>Sans carte bancaire
         <span class="hero-trust-dot"></span>Résiliation en 1 clic
       </div>
@@ -334,8 +354,8 @@
       <div class="stat-lbl">Pour générer votre PMS complet</div>
     </div>
     <div class="stat-card">
-      <div class="stat-val">6<span>+</span></div>
-      <div class="stat-lbl">Modules HACCP intégrés</div>
+      <div class="stat-val">40<span>+</span></div>
+      <div class="stat-lbl">Modules HACCP disponibles</div>
     </div>
     <div class="stat-card">
       <div class="stat-val">100<span>%</span></div>
