@@ -3,9 +3,9 @@
 @keyframes qtemp-bounce{0%,100%{transform:scale(1)}40%{transform:scale(1.08)}70%{transform:scale(.96)}}
 
 :root{
-  --plum:#5C1E5A;--plum2:#7B2D78;--mag:#C93A78;--coral:#E86048;
-  --green:#8DC63F;--fond:#F7F2F7;--blanc:#fff;
-  --brd:#DDD0DD;--gris:#3D2A3C;--gris2:#7A6579;--sh:rgba(92,30,90,.13);
+  --plum:#0F2240;--plum2:#1a3558;--mag:#C93A78;--coral:#E86048;
+  --green:#8DC63F;--fond:#F0F4FA;--blanc:#fff;
+  --brd:#C8D8EC;--gris:#1A2A40;--gris2:#5B6B80;--sh:rgba(15,34,64,.13);
 }
 body.dark-mode{
   --fond:#1a1218;--blanc:#231b22;--brd:#3d2a3c;
