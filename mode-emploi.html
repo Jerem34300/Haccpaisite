@@ -247,8 +247,9 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">Utilisation quotidienne</div>
           <h3>Saisir un relevé de température</h3>
-          <p>Depuis votre smartphone : <strong>Cuisine → Températures → "+"</strong>. Sélectionnez l'enceinte (ex: "Frigo viandes"), saisissez la valeur mesurée, validez.</p>
-          <p>HACC.PRO compare automatiquement à votre seuil réglementaire (configuré dans votre PMS). Si la valeur est hors seuil, une alerte est générée immédiatement.</p>
+          <p>Depuis votre smartphone, appuyez sur l'onglet <strong>🌡️ Stockage T°C</strong> dans la barre de navigation en bas de l'écran. Appuyez sur l'enceinte souhaitée (ex : "Frigo viandes"), saisissez la valeur lue sur le thermomètre, puis validez.</p>
+          <p>HACC.PRO compare automatiquement au seuil réglementaire de votre PMS. Si la valeur est hors seuil, une non-conformité est générée immédiatement.</p>
+          <p>Pour enregistrer un <strong>refroidissement</strong> (passage de +63°C à +10°C en moins de 2h), utilisez l'onglet <strong>❄️ Refroidissement</strong>. Pour les remises en température, utilisez <strong>🔥 Remise en T°C</strong>.</p>
         </div>
       </div>
 
@@ -326,7 +327,7 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">Enregistrement</div>
           <h3>Créer un plat témoin</h3>
-          <p>Après la mise en production de chaque plat : <strong>Cuisine → Plats témoins → "+"</strong>. HACC.PRO affiche automatiquement la liste des plats du service en cours (issus de votre menu saisie). Sélectionnez le plat, HACC.PRO génère le numéro de lot et calcule la date de destruction (J+5 à 0–3°C).</p>
+          <p>Après la mise en production de chaque plat, appuyez sur <strong>🍱 Plats témoins</strong> dans la barre de navigation, puis sur le bouton <strong>"+"</strong> en bas à droite. Saisissez le nom du plat, la date et l'heure du prélèvement. HACC.PRO calcule automatiquement la date limite de destruction (J+5 à 0–3°C) et génère un numéro de lot.</p>
         </div>
       </div>
 
@@ -335,8 +336,8 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">Impression de l'étiquette</div>
           <h3>Imprimer l'étiquette sur votre imprimante habituelle</h3>
-          <p>Appuyez sur "Imprimer l'étiquette". HACC.PRO génère un PDF avec : nom du plat, date de production, numéro de lot, date limite de destruction, initiales du cuisinier.</p>
-          <p><strong>Aucune imprimante thermique spéciale n'est nécessaire.</strong> L'imprimante laser ou jet d'encre du bureau suffit. HACC.PRO imprime sur des feuilles d'étiquettes adhésives standard et gère automatiquement les étiquettes restantes : il propose de remplir les cases vides d'une feuille entamée avant d'en démarrer une nouvelle, pour éviter tout gaspillage.</p>
+          <p>Depuis la fiche du plat témoin, appuyez sur <strong>"Imprimer"</strong>. HACC.PRO génère un PDF avec : nom du plat, date de production, numéro de lot, date limite de destruction et visa du cuisinier.</p>
+          <p><strong>Aucune imprimante thermique spéciale n'est nécessaire.</strong> L'imprimante laser ou jet d'encre du bureau suffit. HACC.PRO gère automatiquement les feuilles d'étiquettes entamées : il propose de compléter les cases vides avant d'en démarrer une nouvelle, pour éviter tout gaspillage de support.</p>
         </div>
       </div>
 
@@ -371,7 +372,7 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">À la livraison</div>
           <h3>Enregistrer une réception</h3>
-          <p>Lors de chaque livraison : <strong>Cuisine → Traçabilité → Réception</strong>. Saisissez le fournisseur, les produits livrés, les lots, DLC et la température relevée. En cas de non-conformité (produit non conforme ou température hors seuil), HACC.PRO vous guide pour documenter le refus ou la dérogation motivée.</p>
+          <p>Lors de chaque livraison, appuyez sur l'onglet <strong>📦 Réception</strong> dans la barre de navigation, puis sur <strong>"+"</strong>. Saisissez le fournisseur, les produits livrés, les lots, DLC et la température relevée. En cas de non-conformité (produit ou température hors seuil), HACC.PRO génère automatiquement une fiche d'action corrective.</p>
         </div>
       </div>
 
@@ -380,7 +381,7 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">Production et reconditionnement</div>
           <h3>Étiqueter les productions et préparations</h3>
-          <p>Pour chaque produit reconditionné ou préparation maison : <strong>Cuisine → Traçabilité → Production</strong>. Saisissez le produit, la date, l'heure et les ingrédients utilisés (avec leurs lots fournisseurs). HACC.PRO génère une étiquette à imprimer : DLC calculée selon votre PMS, numéro de lot interne, conditions de conservation.</p>
+          <p>Pour chaque produit reconditionné ou préparation maison, appuyez sur <strong>🏷️ Étiq. production</strong> dans la navigation, puis <strong>"+"</strong>. Saisissez le produit, la date, l'heure et les ingrédients utilisés. HACC.PRO génère une étiquette imprimable : DLC calculée selon votre PMS, numéro de lot interne, conditions de conservation.</p>
         </div>
       </div>
 
@@ -389,7 +390,7 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">En cas de rappel produit</div>
           <h3>Retrouver un lot en quelques secondes</h3>
-          <p>Si un fournisseur rappelle un lot : <strong>Traçabilité → Recherche par lot</strong>. HACC.PRO liste instantanément toutes les préparations contenant ce lot, les plats témoins associés et les services concernés. Vous pouvez documenter le retrait en 1 minute.</p>
+          <p>Si un fournisseur rappelle un lot, appuyez sur <strong>🔍 Historique</strong> (fixe en haut de la navigation). Tapez le nom du produit ou du fournisseur dans la barre de recherche. HACC.PRO liste instantanément toutes les entrées correspondantes (réceptions, productions, plats témoins). Vous pouvez documenter le retrait en 1 minute.</p>
         </div>
       </div>
     </div>
@@ -410,7 +411,7 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">Planification</div>
           <h3>Saisir le menu du service</h3>
-          <p>La veille ou le matin du service : <strong>Cuisine → Menus → Nouveau service</strong>. Saisissez les plats prévus (entrée, plat, dessert, régimes spéciaux). HACC.PRO crée automatiquement la liste des plats témoins à prélever pour ce service.</p>
+          <p>La veille ou le matin du service, accédez à la section <strong>🗓️ Menu / Plats témoins</strong> dans la navigation. Saisissez les plats prévus : entrées, plats, garnitures, desserts. HACC.PRO détermine automatiquement quels plats nécessitent un prélèvement témoin selon votre PMS et votre type de service.</p>
         </div>
       </div>
 
@@ -443,35 +444,89 @@ body{overflow-x:hidden}
       <div class="me-step">
         <div class="me-step-icon">📊</div>
         <div class="me-step-body">
-          <div class="me-step-label">Vue d'ensemble</div>
-          <h3>Le score HACCP en temps réel</h3>
-          <p>Le dashboard affiche le <strong>score HACCP</strong> de chaque cuisine : pourcentage de conformité basé sur les relevés effectués vs. les relevés attendus selon votre PMS. Un score rouge indique des tâches non effectuées ou des écarts non résolus.</p>
+          <div class="me-step-label">Section "Général" — Vue d'ensemble</div>
+          <h3>Score HACCP et alertes en temps réel</h3>
+          <p>La page d'accueil du dashboard (<strong>📊 Vue d'ensemble</strong>) affiche le score de conformité HACCP de chaque site, exprimé en pourcentage. Un score rouge signale des relevés manquants ou des non-conformités non traitées. Les alertes actives (température hors seuil, plat témoin à détruire, tâche en retard) sont listées en priorité.</p>
+          <p>Utilisez les filtres en haut — <strong>Territoire → Secteur → Site</strong> — pour zoomer sur un établissement précis. Le filtre <strong>Mois</strong> permet d'analyser les données d'une période passée.</p>
         </div>
       </div>
 
       <div class="me-step">
-        <div class="me-step-icon">🔔</div>
+        <div class="me-step-icon">📋</div>
         <div class="me-step-body">
-          <div class="me-step-label">Alertes</div>
-          <h3>Les notifications importantes</h3>
-          <p>Le dashboard centralise toutes les alertes actives :</p>
+          <div class="me-step-label">Section "Général" — Saisies PMS</div>
+          <h3>Toutes les saisies de vos cuisines</h3>
+          <p><strong>📋 Saisies PMS</strong> liste l'intégralité des enregistrements remontés par vos cuisines (températures, réceptions, nettoyage, non-conformités…). Chaque ligne est horodatée, signée du cuisinier et indique si la saisie est conforme. Vous pouvez filtrer par type, site ou période, et exporter en CSV.</p>
+        </div>
+      </div>
+
+      <div class="me-step">
+        <div class="me-step-icon">⚠️</div>
+        <div class="me-step-body">
+          <div class="me-step-label">Section "Général" — Non-conformités</div>
+          <h3>Suivi des écarts et actions correctives</h3>
+          <p><strong>⚠️ Non-conformités</strong> centralise toutes les fiches d'action corrective ouvertes et clôturées. Chaque NC indique la cause identifiée, l'action menée et le statut (ouverte / résolue). Les NC générées automatiquement (température hors seuil, retard de saisie) apparaissent ici dès leur création.</p>
+        </div>
+      </div>
+
+      <div class="me-step">
+        <div class="me-step-icon">🔎</div>
+        <div class="me-step-body">
+          <div class="me-step-label">Section "Par fiche"</div>
+          <h3>Consulter les données par type de registre</h3>
+          <p>La section <strong>Par fiche</strong> donne accès à chaque registre HACCP indépendamment :</p>
           <ul>
-            <li>Relevé de température manquant ou hors seuil</li>
-            <li>Plat témoin à détruire dans les 24h</li>
-            <li>DLC d'une production dépassée</li>
-            <li>Tâche HACCP en retard</li>
+            <li><strong>📦 Réceptions</strong> — contrôles à la livraison, températures fournisseurs, lots</li>
+            <li><strong>📄 Traçabilité MP</strong> — traçabilité des matières premières et productions internes</li>
+            <li><strong>📍 CCP</strong> — points critiques de contrôle (refroidissement, remises en T°C)</li>
+            <li><strong>🌡️ Températures</strong> — historique des relevés de stockage par enceinte</li>
+            <li><strong>📊 Nettoyage</strong> — validations du plan de nettoyage et désinfection</li>
+            <li><strong>🔥 Cuisson &amp; Distrib.</strong> — enregistrements de cuisson et distribution</li>
+            <li><strong>🔧 Maintenance &amp; Labo</strong> — interventions équipements et contrôles microbiologiques</li>
           </ul>
+          <p>Chaque vue est filtrable par site et par période. Toutes les données sont exportables.</p>
         </div>
       </div>
 
       <div class="me-step">
-        <div class="me-step-icon">👥</div>
+        <div class="me-step-icon">📈</div>
         <div class="me-step-body">
-          <div class="me-step-label">Équipe</div>
-          <h3>Inviter votre équipe</h3>
-          <p>Ajoutez vos cuisiniers, chefs de cuisine et responsables qualité depuis <strong>Dashboard → Équipe → Inviter</strong>. Chaque collaborateur reçoit un lien d'invitation par email. Vous pouvez attribuer des droits par rôle (cuisinier, chef, responsable, directeur) et par site.</p>
+          <div class="me-step-label">Section "Analyse"</div>
+          <h3>Rapports et analyse de conformité</h3>
+          <p><strong>📄 Rapports PDF</strong> génère les documents nécessaires pour un contrôle DDPP : sélectionnez la période et le site, le rapport est produit en quelques secondes avec l'ensemble des relevés, des fiches NC et du PMS.</p>
+          <p><strong>📈 PMS vs Réel</strong> compare vos objectifs de saisie (définis dans le PMS) à ce qui a été effectivement réalisé par vos équipes — idéal pour identifier les manquements récurrents avant un contrôle.</p>
         </div>
       </div>
+
+      <div class="me-step">
+        <div class="me-step-icon">⚙️</div>
+        <div class="me-step-body">
+          <div class="me-step-label">Section "Administration"</div>
+          <h3>Gérer votre organisation et votre équipe</h3>
+          <p>Depuis <strong>⚙️ Gérer l'organisation</strong>, ajoutez vos cuisines, invitez vos collaborateurs et attribuez les rôles :</p>
+          <ul>
+            <li><strong>Cuisinier</strong> — accès à l'app Cuisine uniquement (saisie des relevés)</li>
+            <li><strong>Chef de secteur</strong> — accès au dashboard en lecture pour son secteur</li>
+            <li><strong>Directeur</strong> — accès complet dashboard multi-sites</li>
+            <li><strong>Siège</strong> — vision globale toutes cuisines, exports, rapports</li>
+          </ul>
+          <p>Chaque collaborateur invité reçoit un email avec ses identifiants d'accès.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="me-screen" role="img" aria-label="Aperçu sidebar dashboard">
+      <div class="me-screen-bar">
+        <div class="me-screen-dot" style="background:#ff5f57"></div>
+        <div class="me-screen-dot" style="background:#febc2e"></div>
+        <div class="me-screen-dot" style="background:#28c840"></div>
+      </div>
+      <div style="font-size:.72rem;color:rgba(255,255,255,.4);margin-bottom:12px;font-weight:700">DASHBOARD — NAVIGATION LATÉRALE</div>
+      <div class="me-screen-row"><span class="me-screen-row-label">📊 Vue d'ensemble</span><span class="me-screen-row-val ok">Score global 94%</span></div>
+      <div class="me-screen-row"><span class="me-screen-row-label">📋 Saisies PMS</span><span class="me-screen-row-val ok">147 ce mois</span></div>
+      <div class="me-screen-row"><span class="me-screen-row-label">⚠️ Non-conformités</span><span class="me-screen-row-val warn">2 ouvertes</span></div>
+      <div class="me-screen-row"><span class="me-screen-row-label">🌡️ Températures</span><span class="me-screen-row-val ok">Toutes conformes</span></div>
+      <div class="me-screen-row"><span class="me-screen-row-label">📄 Rapports PDF</span><span class="me-screen-row-val na">Export DDPP →</span></div>
     </div>
   </div>
 
@@ -506,8 +561,8 @@ body{overflow-x:hidden}
         <div class="me-step-body">
           <div class="me-step-label">Avec HACC.PRO</div>
           <h3>Exporter votre dossier en 2 minutes</h3>
-          <p>Depuis le dashboard : <strong>Rapports → Export DDPP → Sélectionner la période</strong>. HACC.PRO génère un rapport PDF complet incluant tous les relevés, les fiches de non-conformité, l'historique des plats témoins et votre PMS.</p>
-          <p>L'inspecteur peut aussi consulter les données en temps réel si vous lui donnez un accès temporaire.</p>
+          <p>Dans le Dashboard, cliquez sur <strong>📄 Rapports PDF</strong> dans la barre latérale gauche. Sélectionnez le site et la période (ex: "3 derniers mois"). HACC.PRO génère un rapport PDF complet : relevés de températures, fiches de non-conformité, historique des plats témoins et PMS.</p>
+          <p>Si l'inspecteur arrive à l'improviste, vous pouvez également lui donner un accès temporaire en lecture seule depuis <strong>⚙️ Gérer l'organisation → Inviter un visiteur</strong>.</p>
         </div>
       </div>
     </div>

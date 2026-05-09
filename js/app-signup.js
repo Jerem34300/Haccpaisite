@@ -125,9 +125,20 @@ async function doSignup(){
     });
     const auth = await r1.json();
 
-    if(auth.error || auth.code === 400){
-      const msg = auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription';
-      throw new Error(msg);
+    if(auth.error || auth.code === 400 || auth.code === 422){
+      const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
+      const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
+        || auth.error_code === 'user_already_exists' || auth.code === 422;
+      if(isDup){
+        const el = document.getElementById('err-4');
+        if(el){
+          el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
+          el.style.display = 'block';
+        }
+        btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
+        return;
+      }
+      throw new Error(auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription');
     }
 
     const token  = auth.access_token;
