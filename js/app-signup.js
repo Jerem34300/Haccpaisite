@@ -118,7 +118,8 @@ async function doSignup(){
 
   try {
     // 1. Créer utilisateur Supabase Auth
-    const r1 = await fetch(`${_SU}/auth/v1/signup`, {
+    const _redirectTo = (window.location.origin || 'https://hacc.pro') + '/login.html';
+    const r1 = await fetch(`${_SU}/auth/v1/signup?redirect_to=${encodeURIComponent(_redirectTo)}`, {
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':_SK},
       body:JSON.stringify({ email:_data.email, password:_data.password })

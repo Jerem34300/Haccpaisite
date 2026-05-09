@@ -68,7 +68,24 @@ async function doLogin() {
     });
     const profiles = await pr.json();
     const profile = profiles?.[0] || {};
-    const role = profile.role || 'cuisinier';
+
+    saveCfg(email);
+
+    // Aucun profil ou rôle = nouvel utilisateur → onboarding
+    if (!profiles?.[0] || !profile.role) {
+      localStorage.setItem('haccpro_session', JSON.stringify({
+        token: data.access_token,
+        refreshToken: data.refresh_token || '',
+        userId: data.user?.id,
+        role: 'directeur',
+        tenantId: null,
+        fullName: '',
+      }));
+      window.location.href = 'onboarding.html';
+      return;
+    }
+
+    const role = profile.role;
 
     // 3. Si cuisinier, récupérer le CODE du site (pas son UUID)
     let siteCode = '';
@@ -84,8 +101,6 @@ async function doLogin() {
       } catch(e) {}
     }
 
-    saveCfg(email);
-
     const ROLES_DASHBOARD = ['super_admin', 'siege', 'directeur', 'chef_secteur'];
     const ROLES_PMS       = ['cuisinier'];
 
@@ -97,7 +112,12 @@ async function doLogin() {
         role, tenantId: profile.tenant_id,
         fullName: profile.full_name,
       }));
-      window.location.href = 'dashboard.html';
+      // Directeur sans tenant configuré → onboarding
+      if (!profile.tenant_id) {
+        window.location.href = 'onboarding.html';
+      } else {
+        window.location.href = 'dashboard.html';
+      }
 
     } else if (ROLES_PMS.includes(role)) {
       const supaCfg = {
@@ -173,7 +193,81 @@ async function doForgot() {
 }
 
 loadCfg();
-// Masquer la config si déjà renseignée
-// Note: cfg-box retiré du DOM — plus de panneau de configuration avancée visible
-// La configuration Supabase est embarquée directement dans le code
+
+// ── Callback email confirmation ─────────────────────────
+// Supabase redirige vers login.html#access_token=...&type=signup après confirmation
+(function checkEmailConfirmCallback() {
+  var hash = window.location.hash;
+  if (!hash || !hash.includes('access_token')) return;
+
+  var params = new URLSearchParams(hash.slice(1));
+  var accessToken  = params.get('access_token');
+  var refreshToken = params.get('refresh_token') || '';
+  var type         = params.get('type');
+
+  if (!accessToken || type !== 'signup') return;
+
+  // Nettoyer le hash de l'URL
+  history.replaceState(null, '', window.location.pathname);
+
+  // Afficher un message de chargement
+  var errEl = document.getElementById('login-err');
+  if (errEl) {
+    errEl.textContent  = '✅ Email confirmé ! Connexion en cours…';
+    errEl.style.display    = 'block';
+    errEl.style.color      = '#166534';
+    errEl.style.background = '#f0fdf4';
+    errEl.style.border     = '1px solid #bbf7d0';
+  }
+
+  _handleEmailCallback(accessToken, refreshToken);
+})();
+
+function _parseJwtSub(token) {
+  try {
+    var payload = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    return JSON.parse(atob(payload)).sub || '';
+  } catch(e) { return ''; }
+}
+
+async function _handleEmailCallback(accessToken, refreshToken) {
+  var url = document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
+  var key = document.getElementById('cfg-key').value.trim();
+  var userId = _parseJwtSub(accessToken);
+
+  try {
+    var pr = await fetch(`${url}/rest/v1/profiles?id=eq.${userId}&select=role,tenant_id,full_name&limit=1`, {
+      headers: { 'apikey': key, 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
+    });
+    var profiles = await pr.json();
+    var profile  = profiles?.[0] || {};
+
+    localStorage.setItem('haccpro_session', JSON.stringify({
+      token: accessToken,
+      refreshToken: refreshToken,
+      userId: userId,
+      role: profile.role || 'directeur',
+      tenantId: profile.tenant_id || null,
+      fullName: profile.full_name || '',
+    }));
+
+    // Pas de profil complet → onboarding
+    if (!profile.role || !profile.tenant_id) {
+      window.location.href = 'onboarding.html';
+      return;
+    }
+
+    var ROLES_DASHBOARD = ['super_admin', 'siege', 'directeur', 'chef_secteur'];
+    window.location.href = ROLES_DASHBOARD.includes(profile.role) ? 'dashboard.html' : 'cuisine.html';
+
+  } catch(e) {
+    // En cas d'erreur réseau, aller sur onboarding quand même
+    localStorage.setItem('haccpro_session', JSON.stringify({
+      token: accessToken, refreshToken: refreshToken,
+      userId: userId, role: 'directeur', tenantId: null, fullName: '',
+    }));
+    window.location.href = 'onboarding.html';
+  }
+}
   
