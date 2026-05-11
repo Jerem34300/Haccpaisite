@@ -143,9 +143,13 @@ function navTo(page){
 function openCuisine(siteId, siteCode, siteName){
   var sc = {};
   try { sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
-  sc.siteId    = siteId;
-  sc.siteCode  = siteCode;
+  // cuisine.html uses c.siteId for `sites?code=eq.{siteId}` — must be the text code, not UUID
+  sc.siteId    = siteCode || siteId;
+  sc.siteUUID  = siteId;
   sc.siteNom   = siteName;
+  sc.nom       = localStorage.getItem('sa_tenant_name') || siteName;
+  sc.url       = SUPA_URL;
+  sc.anonKey   = SUPA_KEY;
   sc.userToken = _token;
   sc.token     = _token;
   sc.userId    = _userId;
