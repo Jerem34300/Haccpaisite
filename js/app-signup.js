@@ -33,6 +33,7 @@ function _showStep(n){
   if(target) target.classList.add('active');
   _step = n;
   _updateStepper();
+  if(n===3) _preselectPlan();
   if(n===4) _fillRecap();
   window.scrollTo(0,0);
 }
@@ -83,6 +84,12 @@ function validateStep(n){
 }
 
 // ── Plan selection ────────────────────────────────────────────
+function _preselectPlan(){
+  const s = _data.sites || 1;
+  const plan = s === 1 ? 'solo' : s > 3 ? 'enterprise' : 'multi';
+  selectPlan(plan);
+}
+
 function selectPlan(plan){
   if(!['solo','multi','enterprise'].includes(plan)) return;
   _data.plan = plan;
@@ -242,14 +249,54 @@ async function doSignup(){
 }
 
 function _showSuccessEmailConfirm(){
+  try {
+    localStorage.setItem('haccpro_pending_signup', JSON.stringify({
+      company:_data.company, type:_data.type, sites:_data.sites, plan:_data.plan
+    }));
+  } catch(e){ console.error('pending signup save:', e); }
   _showStep('success');
-  _set('success-msg','Un email de confirmation vous a été envoyé à <strong>'+_data.email+'</strong>. Cliquez sur le lien pour activer votre compte, puis connectez-vous pour configurer votre HACCP.');
+  _set('success-msg','Un email de confirmation vous a été envoyé à <strong>'+_data.email+'</strong>. Cliquez sur le lien pour activer votre compte.');
+  const ec = document.getElementById('success-email-confirm');
+  if(ec) ec.style.display = 'block';
 }
 
 function _showSuccessRedirect(){
   _showStep('success');
   _set('success-msg','Votre essai gratuit de 14 jours est activé. Vous allez être redirigé vers la configuration de votre HACCP…');
+  const rd = document.getElementById('success-redirect');
+  if(rd) rd.style.display = 'block';
   setTimeout(()=>{ window.location.href = 'onboarding.html'; }, 2000);
+}
+
+async function resendConfirmEmail(){
+  const btn   = document.getElementById('btn-resend');
+  const label = document.getElementById('btn-resend-label');
+  const spin  = document.getElementById('btn-resend-spin');
+  const errEl = document.getElementById('resend-err');
+  btn.disabled = true;
+  label.style.display = 'none';
+  spin.style.display = 'block';
+  errEl.style.display = 'none';
+  try {
+    const r = await fetch(`${_SU}/auth/v1/resend`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':_SK},
+      body:JSON.stringify({ type:'signup', email:_data.email })
+    });
+    const res = await r.json();
+    if(res.error) throw new Error(res.error.message || res.error_description || 'Erreur lors du renvoi');
+    label.textContent = 'Email renvoyé ✓';
+    label.style.display = 'inline';
+    spin.style.display = 'none';
+    setTimeout(()=>{ btn.disabled = false; label.textContent = 'Renvoyer l\'email de confirmation'; }, 30000);
+  } catch(e){
+    console.error('resendConfirmEmail:', e);
+    errEl.textContent = e.message || 'Erreur lors du renvoi. Réessayez.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    label.style.display = 'inline';
+    spin.style.display = 'none';
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -267,4 +314,13 @@ function hideErr(step){
 function _set(id, html){
   const el = document.getElementById(id);
   if(el) el.innerHTML = html;
+}
+function togglePwd(inputId, svgId){
+  const inp = document.getElementById(inputId);
+  const svg = document.getElementById(svgId);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  svg.innerHTML = show
+    ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
 }

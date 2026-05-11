@@ -60,14 +60,36 @@ async function doLogin() {
       body: JSON.stringify({ email, password: pass })
     });
     const data = await r.json();
-    if (!data.access_token) throw new Error(_frErr(data.error_description || data.msg || data.error || ''));
+    if (!data.access_token) {
+      const errRaw = [data.error_description, data.msg, data.error, data.error_code].filter(Boolean).join(' ').toLowerCase();
+      if(errRaw.includes('email not confirmed') || errRaw.includes('email_not_confirmed')){
+        _showEmailNotConfirmedErr(email);
+        btn.disabled = false;
+        label.style.display = 'inline';
+        spin.style.display = 'none';
+        return;
+      }
+      throw new Error(_frErr(data.error_description || data.msg || data.error || ''));
+    }
 
     // 2. Charger le profil pour connaître le rôle
     const pr = await fetch(`${url}/rest/v1/profiles?id=eq.${data.user?.id}&select=role,tenant_id,site_id,full_name&limit=1`, {
       headers: { 'apikey': key, 'Authorization': `Bearer ${data.access_token}`, 'Accept': 'application/json' }
     });
     const profiles = await pr.json();
-    const profile = profiles?.[0] || {};
+    const profile  = profiles?.[0] || null;
+
+    // Premier login après confirmation email : profil pas encore créé
+    if(!profile){
+      let pending = null;
+      try { pending = JSON.parse(localStorage.getItem('haccpro_pending_signup') || 'null'); } catch(e){}
+      if(pending){
+        await _completeSignupSetup(data.access_token, data.refresh_token || '', data.user?.id, pending, url, key);
+        return;
+      }
+      throw new Error('Aucun profil trouvé. Contactez le support.');
+    }
+
     const role = profile.role || 'cuisinier';
 
     // 3. Si cuisinier, récupérer le CODE du site (pas son UUID)
@@ -146,6 +168,15 @@ function showErr(msg) {
   el.textContent = msg;
   el.style.display = 'block';
 }
+function togglePwd(inputId, svgId){
+  const inp = document.getElementById(inputId);
+  const svg = document.getElementById(svgId);
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  svg.innerHTML = show
+    ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
+    : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+}
 
 async function doForgot() {
   const email = document.getElementById('login-email').value.trim();
@@ -172,8 +203,135 @@ async function doForgot() {
   }
 }
 
+function _showEmailNotConfirmedErr(email) {
+  window._pendingResendEmail = email;
+  const el = document.getElementById('login-err');
+  el.innerHTML = 'Votre compte n\'est pas encore activé. <button onclick="doResendLoginConfirm()" style="background:none;border:none;color:inherit;font-weight:900;cursor:pointer;text-decoration:underline;font-family:inherit;font-size:inherit;padding:0">Renvoyer l\'email →</button>';
+  el.style.display = 'block';
+}
+
+async function doResendLoginConfirm(){
+  const url   = document.getElementById('cfg-url').value.trim().replace(/\/$/,'');
+  const key   = document.getElementById('cfg-key').value.trim();
+  const email = window._pendingResendEmail || document.getElementById('login-email').value.trim();
+  const el    = document.getElementById('login-err');
+  el.textContent = 'Envoi en cours…';
+  try {
+    const r = await fetch(`${url}/auth/v1/resend`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':key},
+      body:JSON.stringify({ type:'signup', email })
+    });
+    const res = await r.json();
+    if(res.error) throw new Error(res.error.message || res.error_description || 'Erreur lors du renvoi');
+    el.textContent = 'Email renvoyé. Vérifiez vos spams si vous ne le recevez pas.';
+    el.style.color      = '#166534';
+    el.style.background = '#f0fdf4';
+    el.style.border     = '1px solid #bbf7d0';
+  } catch(e){
+    console.error('doResendLoginConfirm:', e);
+    el.textContent = e.message || 'Erreur réseau. Réessayez dans quelques instants.';
+  }
+}
+
+// ── Finalisation du compte post-inscription ────────────────────
+// Appelée depuis doLogin() (profil absent) ou depuis le callback
+// hash Supabase (access_token dans l'URL). Crée tenant + profil +
+// abonnement puis redirige vers onboarding.
+async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
+  const company = sd.company || '';
+  const type    = sd.type    || 'restaurant';
+  const plan    = sd.plan    || 'multi';
+
+  let tenantId = null;
+  try {
+    const r = await fetch(`${url}/rest/v1/tenants`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','apikey':key,
+        'Authorization':`Bearer ${token}`,'Prefer':'return=representation'
+      },
+      body:JSON.stringify({ name:company, type })
+    });
+    if(r.ok){ const t = await r.json(); tenantId = Array.isArray(t) ? t[0]?.id : t?.id; }
+  } catch(e){ console.error('tenant:', e); }
+
+  if(tenantId){
+    await fetch(`${url}/rest/v1/profiles`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','apikey':key,
+        'Authorization':`Bearer ${token}`,
+        'Prefer':'return=minimal,resolution=merge-duplicates'
+      },
+      body:JSON.stringify({ id:userId, tenant_id:tenantId, role:'directeur', full_name:company })
+    }).catch(e=>console.error('profile:', e));
+
+    const trialEnd = new Date(Date.now() + 14*24*60*60*1000).toISOString();
+    await fetch(`${url}/rest/v1/subscriptions`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','apikey':key,
+        'Authorization':`Bearer ${token}`,'Prefer':'return=minimal'
+      },
+      body:JSON.stringify({
+        tenant_id:tenantId, plan,
+        price_per_month:{solo:29,multi:49,enterprise:0}[plan] ?? 49,
+        status:'trial', trial_ends_at:trialEnd
+      })
+    }).catch(e=>console.error('subscription:', e));
+  }
+
+  localStorage.setItem('haccpro_session', JSON.stringify({
+    token, refreshToken, userId,
+    role:'directeur', tenantId, fullName:company, plan
+  }));
+  localStorage.setItem('haccpro_signup_data', JSON.stringify({
+    company, type, sites:sd.sites || 1, plan
+  }));
+  localStorage.removeItem('haccpro_pending_signup');
+  window.location.href = 'onboarding.html';
+}
+
+// ── Callback hash Supabase (fallback si token passé dans l'URL) ─
+async function _handleEmailConfirmCallback(){
+  const hash = window.location.hash.slice(1);
+  if(!hash) return;
+  const params = new URLSearchParams(hash);
+  if(params.get('type') !== 'signup' || !params.get('access_token')) return;
+
+  const token        = params.get('access_token');
+  const refreshToken = params.get('refresh_token') || '';
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+
+  const statusEl = document.getElementById('login-err');
+  if(statusEl){
+    statusEl.textContent    = 'Email confirmé — finalisation de votre compte…';
+    statusEl.style.display  = 'block';
+    statusEl.style.color    = '#166534';
+    statusEl.style.background = '#f0fdf4';
+    statusEl.style.border   = '1px solid #bbf7d0';
+  }
+  try {
+    const userRes = await fetch(`${_DEFAULT_URL}/auth/v1/user`, {
+      headers:{ 'apikey':_DEFAULT_KEY, 'Authorization':`Bearer ${token}` }
+    });
+    const user = await userRes.json();
+    if(!user.id) throw new Error('Utilisateur introuvable');
+    let sd = {};
+    try { sd = JSON.parse(localStorage.getItem('haccpro_pending_signup') || '{}'); } catch(e){}
+    await _completeSignupSetup(token, refreshToken, user.id, sd, _DEFAULT_URL, _DEFAULT_KEY);
+  } catch(e){
+    console.error('_handleEmailConfirmCallback:', e);
+    if(statusEl){
+      statusEl.textContent    = 'Erreur lors de la finalisation. Connectez-vous ci-dessous.';
+      statusEl.style.color    = '#991b1b';
+      statusEl.style.background = '#fef2f2';
+      statusEl.style.border   = '1px solid #fecaca';
+    }
+  }
+}
+
 loadCfg();
-// Masquer la config si déjà renseignée
-// Note: cfg-box retiré du DOM — plus de panneau de configuration avancée visible
-// La configuration Supabase est embarquée directement dans le code
+_handleEmailConfirmCallback();
   
