@@ -690,10 +690,9 @@ async function bootApp(){
       document.getElementById('nav-gmo').style.display='flex';
       document.getElementById('nav-compare').style.display='flex';
     }
-    if(_profile.role==='directeur'){
+    if(_profile.role==='siege'){
       const navSub = document.getElementById('nav-subscription');
       if(navSub) navSub.style.display='flex';
-      document.getElementById('nav-admin-section').style.display='block';
     }
     await loadData();
     showPage('overview');
