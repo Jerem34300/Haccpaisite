@@ -155,6 +155,20 @@ function openCuisine(siteId, siteCode, siteName){
   sc.userId    = _userId;
   if(_profile && _profile.tenant_id) sc.tenantId = _profile.tenant_id;
   localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
+
+  // Reset branding fields in haccp_v6 so cuisine.html shows the correct
+  // site name/logo and not the stale values from the previous session.
+  var tenantName = (document.getElementById('sidebar-tenant-name') || {}).textContent
+                 || localStorage.getItem('sa_tenant_name') || '';
+  try {
+    var v6 = JSON.parse(localStorage.getItem('haccp_v6') || '{}');
+    v6.config = v6.config || {};
+    v6.config.headerGroupe = tenantName;
+    v6.config.headerNom    = siteName;
+    delete v6.config.headerLogo;   // let cuisine.html reload tenant logo from Supabase
+    localStorage.setItem('haccp_v6', JSON.stringify(v6));
+  } catch(e){}
+
   window.location.href = 'cuisine.html';
 }
 
