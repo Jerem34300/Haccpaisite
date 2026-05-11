@@ -77,7 +77,19 @@ async function doLogin() {
       headers: { 'apikey': key, 'Authorization': `Bearer ${data.access_token}`, 'Accept': 'application/json' }
     });
     const profiles = await pr.json();
-    const profile = profiles?.[0] || {};
+    const profile  = profiles?.[0] || null;
+
+    // Premier login après confirmation email : profil pas encore créé
+    if(!profile){
+      let pending = null;
+      try { pending = JSON.parse(localStorage.getItem('haccpro_pending_signup') || 'null'); } catch(e){}
+      if(pending){
+        await _completeSignupSetup(data.access_token, data.refresh_token || '', data.user?.id, pending, url, key);
+        return;
+      }
+      throw new Error('Aucun profil trouvé. Contactez le support.');
+    }
+
     const role = profile.role || 'cuisinier';
 
     // 3. Si cuisinier, récupérer le CODE du site (pas son UUID)
@@ -222,11 +234,66 @@ async function doResendLoginConfirm(){
   }
 }
 
-// ── Email confirmation callback ────────────────────────────────
-// Supabase redirects here after email confirmation with
-// #access_token=xxx&type=signup in the URL hash.
-// We complete the tenant / profile / subscription setup, then
-// redirect to onboarding so the user never sees this form.
+// ── Finalisation du compte post-inscription ────────────────────
+// Appelée depuis doLogin() (profil absent) ou depuis le callback
+// hash Supabase (access_token dans l'URL). Crée tenant + profil +
+// abonnement puis redirige vers onboarding.
+async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
+  const company = sd.company || '';
+  const type    = sd.type    || 'restaurant';
+  const plan    = sd.plan    || 'multi';
+
+  let tenantId = null;
+  try {
+    const r = await fetch(`${url}/rest/v1/tenants`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','apikey':key,
+        'Authorization':`Bearer ${token}`,'Prefer':'return=representation'
+      },
+      body:JSON.stringify({ name:company, type })
+    });
+    if(r.ok){ const t = await r.json(); tenantId = Array.isArray(t) ? t[0]?.id : t?.id; }
+  } catch(e){ console.error('tenant:', e); }
+
+  if(tenantId){
+    await fetch(`${url}/rest/v1/profiles`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','apikey':key,
+        'Authorization':`Bearer ${token}`,
+        'Prefer':'return=minimal,resolution=merge-duplicates'
+      },
+      body:JSON.stringify({ id:userId, tenant_id:tenantId, role:'directeur', full_name:company })
+    }).catch(e=>console.error('profile:', e));
+
+    const trialEnd = new Date(Date.now() + 14*24*60*60*1000).toISOString();
+    await fetch(`${url}/rest/v1/subscriptions`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json','apikey':key,
+        'Authorization':`Bearer ${token}`,'Prefer':'return=minimal'
+      },
+      body:JSON.stringify({
+        tenant_id:tenantId, plan,
+        price_per_month:{solo:29,multi:49,enterprise:0}[plan] ?? 49,
+        status:'trial', trial_ends_at:trialEnd
+      })
+    }).catch(e=>console.error('subscription:', e));
+  }
+
+  localStorage.setItem('haccpro_session', JSON.stringify({
+    token, refreshToken, userId,
+    role:'directeur', tenantId, fullName:company, plan
+  }));
+  localStorage.setItem('haccpro_signup_data', JSON.stringify({
+    company, type, sites:sd.sites || 1, plan
+  }));
+  localStorage.removeItem('haccpro_pending_signup');
+  window.location.href = 'onboarding.html';
+}
+
+// ── Callback hash Supabase (fallback si token passé dans l'URL) ─
 async function _handleEmailConfirmCallback(){
   const hash = window.location.hash.slice(1);
   if(!hash) return;
@@ -235,8 +302,6 @@ async function _handleEmailConfirmCallback(){
 
   const token        = params.get('access_token');
   const refreshToken = params.get('refresh_token') || '';
-
-  // Remove token from URL bar immediately
   history.replaceState(null, '', window.location.pathname + window.location.search);
 
   const statusEl = document.getElementById('login-err');
@@ -247,81 +312,15 @@ async function _handleEmailConfirmCallback(){
     statusEl.style.background = '#f0fdf4';
     statusEl.style.border   = '1px solid #bbf7d0';
   }
-
   try {
-    // 1. Récupérer l'utilisateur avec le token
     const userRes = await fetch(`${_DEFAULT_URL}/auth/v1/user`, {
       headers:{ 'apikey':_DEFAULT_KEY, 'Authorization':`Bearer ${token}` }
     });
     const user = await userRes.json();
-    const userId = user.id;
-    if(!userId) throw new Error('Utilisateur introuvable');
-
-    // 2. Charger les données d'inscription en attente
+    if(!user.id) throw new Error('Utilisateur introuvable');
     let sd = {};
-    try { sd = JSON.parse(localStorage.getItem('haccpro_pending_signup') || '{}'); }
-    catch(e){ console.error('pending signup load:', e); }
-    const company = sd.company || '';
-    const type    = sd.type    || 'restaurant';
-    const plan    = sd.plan    || 'multi';
-
-    // 3. Créer le tenant
-    let tenantId = null;
-    try {
-      const r2 = await fetch(`${_DEFAULT_URL}/rest/v1/tenants`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_DEFAULT_KEY,
-          'Authorization':`Bearer ${token}`,'Prefer':'return=representation'
-        },
-        body:JSON.stringify({ name:company, type })
-      });
-      if(r2.ok){
-        const t = await r2.json();
-        tenantId = Array.isArray(t) ? t[0]?.id : t?.id;
-      }
-    } catch(e){ console.error('tenant creation:', e); }
-
-    // 4. Créer le profil et l'abonnement
-    if(tenantId){
-      await fetch(`${_DEFAULT_URL}/rest/v1/profiles`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_DEFAULT_KEY,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=minimal,resolution=merge-duplicates'
-        },
-        body:JSON.stringify({ id:userId, tenant_id:tenantId, role:'directeur', full_name:company })
-      }).catch(e=>console.error('profile:', e));
-
-      const planPrices = { solo:29, multi:49, enterprise:0 };
-      const trialEnd   = new Date(Date.now() + 14*24*60*60*1000).toISOString();
-      await fetch(`${_DEFAULT_URL}/rest/v1/subscriptions`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_DEFAULT_KEY,
-          'Authorization':`Bearer ${token}`,'Prefer':'return=minimal'
-        },
-        body:JSON.stringify({
-          tenant_id:tenantId, plan,
-          price_per_month:planPrices[plan] ?? 49,
-          status:'trial', trial_ends_at:trialEnd
-        })
-      }).catch(e=>console.error('subscription:', e));
-    }
-
-    // 5. Sauvegarder la session et rediriger vers l'onboarding
-    localStorage.setItem('haccpro_session', JSON.stringify({
-      token, refreshToken, userId,
-      role:'directeur', tenantId, fullName:company, plan
-    }));
-    localStorage.setItem('haccpro_signup_data', JSON.stringify({
-      company, type, sites:sd.sites || 1, plan
-    }));
-    localStorage.removeItem('haccpro_pending_signup');
-
-    window.location.href = 'onboarding.html';
-
+    try { sd = JSON.parse(localStorage.getItem('haccpro_pending_signup') || '{}'); } catch(e){}
+    await _completeSignupSetup(token, refreshToken, user.id, sd, _DEFAULT_URL, _DEFAULT_KEY);
   } catch(e){
     console.error('_handleEmailConfirmCallback:', e);
     if(statusEl){
