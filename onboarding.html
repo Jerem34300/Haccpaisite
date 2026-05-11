@@ -12,66 +12,124 @@
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--navy:#0F2240;--navy2:#1a3558;--green:#8DC63F;--green2:#6fa832;--plum:#5C1E5A;--bg:#F7F2F7;--border:#DDD0DD;--text:#3D2A3C;--muted:#7A6579;--font:'Nunito',sans-serif}
+:root{--navy:#0F2240;--navy2:#1a3558;--green:#8DC63F;--green2:#6fa832;--plum:#0F2240;--bg:#F0F4FA;--border:#C8D8EC;--text:#1A2A40;--muted:#5B6B80;--font:'Nunito',sans-serif}
 html,body{min-height:100%;font-family:var(--font)}
-body{background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 20px 60px}
+body{background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:24px 16px 80px}
 
 /* ── Top bar ── */
-.topbar{display:flex;align-items:center;gap:10px;text-decoration:none;margin-bottom:28px;align-self:flex-start}
+.topbar{display:flex;align-items:center;gap:10px;text-decoration:none;margin-bottom:24px;align-self:flex-start}
 .logo-name{font-size:1.1rem;font-weight:900;color:var(--navy)}
 .logo-name span{color:var(--green)}
 
 /* ── Card ── */
-.card{background:#fff;border-radius:24px;width:100%;max-width:560px;overflow:hidden;box-shadow:0 4px 32px rgba(15,34,64,.12),0 0 0 1px rgba(15,34,64,.06)}
-.card-hd{background:var(--navy);padding:24px 28px;position:relative;overflow:hidden}
+.card{background:#fff;border-radius:24px;width:100%;max-width:600px;overflow:hidden;box-shadow:0 4px 32px rgba(15,34,64,.12),0 0 0 1px rgba(15,34,64,.06)}
+.card-hd{background:var(--navy);padding:22px 26px;position:relative;overflow:hidden}
 .card-hd::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 80% 0%,rgba(141,198,63,.14),transparent 60%)}
 .hd-inner{position:relative;z-index:1}
 .hd-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .hd-title{font-size:1rem;font-weight:900;color:#fff}
 .hd-step{font-size:.75rem;font-weight:700;color:rgba(255,255,255,.45)}
-.progress-bar{height:4px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:14px;overflow:hidden}
+.progress-bar{height:4px;background:rgba(255,255,255,.1);border-radius:2px;margin-top:12px;overflow:hidden}
 .progress-fill{height:100%;background:var(--green);border-radius:2px;transition:width .4s}
 
+/* ── Step dots ── */
+.step-dots{display:flex;gap:6px;justify-content:center;margin-bottom:20px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:all .2s}
+.dot.active{background:var(--navy);transform:scale(1.2)}
+.dot.done{background:var(--green)}
+
 /* ── Body ── */
-.card-body{padding:28px}
+.card-body{padding:26px}
 .step{display:none}
 .step.active{display:block}
 
 /* ── Welcome ── */
-.welcome-icon{font-size:2.5rem;margin-bottom:14px;text-align:center}
-.welcome-title{font-size:1.2rem;font-weight:900;color:var(--navy);text-align:center;margin-bottom:8px}
-.welcome-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.65;margin-bottom:24px}
-.welcome-plan{display:inline-flex;align-items:center;gap:8px;background:rgba(141,198,63,.1);border:1px solid rgba(141,198,63,.3);border-radius:10px;padding:10px 16px;font-size:.82rem;font-weight:800;color:var(--green2);margin-bottom:20px;width:100%;justify-content:center}
-.what-next{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
-.what-next-item{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg);border-radius:10px;font-size:.85rem;font-weight:700;color:var(--text)}
-.what-next-num{width:24px;height:24px;border-radius:50%;background:var(--navy);color:#fff;font-size:.7rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.welcome-icon{font-size:2.4rem;margin-bottom:12px;text-align:center}
+.welcome-title{font-size:1.15rem;font-weight:900;color:var(--navy);text-align:center;margin-bottom:8px}
+.welcome-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.65;margin-bottom:20px}
+.welcome-plan{display:inline-flex;align-items:center;gap:8px;background:rgba(141,198,63,.1);border:1px solid rgba(141,198,63,.3);border-radius:10px;padding:10px 16px;font-size:.82rem;font-weight:800;color:var(--green2);margin-bottom:18px;width:100%;justify-content:center}
+.what-next{display:flex;flex-direction:column;gap:7px;margin-bottom:22px}
+.what-next-item{display:flex;align-items:center;gap:12px;padding:9px 13px;background:var(--bg);border-radius:10px;font-size:.83rem;font-weight:700;color:var(--text)}
+.what-next-num{width:22px;height:22px;border-radius:50%;background:var(--navy);color:#fff;font-size:.68rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+/* ── Section titles ── */
+.step-title{font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:5px}
+.step-sub{font-size:.82rem;color:var(--muted);margin-bottom:18px;line-height:1.5}
+
+/* ── Field groups ── */
+.field-group{margin-bottom:16px}
+.field-lbl{display:block;font-size:.65rem;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+.field-input,.field-select{width:100%;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:10px 13px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s;appearance:none;-webkit-appearance:none}
+.field-input:focus,.field-select:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.field-input::placeholder{color:#94a3b8}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 
 /* ── Sites ── */
-.step-title{font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:6px}
-.step-sub{font-size:.82rem;color:var(--muted);margin-bottom:20px;line-height:1.5}
-.item-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px;min-height:40px}
+.item-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;min-height:40px}
 .item-row{display:flex;gap:8px;align-items:center}
-.item-input{flex:1;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:11px 14px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
+.item-input{flex:1;background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:10px 13px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
 .item-input:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
 .item-input::placeholder{color:#94a3b8}
-.item-del{width:34px;height:34px;border:none;background:rgba(192,57,43,.1);color:#c0392b;border-radius:8px;cursor:pointer;font-size:.9rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s}
+.item-del{width:32px;height:32px;border:none;background:rgba(192,57,43,.1);color:#c0392b;border-radius:8px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s}
 .item-del:hover{background:rgba(192,57,43,.2)}
-.btn-add{display:flex;align-items:center;gap:8px;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:10px 14px;font-size:.85rem;font-weight:800;color:var(--muted);cursor:pointer;font-family:var(--font);width:100%;transition:all .2s}
+.btn-add{display:flex;align-items:center;gap:8px;background:none;border:1.5px dashed var(--border);border-radius:10px;padding:9px 13px;font-size:.85rem;font-weight:800;color:var(--muted);cursor:pointer;font-family:var(--font);width:100%;transition:all .2s}
 .btn-add:hover{border-color:var(--green);color:var(--green)}
 
+/* ── Type tiles ── */
+.tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.tile-grid.cols3{grid-template-columns:1fr 1fr 1fr}
+.tile{background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:10px 12px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:9px}
+.tile:hover{border-color:var(--green)}
+.tile.sel{background:rgba(141,198,63,.08);border-color:var(--green)}
+.tile-icon{font-size:1.2rem;flex-shrink:0}
+.tile-label{font-size:.8rem;font-weight:800;color:var(--text);line-height:1.3}
+.tile.sel .tile-label{color:var(--green2)}
+
+/* ── Color swatches ── */
+.color-swatches{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.color-swatch{width:36px;height:36px;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:all .15s;box-shadow:0 2px 6px rgba(0,0,0,.2);flex-shrink:0}
+.color-swatch.active{border-color:#fff;box-shadow:0 0 0 3px var(--navy)}
+
+/* ── Logo upload ── */
+.logo-upload-row{display:flex;align-items:center;gap:10px;margin-top:8px}
+.logo-upload-btn{background:var(--plum);color:#fff;border-radius:9px;padding:8px 14px;font-size:.78rem;font-weight:700;cursor:pointer;font-family:var(--font);border:none;white-space:nowrap}
+.logo-preview{width:44px;height:44px;border-radius:8px;border:1.5px solid var(--border);object-fit:contain;display:none;background:#f8fafc}
+.logo-filename{font-size:.75rem;color:var(--muted);font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Checkboxes ── */
+.check-list{display:flex;flex-direction:column;gap:7px;margin-bottom:8px}
+.check-item{display:flex;align-items:center;gap:10px;padding:9px 13px;background:var(--bg);border-radius:10px;cursor:pointer;transition:background .15s;user-select:none}
+.check-item:hover{background:#ece7ec}
+.check-item input[type=checkbox]{width:16px;height:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.check-item label{font-size:.86rem;font-weight:700;color:var(--text);cursor:pointer;flex:1}
+
+/* ── Custom nettoyage add ── */
+.nett-add-row{display:flex;gap:7px;margin-top:10px}
+.nett-add-inp{flex:1;background:#f8fafc;border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;font-size:.83rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
+.nett-add-inp:focus{border-color:var(--green)}
+.nett-add-btn{background:var(--navy);color:#fff;border:none;border-radius:9px;padding:8px 13px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:var(--font);white-space:nowrap}
+
 /* ── Enceintes ── */
-.enc-card{background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:16px;margin-bottom:8px;position:relative}
-.enc-del{position:absolute;top:12px;right:12px;width:28px;height:28px;border:none;background:rgba(192,57,43,.1);color:#c0392b;border-radius:6px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;justify-content:center}
+.enc-card{background:var(--bg);border:1.5px solid var(--border);border-radius:12px;padding:13px;margin-bottom:7px;position:relative}
+.enc-del{position:absolute;top:10px;right:10px;width:26px;height:26px;border:none;background:rgba(192,57,43,.1);color:#c0392b;border-radius:6px;cursor:pointer;font-size:.8rem;display:flex;align-items:center;justify-content:center}
 .enc-del:hover{background:rgba(192,57,43,.2)}
-.enc-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
-.enc-row:last-child{margin-bottom:0}
-.field-lbl{display:block;font-size:.65rem;font-weight:800;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px}
-.enc-input,.enc-select{width:100%;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:9px 12px;font-size:.85rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s;appearance:none;-webkit-appearance:none}
-.enc-input:focus,.enc-select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(141,198,63,.12)}
-.enc-temps{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.enc-temp-label{font-size:.68rem;color:var(--muted);font-weight:700;margin-bottom:3px}
-.enc-temp-input{width:100%;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;font-size:.88rem;color:var(--text);font-family:var(--font);outline:none;text-align:center;font-weight:800}
-.enc-temp-input:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(141,198,63,.12)}
+.enc-row{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:0}
+.enc-input,.enc-select{width:100%;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:8px 11px;font-size:.84rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s;appearance:none;-webkit-appearance:none}
+.enc-input:focus,.enc-select:focus{border-color:var(--green)}
+
+/* ── Nombre picker ── */
+.num-row{display:flex;align-items:center;gap:14px}
+.num-btn{width:36px;height:36px;border:1.5px solid var(--border);background:#fff;border-radius:8px;font-size:1.1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:900;color:var(--navy);transition:all .15s}
+.num-btn:hover{border-color:var(--green);color:var(--green)}
+.num-val{font-size:1.1rem;font-weight:900;color:var(--navy);min-width:28px;text-align:center}
+
+/* ── Recap ── */
+.recap-block{background:var(--bg);border-radius:14px;padding:16px;margin-bottom:14px}
+.recap-title{font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.recap-item{display:flex;align-items:flex-start;gap:8px;font-size:.86rem;margin-bottom:7px;color:var(--text)}
+.recap-item:last-child{margin-bottom:0}
+.recap-check{color:var(--green);font-weight:900;flex-shrink:0;margin-top:1px}
+.recap-muted{font-size:.78rem;color:var(--muted);margin-top:2px}
 
 /* ── Buttons ── */
 .btn-primary{width:100%;padding:14px;margin-top:4px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(15,34,64,.2)}
@@ -79,23 +137,25 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
 .btn-primary:disabled{opacity:.6;pointer-events:none}
 .btn-primary.green{background:var(--green);box-shadow:0 4px 20px rgba(141,198,63,.35)}
 .btn-primary.green:hover{background:var(--green2)}
-.btn-back{width:100%;padding:12px;margin-top:8px;background:var(--bg);color:var(--muted);border:none;border-radius:14px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
+.btn-back{width:100%;padding:11px;margin-top:8px;background:var(--bg);color:var(--muted);border:none;border-radius:14px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:all .2s}
 .btn-back:hover{background:#ece7ec}
-.btn-skip{width:100%;padding:10px;margin-top:6px;background:none;border:none;color:var(--muted);font-size:.78rem;font-weight:700;cursor:pointer;font-family:var(--font);text-decoration:underline;text-underline-offset:3px}
+.btn-skip{width:100%;padding:9px;margin-top:6px;background:none;border:none;color:var(--muted);font-size:.77rem;font-weight:700;cursor:pointer;font-family:var(--font);text-decoration:underline;text-underline-offset:3px}
 .spinner{width:16px;height:16px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 .err{font-size:.75rem;color:#dc2626;font-weight:700;text-align:center;margin-top:10px;display:none;padding:8px 12px;background:#fee2e2;border-radius:8px}
 
-/* ── Équipe ── */
-.invite-list{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}
-.invite-row{display:grid;grid-template-columns:1fr auto 34px;gap:8px;align-items:center}
-.invite-role{background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;padding:11px 10px;font-size:.82rem;font-family:var(--font);outline:none;color:var(--text);appearance:none}
-.invite-role:focus{border-color:var(--green)}
+/* ── Gen done ── */
+.gen-done{display:none;text-align:center;padding:8px 0 4px}
+.gen-done-icon{font-size:2.5rem;margin-bottom:10px}
+.gen-done-title{font-size:1.1rem;font-weight:900;color:var(--navy);margin-bottom:6px}
+.gen-done-sub{font-size:.85rem;color:var(--muted);line-height:1.6}
 
-/* ── Terminé ── */
-.done-icon{font-size:3rem;text-align:center;margin-bottom:16px}
-.done-title{font-size:1.15rem;font-weight:900;color:var(--navy);text-align:center;margin-bottom:10px}
-.done-sub{font-size:.88rem;color:var(--muted);text-align:center;line-height:1.6;margin-bottom:24px}
+@media(max-width:480px){
+  .tile-grid{grid-template-columns:1fr 1fr}
+  .tile-grid.cols3{grid-template-columns:1fr 1fr 1fr}
+  .field-row{grid-template-columns:1fr}
+  .enc-row{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -115,51 +175,262 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
     <div class="hd-inner">
       <div class="hd-top">
         <div class="hd-title" id="hd-title">Configuration de votre HACCP</div>
-        <div class="hd-step" id="hd-step">Étape 1/3</div>
+        <div class="hd-step" id="hd-step">Étape 1 / 2</div>
       </div>
-      <div class="progress-bar"><div class="progress-fill" id="progress" style="width:25%"></div></div>
+      <div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
     </div>
   </div>
 
   <div class="card-body">
 
-    <!-- Step 1: Bienvenue -->
+    <!-- Dots (sections A–F, visible step 3+) -->
+    <div class="step-dots" id="step-dots" style="display:none">
+      <div class="dot" id="dot-1"></div>
+      <div class="dot" id="dot-2"></div>
+      <div class="dot" id="dot-3"></div>
+      <div class="dot" id="dot-4"></div>
+      <div class="dot" id="dot-5"></div>
+      <div class="dot" id="dot-6"></div>
+    </div>
+
+    <!-- ─── Step 1 : Bienvenue ─── -->
     <div class="step active" id="step-1">
       <div class="welcome-icon">🎉</div>
       <div class="welcome-title">Bienvenue sur HACC.PRO !</div>
-      <div class="welcome-sub">Votre compte est créé. Configurons votre système HACCP en 3 étapes rapides pour que vous puissiez commencer à tracer dès aujourd'hui.</div>
+      <div class="welcome-sub">Votre compte est créé. Configurons votre cuisine en 8 étapes rapides pour que vous puissiez tracer dès aujourd'hui.</div>
       <div class="welcome-plan" id="welcome-plan">🎁 Essai gratuit 14 jours activé</div>
       <div class="what-next">
         <div class="what-next-item"><div class="what-next-num">1</div>Nommer vos cuisines / sites</div>
-        <div class="what-next-item"><div class="what-next-num">2</div>Répondre au questionnaire HACCP (5 min)</div>
-        <div class="what-next-item"><div class="what-next-num">3</div>Votre PMS est généré automatiquement</div>
+        <div class="what-next-item"><div class="what-next-num">2</div>Identifier votre établissement</div>
+        <div class="what-next-item"><div class="what-next-num">3</div>Sélectionner vos processus</div>
+        <div class="what-next-item"><div class="what-next-num">4</div>Nommer vos enceintes froides</div>
+        <div class="what-next-item"><div class="what-next-num">5</div>Configurer le plan de nettoyage</div>
+        <div class="what-next-item"><div class="what-next-num">6</div>Votre cuisine est générée automatiquement ✅</div>
       </div>
       <button class="btn-primary green" onclick="goStep(2)">C'est parti →</button>
     </div>
 
-    <!-- Step 2: Sites/Cuisines -->
+    <!-- ─── Step 2 : Vos cuisines ─── -->
     <div class="step" id="step-2">
       <div class="step-title">Vos cuisines</div>
-      <div class="step-sub" id="step2-sub">Ajoutez le nom de chaque cuisine ou site que vous gérez. Vous pourrez en ajouter d'autres plus tard.</div>
+      <div class="step-sub" id="step2-sub">Ajoutez le nom de chaque cuisine ou site que vous gérez.</div>
       <div class="item-list" id="sites-list"></div>
       <button class="btn-add" id="btn-add-site" onclick="addSite()">+ Ajouter une cuisine</button>
       <div class="err" id="err-2"></div>
-      <button class="btn-primary" style="margin-top:20px" id="btn-continue-2" onclick="saveAndContinue()">
-        <span id="btn-continue-label">Enregistrer et continuer →</span>
-        <div class="spinner" id="btn-continue-spin"></div>
+      <button class="btn-primary" style="margin-top:18px" onclick="goStep(3)">
+        Continuer →
       </button>
-      <div class="err" id="err-save"></div>
     </div>
 
-    <!-- Step 3: Terminé / PMS setup -->
+    <!-- ─── Step 3 : Section A — Établissement ─── -->
     <div class="step" id="step-3">
-      <div class="done-icon">✅</div>
-      <div class="done-title">Cuisines enregistrées !</div>
-      <div class="done-sub" id="done-summary">Vos cuisines ont été créées. Répondez maintenant au questionnaire HACCP pour générer automatiquement votre Plan de Maîtrise Sanitaire.</div>
-      <button class="btn-primary green" onclick="window.location.href='pms-setup.html'">
-        Générer mon PMS →
+      <div class="step-title">A — Votre établissement</div>
+      <div class="step-sub">Ces informations identifient votre établissement et personnalisent l'interface.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nom de l'établissement</label>
+        <input class="field-input" type="text" id="a-nom" placeholder="Restaurant Le Vieux-Port, Cantine scolaire…">
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Type d'établissement</label>
+        <div class="tile-grid" id="a-type-tiles">
+          <div class="tile sel" data-val="restaurant" onclick="selectTile('a-type','restaurant',this)">
+            <span class="tile-icon">🍽️</span><span class="tile-label">Restaurant traditionnel</span>
+          </div>
+          <div class="tile" data-val="collectivite" onclick="selectTile('a-type','collectivite',this)">
+            <span class="tile-icon">🏫</span><span class="tile-label">Restauration collective</span>
+          </div>
+          <div class="tile" data-val="traiteur" onclick="selectTile('a-type','traiteur',this)">
+            <span class="tile-icon">🎂</span><span class="tile-label">Traiteur / événementiel</span>
+          </div>
+          <div class="tile" data-val="boulangerie" onclick="selectTile('a-type','boulangerie',this)">
+            <span class="tile-icon">🥖</span><span class="tile-label">Boulangerie / pâtisserie</span>
+          </div>
+          <div class="tile" data-val="fast_food" onclick="selectTile('a-type','fast_food',this)">
+            <span class="tile-icon">🍔</span><span class="tile-label">Restauration rapide</span>
+          </div>
+          <div class="tile" data-val="autre" onclick="selectTile('a-type','autre',this)">
+            <span class="tile-icon">🏢</span><span class="tile-label">Autre</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row" style="margin-bottom:16px">
+        <div>
+          <label class="field-lbl">Nombre de couverts / service</label>
+          <select class="field-select" id="a-couverts">
+            <option value="lt50">Moins de 50 couverts</option>
+            <option value="50-150" selected>50 à 150 couverts</option>
+            <option value="150-400">150 à 400 couverts</option>
+            <option value="gt400">Plus de 400 couverts</option>
+          </select>
+        </div>
+        <div>
+          <label class="field-lbl">Numéro SIRET (optionnel)</label>
+          <input class="field-input" type="text" id="a-siret" placeholder="123 456 789 00012" maxlength="18">
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Couleur principale</label>
+        <div class="color-swatches" id="color-swatches">
+          <button class="color-swatch active" style="background:#5C1E5A" data-color="#5C1E5A" title="Violet" onclick="pickColor('#5C1E5A',this)"></button>
+          <button class="color-swatch" style="background:#1565c0" data-color="#1565c0" title="Bleu" onclick="pickColor('#1565c0',this)"></button>
+          <button class="color-swatch" style="background:#2e7d32" data-color="#2e7d32" title="Vert" onclick="pickColor('#2e7d32',this)"></button>
+          <button class="color-swatch" style="background:#c62828" data-color="#c62828" title="Rouge" onclick="pickColor('#c62828',this)"></button>
+          <button class="color-swatch" style="background:#e65100" data-color="#e65100" title="Orange" onclick="pickColor('#e65100',this)"></button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Logo (optionnel)</label>
+        <div class="logo-upload-row">
+          <label class="logo-upload-btn">
+            📷 Choisir un logo
+            <input type="file" id="logo-file-input" accept="image/*" style="display:none" onchange="onLogoSelected(this)">
+          </label>
+          <span class="logo-filename" id="logo-filename">Aucun fichier sélectionné</span>
+          <img class="logo-preview" id="logo-preview" src="" alt="Aperçu logo">
+        </div>
+      </div>
+
+      <div class="err" id="err-3"></div>
+      <button class="btn-primary" onclick="goStep(4)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(2)">← Retour</button>
+    </div>
+
+    <!-- ─── Step 4 : Section B — Production ─── -->
+    <div class="step" id="step-4">
+      <div class="step-title">B — Vos processus</div>
+      <div class="step-sub">Cochez les process pratiqués dans votre cuisine. Ils activent les fiches de traçabilité correspondantes.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Processus de production</label>
+        <div class="check-list" id="b-processes">
+          <label class="check-item">
+            <input type="checkbox" id="proc-refroidissement">
+            <label for="proc-refroidissement">❄️ Refroidissement rapide (cellule) <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR01</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-remise-temp">
+            <label for="proc-remise-temp">🔥 Remise en température <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR02</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-cuisson-steaks">
+            <label for="proc-cuisson-steaks">🥩 Cuisson steaks hachés <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR04</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-fritures">
+            <label for="proc-fritures">🍟 Fritures <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR05</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-livraison">
+            <label for="proc-livraison">🚚 Livraison chaude / froide <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR17 / ENR18</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-distribution">
+            <label for="proc-distribution">🍱 Distribution self / SAM <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR15 / ENR16</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-plats-temoins" checked>
+            <label for="proc-plats-temoins">🧪 Plats témoins <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR33</span></label>
+          </label>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nombre de services par jour</label>
+        <div class="tile-grid cols3">
+          <div class="tile sel" data-val="1" onclick="selectTile('b-services','1',this)">
+            <span class="tile-label" style="width:100%;text-align:center">1 service</span>
+          </div>
+          <div class="tile" data-val="2" onclick="selectTile('b-services','2',this)">
+            <span class="tile-label" style="width:100%;text-align:center">2 services</span>
+          </div>
+          <div class="tile" data-val="3+" onclick="selectTile('b-services','3+',this)">
+            <span class="tile-label" style="width:100%;text-align:center">3+ services</span>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-primary" onclick="goStep(5)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(3)">← Retour</button>
+    </div>
+
+    <!-- ─── Step 5 : Section C — Enceintes ─── -->
+    <div class="step" id="step-5">
+      <div class="step-title">C — Enceintes froides</div>
+      <div class="step-sub">Nommez vos enceintes de stockage. Elles apparaîtront comme tuiles de relevé de température sur l'accueil.</div>
+
+      <div id="enc-list" style="margin-bottom:8px"></div>
+      <button class="btn-add" onclick="addEnceinte()">+ Ajouter une enceinte</button>
+
+      <div class="err" id="err-5"></div>
+      <button class="btn-primary" style="margin-top:16px" onclick="goStep(6)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(4)">← Retour</button>
+    </div>
+
+    <!-- ─── Step 6 : Section D — Nettoyage ─── -->
+    <div class="step" id="step-6">
+      <div class="step-title">D — Plan de nettoyage</div>
+      <div class="step-sub">Sélectionnez les zones à inclure dans votre plan de nettoyage quotidien. Pré-cochées selon votre type d'établissement.</div>
+
+      <div class="check-list" id="nett-list"></div>
+
+      <div class="nett-add-row">
+        <input class="nett-add-inp" type="text" id="nett-custom-inp" placeholder="Ajouter une zone personnalisée…">
+        <button class="nett-add-btn" onclick="addCustomNettoyage()">+ Ajouter</button>
+      </div>
+
+      <button class="btn-primary" style="margin-top:16px" onclick="goStep(7)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(5)">← Retour</button>
+    </div>
+
+    <!-- ─── Step 7 : Section E — Équipe ─── -->
+    <div class="step" id="step-7">
+      <div class="step-title">E — Votre équipe</div>
+      <div class="step-sub">Le nombre de cuisiniers et leurs prénoms (optionnels) seront pré-remplis dans les fiches.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Nombre de personnes en cuisine</label>
+        <div class="num-row">
+          <button class="num-btn" onclick="changeNbPersonnes(-1)">−</button>
+          <span class="num-val" id="nb-personnes-val">2</span>
+          <button class="num-btn" onclick="changeNbPersonnes(+1)">+</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Prénoms (optionnels)</label>
+        <div id="noms-list" style="display:flex;flex-direction:column;gap:7px;margin-bottom:8px"></div>
+        <button class="btn-add" onclick="addNomInput()">+ Ajouter un prénom</button>
+      </div>
+
+      <button class="btn-primary" style="margin-top:10px" onclick="goStep(8)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(6)">← Retour</button>
+    </div>
+
+    <!-- ─── Step 8 : Section F — Récapitulatif ─── -->
+    <div class="step" id="step-8">
+      <div class="step-title">F — Récapitulatif</div>
+      <div class="step-sub">Vérifiez votre configuration. Cliquez sur "Générer" pour créer votre espace cuisine.</div>
+
+      <div id="recap-content"></div>
+
+      <div class="gen-done" id="gen-done">
+        <div class="gen-done-icon">✅</div>
+        <div class="gen-done-title">Votre cuisine est prête !</div>
+        <div class="gen-done-sub">Redirection vers votre espace HACCP…</div>
+      </div>
+
+      <div class="err" id="err-8"></div>
+      <button class="btn-primary green" id="btn-generate" onclick="generatePMS()">
+        <span id="btn-gen-label">Générer mon PMS →</span>
+        <div class="spinner" id="btn-gen-spin"></div>
       </button>
-      <button class="btn-skip" onclick="window.location.href='dashboard.html'">Passer, configurer le PMS plus tard</button>
+      <button class="btn-back" id="btn-gen-back" onclick="goStep(7)">← Retour</button>
+      <button class="btn-skip" id="btn-gen-skip" onclick="window.location.href='cuisine.html'">Passer, configurer plus tard</button>
     </div>
 
   </div>
