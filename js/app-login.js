@@ -222,8 +222,117 @@ async function doResendLoginConfirm(){
   }
 }
 
+// ── Email confirmation callback ────────────────────────────────
+// Supabase redirects here after email confirmation with
+// #access_token=xxx&type=signup in the URL hash.
+// We complete the tenant / profile / subscription setup, then
+// redirect to onboarding so the user never sees this form.
+async function _handleEmailConfirmCallback(){
+  const hash = window.location.hash.slice(1);
+  if(!hash) return;
+  const params = new URLSearchParams(hash);
+  if(params.get('type') !== 'signup' || !params.get('access_token')) return;
+
+  const token        = params.get('access_token');
+  const refreshToken = params.get('refresh_token') || '';
+
+  // Remove token from URL bar immediately
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+
+  const statusEl = document.getElementById('login-err');
+  if(statusEl){
+    statusEl.textContent    = 'Email confirmé — finalisation de votre compte…';
+    statusEl.style.display  = 'block';
+    statusEl.style.color    = '#166534';
+    statusEl.style.background = '#f0fdf4';
+    statusEl.style.border   = '1px solid #bbf7d0';
+  }
+
+  try {
+    // 1. Récupérer l'utilisateur avec le token
+    const userRes = await fetch(`${_DEFAULT_URL}/auth/v1/user`, {
+      headers:{ 'apikey':_DEFAULT_KEY, 'Authorization':`Bearer ${token}` }
+    });
+    const user = await userRes.json();
+    const userId = user.id;
+    if(!userId) throw new Error('Utilisateur introuvable');
+
+    // 2. Charger les données d'inscription en attente
+    let sd = {};
+    try { sd = JSON.parse(localStorage.getItem('haccpro_pending_signup') || '{}'); }
+    catch(e){ console.error('pending signup load:', e); }
+    const company = sd.company || '';
+    const type    = sd.type    || 'restaurant';
+    const plan    = sd.plan    || 'multi';
+
+    // 3. Créer le tenant
+    let tenantId = null;
+    try {
+      const r2 = await fetch(`${_DEFAULT_URL}/rest/v1/tenants`, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json','apikey':_DEFAULT_KEY,
+          'Authorization':`Bearer ${token}`,'Prefer':'return=representation'
+        },
+        body:JSON.stringify({ name:company, type })
+      });
+      if(r2.ok){
+        const t = await r2.json();
+        tenantId = Array.isArray(t) ? t[0]?.id : t?.id;
+      }
+    } catch(e){ console.error('tenant creation:', e); }
+
+    // 4. Créer le profil et l'abonnement
+    if(tenantId){
+      await fetch(`${_DEFAULT_URL}/rest/v1/profiles`, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json','apikey':_DEFAULT_KEY,
+          'Authorization':`Bearer ${token}`,
+          'Prefer':'return=minimal,resolution=merge-duplicates'
+        },
+        body:JSON.stringify({ id:userId, tenant_id:tenantId, role:'directeur', full_name:company })
+      }).catch(e=>console.error('profile:', e));
+
+      const planPrices = { solo:29, multi:49, enterprise:0 };
+      const trialEnd   = new Date(Date.now() + 14*24*60*60*1000).toISOString();
+      await fetch(`${_DEFAULT_URL}/rest/v1/subscriptions`, {
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json','apikey':_DEFAULT_KEY,
+          'Authorization':`Bearer ${token}`,'Prefer':'return=minimal'
+        },
+        body:JSON.stringify({
+          tenant_id:tenantId, plan,
+          price_per_month:planPrices[plan] ?? 49,
+          status:'trial', trial_ends_at:trialEnd
+        })
+      }).catch(e=>console.error('subscription:', e));
+    }
+
+    // 5. Sauvegarder la session et rediriger vers l'onboarding
+    localStorage.setItem('haccpro_session', JSON.stringify({
+      token, refreshToken, userId,
+      role:'directeur', tenantId, fullName:company, plan
+    }));
+    localStorage.setItem('haccpro_signup_data', JSON.stringify({
+      company, type, sites:sd.sites || 1, plan
+    }));
+    localStorage.removeItem('haccpro_pending_signup');
+
+    window.location.href = 'onboarding.html';
+
+  } catch(e){
+    console.error('_handleEmailConfirmCallback:', e);
+    if(statusEl){
+      statusEl.textContent    = 'Erreur lors de la finalisation. Connectez-vous ci-dessous.';
+      statusEl.style.color    = '#991b1b';
+      statusEl.style.background = '#fef2f2';
+      statusEl.style.border   = '1px solid #fecaca';
+    }
+  }
+}
+
 loadCfg();
-// Masquer la config si déjà renseignée
-// Note: cfg-box retiré du DOM — plus de panneau de configuration avancée visible
-// La configuration Supabase est embarquée directement dans le code
+_handleEmailConfirmCallback();
   

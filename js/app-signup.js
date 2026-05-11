@@ -226,6 +226,11 @@ async function doSignup(){
 }
 
 function _showSuccessEmailConfirm(){
+  try {
+    localStorage.setItem('haccpro_pending_signup', JSON.stringify({
+      company:_data.company, type:_data.type, sites:_data.sites, plan:_data.plan
+    }));
+  } catch(e){ console.error('pending signup save:', e); }
   _showStep('success');
   _set('success-msg','Un email de confirmation vous a été envoyé à <strong>'+_data.email+'</strong>. Cliquez sur le lien pour activer votre compte.');
   const ec = document.getElementById('success-email-confirm');
