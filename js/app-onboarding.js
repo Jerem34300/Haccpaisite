@@ -482,11 +482,18 @@ window.generatePMS = async function() {
   if (skip)  skip.style.display  = 'none';
   _hideErr('err-8');
 
-  /* Récupérer token */
+  /* Récupérer token — chercher dans tous les endroits possibles */
   var cfg = {};
   try { cfg = JSON.parse(localStorage.getItem('haccpro_supa_cfg') || '{}'); } catch(e){}
   if (!cfg.token && !cfg.userToken) {
     try { cfg = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
+  }
+  if (!cfg.token && !cfg.userToken) {
+    try {
+      var _sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}');
+      if (_sess.token) { cfg.token = _sess.token; cfg.userId = _sess.userId || ''; }
+      if (_sess.tenantId && !cfg.tenantId) cfg.tenantId = _sess.tenantId;
+    } catch(e){}
   }
   var token  = cfg.token || cfg.userToken || '';
   var userId = cfg.userId || cfg.user_id || '';
@@ -604,14 +611,26 @@ window.generatePMS = async function() {
       return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
     });
 
+    /* Nom établissement pour l'en-tête */
+    S.config.etab        = _data.nom || validSites[0] || '';
+    S.config.headerGroupe = _data.nom || '';
+    S.config.headerNom   = validSites[0] || _data.nom || '';
+
     localStorage.setItem('haccp_v6', JSON.stringify(S));
   } catch(e) { console.warn('[Onboarding] haccp_v6:', e); }
 
-  /* 7. Écrire siteId dans haccp_supa_cfg_v1 */
+  /* 7. Écrire la config Supabase complète dans haccp_supa_cfg_v1 */
   try {
     var sc = {};
     try { sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e2){}
-    sc.siteId = siteIds.length ? siteIds[0] : _slug(validSites[0] || 'ma-cuisine');
+    sc.url       = SUPABASE_URL;
+    sc.anonKey   = SUPABASE_ANON_KEY;
+    sc.userToken = token;
+    sc.token     = token;
+    sc.userId    = userId;
+    sc.siteId    = siteIds.length ? siteIds[0] : _slug(validSites[0] || 'ma-cuisine');
+    sc.siteNom   = validSites[0] || _data.nom || '';
+    sc.nom       = _data.nom || '';
     if (tenantId) sc.tenantId = tenantId;
     localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
   } catch(e) { console.warn('[Onboarding] siteId:', e); }
