@@ -562,7 +562,8 @@ window.generatePMS = async function() {
   }
 
   /* 5. Écrire enceintes dans pms_config */
-  var encData = _enceintes.filter(function(e){ return e.nom.trim(); });
+  var encData = _enceintes.filter(function(e){ return e.nom.trim(); })
+    .map(function(e, idx){ return _encToConfig(e, idx); });
   if (encData.length && siteIds.length && tenantId) {
     try {
       await fetch(SUPABASE_URL + '/rest/v1/pms_config', {
@@ -571,7 +572,7 @@ window.generatePMS = async function() {
           site_id:   siteIds[0],
           tenant_id: tenantId,
           type:      'enceintes',
-          data:      encData.map(function(e){ return { nom: e.nom, type: e.type }; })
+          data:      encData
         })
       });
     } catch(e) { console.warn('[Onboarding] pms_config:', e); }
@@ -583,11 +584,9 @@ window.generatePMS = async function() {
     try { S = JSON.parse(localStorage.getItem('haccp_v6') || '{}'); } catch(e2){}
     S.config = S.config || {};
 
-    S.config.enceintes = _enceintes.filter(function(e){ return e.nom.trim(); }).map(function(e) {
-      var rng = _encRanges(e.type);
-      return { nom: e.nom, type: e.type, tempMin: rng[0], tempMax: rng[1] };
-    });
-    S.config.theme      = _data.couleur;
+    S.config.enceintes = _enceintes.filter(function(e){ return e.nom.trim(); })
+      .map(function(e, idx){ return _encToConfig(e, idx); });
+    S.config.themeColor = _data.couleur;
     S.config.nbServices = _data.services;
 
     /* Distribution services */
@@ -604,7 +603,7 @@ window.generatePMS = async function() {
     S.config.enrActifs = _buildEnrActifs(_data.processes);
 
     /* Noms chefs */
-    S.chefs = _data.noms.filter(function(n){ return n.trim(); });
+    S.config.chefs = _data.noms.filter(function(n){ return n.trim(); });
 
     /* Nettoyage */
     S.nettoyage = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
@@ -713,12 +712,20 @@ function _buildEnrActifs(procs) {
   return enrs;
 }
 
-/* ─── Plages de température par type d'enceinte ─── */
-function _encRanges(type) {
-  if (type === 'negatif')        return [-25, -18];
-  if (type === 'legumes')        return [4, 8];
-  if (type === 'produits_finis') return [0, 3];
-  return [0, 3]; /* positif par défaut */
+/* ─── Conversion format onboarding → format cuisine.html ─── */
+function _encToConfig(e, idx) {
+  var CONSIGNE = {
+    positif:        '0°C à +3°C',
+    negatif:        '≤ −18°C',
+    legumes:        '+4°C à +8°C',
+    produits_finis: '0°C à +3°C'
+  };
+  return {
+    id:       'enc_onb_' + idx,
+    label:    e.nom,
+    type:     e.type === 'negatif' ? 'congelateur' : 'frigo',
+    consigne: CONSIGNE[e.type] || '0°C à +3°C'
+  };
 }
 
 /* ─── Slug code pour site ─── */
