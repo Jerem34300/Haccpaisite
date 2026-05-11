@@ -74,6 +74,15 @@ document.addEventListener('DOMContentLoaded', function(){
     _data.nom = companyName;
   }
 
+  /* Pré-sélectionner la couleur choisie lors de l'inscription */
+  if (_signupData.couleur) {
+    _data.couleur = _signupData.couleur;
+    document.querySelectorAll('.color-swatch').forEach(function(s){
+      var isActive = s.dataset.color === _signupData.couleur;
+      s.classList.toggle('active', isActive);
+    });
+  }
+
   goStep(1);
 });
 
@@ -552,11 +561,13 @@ window.generatePMS = async function() {
   }
 
   /* 4. Lier profile */
+  var plan = _session.plan || _signupData.plan || '';
+  var finalRole = plan === 'solo' ? 'cuisinier' : 'directeur';
   if (userId && token && tenantId) {
     try {
       await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + userId, {
         method: 'PATCH', headers: hdrMin,
-        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null, role: 'cuisinier' })
+        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null, role: finalRole })
       });
     } catch(e) { console.warn('[Onboarding] profile:', e); }
   }
@@ -634,14 +645,26 @@ window.generatePMS = async function() {
     localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
   } catch(e) { console.warn('[Onboarding] siteId:', e); }
 
-  /* 8. Afficher succès */
+  /* 8. Mettre à jour haccpro_session.role si directeur */
+  if (finalRole === 'directeur') {
+    try {
+      var sess = {};
+      try { sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}'); } catch(e2){}
+      sess.role = 'directeur';
+      if (tenantId) sess.tenantId = tenantId;
+      localStorage.setItem('haccpro_session', JSON.stringify(sess));
+    } catch(e) { console.warn('[Onboarding] session update:', e); }
+  }
+
+  /* 9. Afficher succès */
   if (spin)  spin.style.display = 'none';
   btn.style.display = 'none';
   var doneEl = document.getElementById('gen-done');
   if (doneEl) doneEl.style.display = 'block';
 
-  /* 9. Rediriger après 2 s */
-  setTimeout(function(){ window.location.href = 'cuisine.html'; }, 2000);
+  /* 10. Rediriger après 2 s selon le plan */
+  var redirect = finalRole === 'directeur' ? 'dashboard.html' : 'cuisine.html';
+  setTimeout(function(){ window.location.href = redirect; }, 2000);
 };
 
 /* ─── Logo upload ─── */

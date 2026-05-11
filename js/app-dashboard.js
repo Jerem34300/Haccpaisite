@@ -140,6 +140,20 @@ function navTo(page){
   closeSidebar();
 }
 
+function openCuisine(siteId, siteCode, siteName){
+  var sc = {};
+  try { sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
+  sc.siteId    = siteId;
+  sc.siteCode  = siteCode;
+  sc.siteNom   = siteName;
+  sc.userToken = _token;
+  sc.token     = _token;
+  sc.userId    = _userId;
+  if(_profile && _profile.tenant_id) sc.tenantId = _profile.tenant_id;
+  localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
+  window.location.href = 'cuisine.html';
+}
+
 // syncFilterMobile supprimé
 
 
@@ -640,7 +654,7 @@ async function bootApp(){
       return;
     }
     document.getElementById('sb-name').textContent=_profile.full_name||'Utilisateur';
-    const roleLabels={cuisinier:'Cuisinier',chef_secteur:'Chef de secteur',directeur:'Directeur',siege:'Siège'};
+    const roleLabels={cuisinier:'Cuisinier',chef_secteur:'Chef de secteur',directeur:'Administrateur',siege:'Siège'};
     document.getElementById('sb-role').textContent=roleLabels[_profile.role]||_profile.role;
     setUserAvatar(_profile.full_name||'Utilisateur');
 
@@ -675,6 +689,11 @@ async function bootApp(){
     if(_profile.role==='chef_secteur'||_profile.role==='siege'||_profile.role==='directeur'){
       document.getElementById('nav-gmo').style.display='flex';
       document.getElementById('nav-compare').style.display='flex';
+    }
+    if(_profile.role==='directeur'){
+      const navSub = document.getElementById('nav-subscription');
+      if(navSub) navSub.style.display='flex';
+      document.getElementById('nav-admin-section').style.display='block';
     }
     await loadData();
     showPage('overview');
@@ -1063,6 +1082,7 @@ function renderPage(page){
     else if(page==='alerts'){_adminTab='alerts';renderAdmin();}
     else if(page==='actions-nc'){_adminTab='corrective';renderAdmin();}
     else if(page==='super')renderSuperAdmin();
+    else if(page==='subscription')renderSubscription();
   } catch(e) {
     console.error('[renderPage] crash:', page, e);
     setContent('<div style="padding:24px;text-align:center">'
@@ -1527,6 +1547,13 @@ function renderOverview(){
         <span style="font-size:.7rem;color:var(--muted)">›</span>
       </div>
       ${catBadges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px">${catBadges}</div>`:''}
+      <div style="margin-top:10px;text-align:right">
+        <button onclick="event.stopPropagation();openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+          style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:background .15s"
+          onmouseover="this.style.background='var(--navy2)'" onmouseout="this.style.background='var(--navy)'">
+          Ouvrir PMS →
+        </button>
+      </div>
     </div>`;
   }
 
@@ -9353,6 +9380,134 @@ document.addEventListener('click', function(e) {
   const modal = document.getElementById('sa-company-modal');
   if (modal && e.target === modal) saCloseCompanyModal();
 });
+
+// ════════════════════════════════════════════════════
+// MON ABONNEMENT
+// ════════════════════════════════════════════════════
+async function renderSubscription(){
+  setContent('<div style="padding:24px;text-align:center;color:var(--muted);font-size:.85rem">Chargement…</div>');
+
+  const tenantId = _profile?.tenant_id;
+  const font = 'font-family:var(--font)';
+
+  let sub = null, sites = [], tenantData = null;
+
+  try {
+    if(tenantId){
+      const [subs, sitesRes, tenants] = await Promise.all([
+        supaGet('subscriptions', `select=plan,status,price_per_month,trial_ends_at&tenant_id=eq.${tenantId}&limit=1`).catch(()=>[]),
+        supaGet('sites', `select=id,name,code&tenant_id=eq.${tenantId}&order=name`).catch(()=>[]),
+        supaGet('tenants', `select=id,name,primary_color&id=eq.${tenantId}&limit=1`).catch(()=>[])
+      ]);
+      sub = subs[0] || null;
+      sites = Array.isArray(sitesRes) ? sitesRes : [];
+      tenantData = tenants[0] || null;
+    }
+  } catch(e){ console.warn('[renderSubscription]', e); }
+
+  const planLabels = { solo:'Solo', multi:'Multi', enterprise:'Entreprise' };
+  const planColors = { solo:'#16a34a', multi:'#0F2240', enterprise:'#7c3aed' };
+  const planDesc   = { solo:'1 cuisine', multi:'Jusqu\'à 3 cuisines · +19€/cuisine supp.', enterprise:'Cuisines illimitées · API · SSO' };
+  const planPrices = { solo:'29€/mois', multi:'49€/mois', enterprise:'Sur devis' };
+
+  const planKey   = sub?.plan || _profile?.plan || 'multi';
+  const planLabel = planLabels[planKey] || planKey;
+  const planColor = planColors[planKey] || '#64748b';
+
+  let statusHtml = '';
+  if(sub){
+    if(sub.status === 'trial' && sub.trial_ends_at){
+      const trialDate = new Date(sub.trial_ends_at);
+      const today = new Date();
+      const daysLeft = Math.max(0, Math.ceil((trialDate - today) / 86400000));
+      const trialStr = trialDate.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
+      statusHtml = daysLeft > 0
+        ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Essai gratuit — ${daysLeft} jour${daysLeft>1?'s':''} restant${daysLeft>1?'s':''} (jusqu'au ${trialStr})</span>`
+        : `<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Essai expiré le ${trialStr}</span>`;
+    } else if(sub.status === 'active'){
+      statusHtml = `<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Abonnement actif</span>`;
+    } else {
+      statusHtml = `<span style="background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">${sub.status||'—'}</span>`;
+    }
+  }
+
+  const sitesHtml = sites.length
+    ? sites.map(s => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;margin-bottom:6px">
+          <div>
+            <div style="font-size:.85rem;font-weight:800;color:var(--text)">${escH(s.name)}</div>
+            <div style="font-size:.65rem;color:var(--muted);margin-top:1px">Code : ${escH(s.code||s.id)}</div>
+          </div>
+          <button onclick="openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+            style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;${font}">
+            Ouvrir PMS →
+          </button>
+        </div>`).join('')
+    : '<div style="color:var(--muted);font-size:.82rem;padding:10px 0">Aucune cuisine configurée.</div>';
+
+  const addKitchenHtml = ['multi','enterprise'].includes(planKey)
+    ? `<div style="margin-top:8px;padding:14px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px">
+        <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:4px">Ajouter une cuisine</div>
+        <div style="font-size:.75rem;color:#166534;margin-bottom:10px">+19€/mois par cuisine supplémentaire</div>
+        <a href="mailto:contact@hacc.pro?subject=Ajout%20cuisine%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
+          style="display:inline-block;padding:7px 16px;background:#166534;color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
+          Demander l'ajout →
+        </a>
+      </div>`
+    : `<div style="margin-top:8px;padding:14px;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px">
+        <div style="font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:4px">Passer en plan Multi</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Gérez jusqu'à 3 cuisines pour 49€/mois</div>
+        <a href="mailto:contact@hacc.pro?subject=Upgrade%20plan%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
+          style="display:inline-block;padding:7px 16px;background:var(--navy);color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
+          Upgrader mon plan →
+        </a>
+      </div>`;
+
+  const html = `
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px">
+    <div style="font-size:1.05rem;font-weight:900;color:var(--navy);margin-bottom:20px">Mon abonnement</div>
+
+    <!-- Plan actuel -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Plan actuel</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:1.3rem;font-weight:900;color:${planColor}">${escH(planLabel)}</span>
+        <span style="font-size:.8rem;font-weight:700;color:var(--muted)">${escH(planPrices[planKey]||'')}</span>
+        ${statusHtml}
+      </div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:6px">${escH(planDesc[planKey]||'')}</div>
+    </div>
+
+    <!-- Mes cuisines -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Mes cuisines (${sites.length})</div>
+      ${sitesHtml}
+      ${addKitchenHtml}
+    </div>
+
+    <!-- Compte -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Mon compte</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:4px">${escH(_profile?.full_name||'—')}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">${escH(_profile?.email||'')}</div>
+      <a href="reset-password.html" style="font-size:.78rem;font-weight:800;color:var(--navy);text-decoration:none">
+        Changer mon mot de passe →
+      </a>
+    </div>
+
+    <!-- Modifier le plan -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Modifier mon plan</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">Pour modifier votre abonnement, annuler ou obtenir une facture, contactez-nous.</div>
+      <a href="mailto:contact@hacc.pro?subject=Modification%20abonnement%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
+        style="display:inline-block;padding:7px 16px;background:var(--navy);color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
+        Contacter le support →
+      </a>
+    </div>
+  </div>`;
+
+  setContent(html);
+}
 
 
 
