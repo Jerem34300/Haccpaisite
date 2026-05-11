@@ -1336,9 +1336,9 @@ function initHeaderBranding(){
     }).then(r => r.json()).then(data => {
       const t = data?.[0];
       if (!t) return;
-      // Nom entreprise
-      if (t.name && elG) elG.textContent = t.name;
-      if (t.tagline && elN) elN.textContent = t.tagline;
+      // Nom groupe/entreprise → aussi mis à jour dans S.config pour éviter les conflits
+      if (t.name && elG) { elG.textContent = t.name; S.config = S.config||{}; S.config.headerGroupe = t.name; }
+      if (t.tagline && elN) { elN.textContent = t.tagline; S.config = S.config||{}; S.config.headerNom = t.tagline; }
       // Logo
       if (t.logo_url) updateHeaderLogo(t.logo_url);
       // Couleur primaire
@@ -9756,11 +9756,31 @@ async function _loadFromSupabase() {
           if (key === 'config') {
             S.config = S.config || {};
             const cc = cloud.config || {};
-            Object.keys(cc).forEach(k => { if (cc[k] !== undefined) S.config[k] = cc[k]; });
+            // headerGroupe/headerNom sont rechargés depuis tenants/sites —
+            // ne pas laisser des valeurs cloud obsolètes les écraser
+            const SKIP_HEADER = new Set(['headerGroupe', 'headerNom']);
+            Object.keys(cc).forEach(k => {
+              if (cc[k] !== undefined && !SKIP_HEADER.has(k)) S.config[k] = cc[k];
+            });
           } else {
             S[key] = cloud[key];
           }
         });
+
+        // ── Forcer les valeurs d'en-tête depuis les sources autoritatives ──
+        // site.name (table sites) = nom du site = header-nom (grand texte)
+        if (site.name) {
+          S.config.headerNom = site.name;
+          const _elN = document.getElementById('header-nom');
+          if (_elN) _elN.textContent = site.name;
+        }
+        // nom de groupe : depuis haccp_supa_cfg_v1.nom (posé par l'onboarding)
+        const _cfgH = SupaEngine.cfg();
+        if (_cfgH.nom && (!S.config.headerGroupe || S.config.headerGroupe === 'GROUPE')) {
+          S.config.headerGroupe = _cfgH.nom;
+          const _elG = document.getElementById('header-groupe');
+          if (_elG) _elG.textContent = _cfgH.nom;
+        }
       }
     }
 
