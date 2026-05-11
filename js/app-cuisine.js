@@ -1324,23 +1324,21 @@ function initHeaderBranding(){
   const cfg=S.config||{};
   const elG=document.getElementById('header-groupe');
   const elN=document.getElementById('header-nom');
+  // Texte : toujours depuis S.config (paramètres utilisateur) — jamais écrasé par le tenant
   if(elG&&cfg.headerGroupe)elG.textContent=cfg.headerGroupe;
-  if(elN&&cfg.headerNom)elN.textContent=cfg.headerNom;
+  if(elN&&(cfg.headerNom||cfg.etab))elN.textContent=cfg.headerNom||cfg.etab;
   if(cfg.headerLogo)updateHeaderLogo(cfg.headerLogo);
 
-  // Charger le branding depuis Supabase tenant
+  // Charger logo et couleur depuis Supabase tenant (NE PAS toucher au texte de l'en-tête)
   const supaCfg = SupaEngine.cfg();
   if (supaCfg.tenantId && supaCfg.url && supaCfg.anonKey) {
-    fetch(`${supaCfg.url}/rest/v1/tenants?id=eq.${supaCfg.tenantId}&select=name,tagline,primary_color,accent_color,logo_url,allowed_enr&limit=1`, {
+    fetch(`${supaCfg.url}/rest/v1/tenants?id=eq.${supaCfg.tenantId}&select=primary_color,logo_url,allowed_enr&limit=1`, {
       headers: { 'apikey': supaCfg.anonKey, 'Authorization': `Bearer ${supaCfg.userToken || supaCfg.anonKey}`, 'Accept': 'application/json' }
     }).then(r => r.json()).then(data => {
       const t = data?.[0];
       if (!t) return;
-      // Nom groupe/entreprise → aussi mis à jour dans S.config pour éviter les conflits
-      if (t.name && elG) { elG.textContent = t.name; S.config = S.config||{}; S.config.headerGroupe = t.name; }
-      if (t.tagline && elN) { elN.textContent = t.tagline; S.config = S.config||{}; S.config.headerNom = t.tagline; }
-      // Logo
-      if (t.logo_url) updateHeaderLogo(t.logo_url);
+      // Logo : depuis le tenant uniquement si aucun logo local défini
+      if (t.logo_url && !cfg.headerLogo) updateHeaderLogo(t.logo_url);
       // Couleur primaire
       if (t.primary_color) applyTheme(t.primary_color);
       // Modules autorisés — filtre les onglets ENR non souscrits
@@ -9767,20 +9765,18 @@ async function _loadFromSupabase() {
           }
         });
 
-        // ── Forcer les valeurs d'en-tête depuis les sources autoritatives ──
-        // site.name (table sites) = nom du site = header-nom (grand texte)
-        if (site.name) {
+        // ── Initialiser l'en-tête si non encore configuré ──
+        // site.name = fallback pour header-nom si l'utilisateur n'a rien défini
+        if (site.name && !S.config.headerNom) {
           S.config.headerNom = site.name;
           const _elN = document.getElementById('header-nom');
-          if (_elN) _elN.textContent = site.name;
+          if (_elN && (_elN.textContent === 'Mon Établissement' || _elN.textContent === 'GROUPE' || !_elN.textContent.trim())) {
+            _elN.textContent = site.name;
+          }
         }
-        // nom de groupe : depuis haccp_supa_cfg_v1.nom (posé par l'onboarding)
-        const _cfgH = SupaEngine.cfg();
-        if (_cfgH.nom && (!S.config.headerGroupe || S.config.headerGroupe === 'GROUPE')) {
-          S.config.headerGroupe = _cfgH.nom;
-          const _elG = document.getElementById('header-groupe');
-          if (_elG) _elG.textContent = _cfgH.nom;
-        }
+        // Mettre à jour etab-nom dans le panel config si ouvert
+        const _etabNomEl = document.getElementById('etab-nom');
+        if (_etabNomEl && site.name) _etabNomEl.value = site.name;
       }
     }
 
