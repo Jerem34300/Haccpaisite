@@ -83,6 +83,20 @@ document.addEventListener('DOMContentLoaded', function(){
     });
   }
 
+  /* Pré-sélectionner le type d'établissement choisi lors de l'inscription */
+  var signupType = _signupData.type || '';
+  var onbType = signupType === 'hotellerie' ? 'autre' : signupType;
+  var validOnbTypes = ['restaurant', 'collectivite', 'traiteur', 'boulangerie', 'fast_food', 'autre'];
+  if (onbType && validOnbTypes.indexOf(onbType) !== -1 && onbType !== 'restaurant') {
+    _data.type = onbType;
+    var typeGrid = document.getElementById('a-type-tiles');
+    if (typeGrid) {
+      typeGrid.querySelectorAll('.tile').forEach(function(t){ t.classList.remove('sel'); });
+      var typeTarget = typeGrid.querySelector('[data-val="' + onbType + '"]');
+      if (typeTarget) typeTarget.classList.add('sel');
+    }
+  }
+
   goStep(1);
 });
 
@@ -526,19 +540,30 @@ window.generatePMS = async function() {
     }
   }
 
-  /* 2. Créer tenant */
-  try {
-    var r = await fetch(SUPABASE_URL + '/rest/v1/tenants', {
-      method: 'POST', headers: hdrRep,
-      body: JSON.stringify({ name: _data.nom, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
-    });
-    if (r.ok) {
-      var tenants = await r.json();
-      if (tenants && tenants[0]) tenantId = tenants[0].id || null;
-    } else {
-      console.warn('[Onboarding] tenant:', r.status, await r.text());
-    }
-  } catch(e) { console.warn('[Onboarding] tenant:', e); }
+  /* 2. Créer ou mettre à jour le tenant */
+  var existingTenantId = cfg.tenantId || (_session && _session.tenantId) || null;
+  if (existingTenantId) {
+    tenantId = existingTenantId;
+    try {
+      await fetch(SUPABASE_URL + '/rest/v1/tenants?id=eq.' + tenantId, {
+        method: 'PATCH', headers: hdrMin,
+        body: JSON.stringify({ name: _data.nom, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
+      });
+    } catch(e) { console.warn('[Onboarding] tenant PATCH:', e); }
+  } else {
+    try {
+      var r = await fetch(SUPABASE_URL + '/rest/v1/tenants', {
+        method: 'POST', headers: hdrRep,
+        body: JSON.stringify({ name: _data.nom, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
+      });
+      if (r.ok) {
+        var tenants = await r.json();
+        if (tenants && tenants[0]) tenantId = tenants[0].id || null;
+      } else {
+        console.warn('[Onboarding] tenant POST:', r.status, await r.text());
+      }
+    } catch(e) { console.warn('[Onboarding] tenant POST:', e); }
+  }
 
   /* 3. Créer sites */
   if (validSites.length && token) {
