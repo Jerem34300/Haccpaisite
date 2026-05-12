@@ -750,11 +750,13 @@ function openCoModal(id) {
         } else {
           var email = (document.getElementById('m-coemail')||{}).value||'';
           var pass  = (document.getElementById('m-copass')||{}).value||'';
-          var payload = {name, plan};
+          var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+            + '-' + Math.random().toString(36).slice(2, 7);
+          var payload = {name, plan, slug};
           // Try with extra_sites; silently omit if column not yet created in Supabase
           var rows;
           try {
-            rows = await api('POST', '/rest/v1/tenants', {name, plan, extra_sites: extra}, {'Prefer':'return=representation'});
+            rows = await api('POST', '/rest/v1/tenants', {name, plan, slug, extra_sites: extra}, {'Prefer':'return=representation'});
           } catch(e) {
             if (e.message.includes('extra_sites') || e.message.includes('column')) {
               rows = await api('POST', '/rest/v1/tenants', payload, {'Prefer':'return=representation'});
