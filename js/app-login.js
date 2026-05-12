@@ -254,7 +254,17 @@ async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
       body:JSON.stringify({ name:company, type })
     });
     if(r.ok){ const t = await r.json(); tenantId = Array.isArray(t) ? t[0]?.id : t?.id; }
-  } catch(e){ console.error('tenant:', e); }
+  } catch(e){ console.error('tenant POST:', e); }
+
+  // Si le POST a échoué (tenant déjà créé), récupérer l'existant
+  if(!tenantId){
+    try {
+      const gr = await fetch(`${url}/rest/v1/tenants?select=id&limit=1`, {
+        headers:{'apikey':key,'Authorization':`Bearer ${token}`,'Accept':'application/json'}
+      });
+      if(gr.ok){ const ts = await gr.json(); tenantId = ts?.[0]?.id || null; }
+    } catch(e){ console.error('tenant GET:', e); }
+  }
 
   if(tenantId){
     await fetch(`${url}/rest/v1/profiles`, {
