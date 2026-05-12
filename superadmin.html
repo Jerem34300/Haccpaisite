@@ -388,6 +388,12 @@ async function api(method, path, body, extraHeaders) {
   }
 }
 
+/* ── Voir les données d'une entreprise depuis le dashboard ── */
+function viewTenantData(tenantId, tenantName) {
+  sessionStorage.setItem('sa_view_tenant', JSON.stringify({id: tenantId, name: tenantName}));
+  window.location.href = 'dashboard.html';
+}
+
 /* ── Companies ── */
 async function loadCompanies() {
   document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:rgba(255,255,255,.35);font-size:.8rem;text-align:center">Chargement…</div>';
@@ -465,6 +471,7 @@ function renderCompanyDetail() {
       +'<div class="co-hd-right">'
         +'<span class="badge-plan '+(_planBadge(co.plan))+'">'+planLbl+'</span>'
         +'<button class="btn-edit-co" id="btn-hd-edit">✏️ Modifier</button>'
+        +'<button onclick="viewTenantData(\''+_esc(co.id)+'\',\''+_esc(co.name)+'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>'
       +'</div>'
     +'</div>'
     +'<div class="co-tabs">'

@@ -118,12 +118,20 @@ exports.handler = async function(event) {
 
   // ── 5. Créer le profil ────────────────────────────────────────
   try {
-    await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+    const profRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'return=minimal,resolution=merge-duplicates' },
       body: JSON.stringify({ id: userId, tenant_id: tenantId, role: 'directeur', full_name: company })
     });
-  } catch(e) { console.error('[signup-setup] profile:', e.message); }
+    if (!profRes.ok) {
+      const profErr = await profRes.text();
+      console.error('[signup-setup] profile POST failed:', profRes.status, profErr);
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Compte créé mais profil non initialisé. Contactez le support.' }) };
+    }
+  } catch(e) {
+    console.error('[signup-setup] profile:', e.message);
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Erreur réseau lors de la création du profil.' }) };
+  }
 
   // ── 6. Créer l'abonnement (essai 14 jours) ───────────────────
   try {
