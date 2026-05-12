@@ -74,7 +74,16 @@ document.addEventListener('DOMContentLoaded', function(){
     _data.nom = companyName;
   }
 
-  /* Pre-fill establishment type from signup */
+  /* Pré-sélectionner la couleur choisie lors de l'inscription */
+  if (_signupData.couleur) {
+    _data.couleur = _signupData.couleur;
+    document.querySelectorAll('.color-swatch').forEach(function(s){
+      var isActive = s.dataset.color === _signupData.couleur;
+      s.classList.toggle('active', isActive);
+    });
+  }
+
+  /* Pré-sélectionner le type d'établissement choisi lors de l'inscription */
   var signupType = _signupData.type || '';
   var onbType = signupType === 'hotellerie' ? 'autre' : signupType;
   var validOnbTypes = ['restaurant', 'collectivite', 'traiteur', 'boulangerie', 'fast_food', 'autre'];
@@ -577,11 +586,12 @@ window.generatePMS = async function() {
   }
 
   /* 4. Lier profile */
+  var finalRole = 'directeur';
   if (userId && token && tenantId) {
     try {
       await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + userId, {
         method: 'PATCH', headers: hdrMin,
-        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null, role: 'cuisinier' })
+        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null, role: finalRole })
       });
     } catch(e) { console.warn('[Onboarding] profile:', e); }
   }
@@ -659,14 +669,23 @@ window.generatePMS = async function() {
     localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
   } catch(e) { console.warn('[Onboarding] siteId:', e); }
 
-  /* 8. Afficher succès */
+  /* 8. Mettre à jour haccpro_session avec le rôle final et le tenantId */
+  try {
+    var sess = {};
+    try { sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}'); } catch(e2){}
+    sess.role = finalRole;
+    if (tenantId) sess.tenantId = tenantId;
+    localStorage.setItem('haccpro_session', JSON.stringify(sess));
+  } catch(e) { console.warn('[Onboarding] session update:', e); }
+
+  /* 9. Afficher succès */
   if (spin)  spin.style.display = 'none';
   btn.style.display = 'none';
   var doneEl = document.getElementById('gen-done');
   if (doneEl) doneEl.style.display = 'block';
 
-  /* 9. Rediriger après 2 s */
-  setTimeout(function(){ window.location.href = 'cuisine.html'; }, 2000);
+  /* 10. Rediriger vers le dashboard */
+  setTimeout(function(){ window.location.href = 'dashboard.html'; }, 2000);
 };
 
 /* ─── Logo upload ─── */

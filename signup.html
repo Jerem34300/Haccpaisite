@@ -107,6 +107,7 @@ body{
 .field input:focus,.field select:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
 .field input::placeholder{color:#94a3b8}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.color-swatch-su.active{border-color:#8DC63F !important;box-shadow:0 0 0 2px rgba(141,198,63,.4)}
 .field-hint{font-size:.7rem;color:var(--muted);margin-top:5px;font-weight:700}
 /* Buttons */
 .btn-primary{
@@ -245,9 +246,19 @@ body{
       <div class="step active" id="step-1">
         <div class="step-title">Créez votre compte</div>
         <div class="step-sub">Étape 1 sur 4 — Informations de connexion</div>
+        <div class="field-row">
+          <div class="field">
+            <label for="su-prenom">Prénom</label>
+            <input type="text" id="su-prenom" placeholder="Jean" autocomplete="given-name">
+          </div>
+          <div class="field">
+            <label for="su-nom">Nom</label>
+            <input type="text" id="su-nom" placeholder="Dupont" autocomplete="family-name">
+          </div>
+        </div>
         <div class="field">
           <label for="su-email">Adresse email professionnelle</label>
-          <input type="email" id="su-email" placeholder="prenom@restaurant.fr" autocomplete="email" onkeydown="if(event.key==='Enter')goStep(2)">
+          <input type="email" id="su-email" placeholder="prenom@restaurant.fr" autocomplete="email">
         </div>
         <div class="field">
           <label for="su-pass">Mot de passe</label>
@@ -269,7 +280,10 @@ body{
           </div>
         </div>
         <div class="err" id="err-1"></div>
-        <button class="btn-primary" onclick="goStep(2)">Continuer →</button>
+        <button class="btn-primary" id="btn-step1" onclick="checkEmailAndGoStep2()">
+          <span id="btn-step1-label">Continuer →</span>
+          <div class="spinner" id="btn-step1-spin"></div>
+        </button>
       </div>
 
       <!-- Step 2 : Établissement -->
@@ -299,6 +313,16 @@ body{
             <option value="6">6 à 20 cuisines</option>
             <option value="21">Plus de 20 cuisines</option>
           </select>
+        </div>
+        <div class="field">
+          <label>Couleur de votre interface</label>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">
+            <button type="button" class="color-swatch-su active" data-color="#5C1E5A" onclick="selectColor('#5C1E5A')" style="width:32px;height:32px;border-radius:50%;background:#5C1E5A;border:3px solid transparent;cursor:pointer;outline:none;transition:border-color .15s" title="Prune"></button>
+            <button type="button" class="color-swatch-su" data-color="#1565c0" onclick="selectColor('#1565c0')" style="width:32px;height:32px;border-radius:50%;background:#1565c0;border:3px solid transparent;cursor:pointer;outline:none;transition:border-color .15s" title="Bleu"></button>
+            <button type="button" class="color-swatch-su" data-color="#2e7d32" onclick="selectColor('#2e7d32')" style="width:32px;height:32px;border-radius:50%;background:#2e7d32;border:3px solid transparent;cursor:pointer;outline:none;transition:border-color .15s" title="Vert"></button>
+            <button type="button" class="color-swatch-su" data-color="#c62828" onclick="selectColor('#c62828')" style="width:32px;height:32px;border-radius:50%;background:#c62828;border:3px solid transparent;cursor:pointer;outline:none;transition:border-color .15s" title="Rouge"></button>
+            <button type="button" class="color-swatch-su" data-color="#e65100" onclick="selectColor('#e65100')" style="width:32px;height:32px;border-radius:50%;background:#e65100;border:3px solid transparent;cursor:pointer;outline:none;transition:border-color .15s" title="Orange"></button>
+          </div>
         </div>
         <div class="err" id="err-2"></div>
         <button class="btn-primary" onclick="goStep(3)">Continuer →</button>
@@ -345,6 +369,10 @@ body{
         <div class="step-title">Démarrez votre essai gratuit</div>
         <div class="step-sub">Étape 4 sur 4 — Récapitulatif de votre inscription</div>
         <div class="recap-box">
+          <div class="recap-row">
+            <span class="recap-label">Nom</span>
+            <span class="recap-val" id="recap-name">—</span>
+          </div>
           <div class="recap-row">
             <span class="recap-label">Email</span>
             <span class="recap-val" id="recap-email">—</span>
@@ -403,6 +431,6 @@ body{
 </div><!-- /.signup-main -->
 
 <script src="js/supabaseconfig.js"></script>
-<script src="js/app-signup.js"></script>
+<script src="js/app-signup.js?v=3"></script>
 </body>
 </html>

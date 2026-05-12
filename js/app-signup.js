@@ -7,11 +7,18 @@ const _SU = SUPABASE_URL;
 const _SK = SUPABASE_ANON_KEY;
 
 let _step = 1;
-const _data = { email:'', password:'', company:'', type:'restaurant', sites:1, plan:'multi' };
+const _data = {
+  email:'', password:'', firstName:'', lastName:'',
+  company:'', type:'restaurant', sites:1, plan:'multi',
+  couleur:'#5C1E5A'
+};
+
+// Résultat de la vérification Supabase Auth (obtenu à l'étape 1)
+let _supaAuth = null;
+let _supaAuthEmail = '';
 
 // ── Init ──────────────────────────────────────────────────────
 (function init(){
-  // Pre-select plan from URL param (?plan=starter|pro|enterprise)
   const urlPlan = new URLSearchParams(location.search).get('plan');
   if(urlPlan && ['solo','multi','enterprise'].includes(urlPlan)){
     _data.plan = urlPlan;
@@ -50,19 +57,90 @@ function _updateStepper(){
   }
 }
 
+// ── Vérification email + transition étape 1→2 (async) ────────
+async function checkEmailAndGoStep2(){
+  if(!validateStep(1)) return;
+
+  const btn   = document.getElementById('btn-step1');
+  const label = document.getElementById('btn-step1-label');
+  const spin  = document.getElementById('btn-step1-spin');
+  if(btn) btn.disabled = true;
+  if(label) label.style.display = 'none';
+  if(spin) spin.style.display = 'block';
+  hideErr(1);
+
+  // Déjà vérifié pour cet email : ne pas rappeler Supabase
+  if(_supaAuth && _supaAuthEmail === _data.email){
+    _showStep(2);
+    if(btn){ btn.disabled = false; }
+    if(label) label.style.display = 'inline';
+    if(spin) spin.style.display = 'none';
+    return;
+  }
+
+  try {
+    const r = await fetch(`${_SU}/auth/v1/signup`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':_SK},
+      body:JSON.stringify({ email:_data.email, password:_data.password })
+    });
+    const auth = await r.json();
+
+    const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
+    const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
+      || auth.error_code === 'user_already_exists' || auth.code === 422
+      || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
+      || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
+
+    if(isDup){
+      const el = document.getElementById('err-1');
+      if(el){
+        el.innerHTML = '⚠️ Cet email est déjà utilisé. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
+        el.style.display = 'block';
+      }
+      return;
+    }
+
+    if(auth.error && auth.code !== 200){
+      showErr(1, auth.error?.message || auth.msg || auth.message || 'Erreur. Réessayez.');
+      return;
+    }
+
+    const token  = auth.access_token;
+    const userId = auth.user?.id || auth.id;
+    _supaAuth = token ? { token, userId, pending:false } : { pending:true };
+    _supaAuthEmail = _data.email;
+
+    _showStep(2);
+
+  } catch(e){
+    showErr(1, 'Impossible de vérifier l\'email. Vérifiez votre connexion.');
+  } finally {
+    if(btn) btn.disabled = false;
+    if(label) label.style.display = 'inline';
+    if(spin) spin.style.display = 'none';
+  }
+}
+
 // ── Validation ────────────────────────────────────────────────
 function validateStep(n){
   hideErr(n);
   if(n===1){
+    const firstName = (document.getElementById('su-prenom')?.value || '').trim();
+    const lastName  = (document.getElementById('su-nom')?.value || '').trim();
     const email = document.getElementById('su-email').value.trim();
     const pass  = document.getElementById('su-pass').value;
     const pass2 = document.getElementById('su-pass2').value;
+    if(!firstName) return showErr(1,'Veuillez saisir votre prénom');
+    if(!lastName)  return showErr(1,'Veuillez saisir votre nom');
     if(!email || !email.includes('@') || !email.includes('.'))
       return showErr(1,'Adresse email invalide');
     if(pass.length < 8)
       return showErr(1,'Le mot de passe doit contenir au moins 8 caractères');
     if(pass !== pass2)
       return showErr(1,'Les mots de passe ne correspondent pas');
+    _data.firstName = firstName;
+    _data.lastName  = lastName;
     _data.email    = email;
     _data.password = pass;
     return true;
@@ -83,6 +161,14 @@ function validateStep(n){
   return true;
 }
 
+// ── Couleur ───────────────────────────────────────────────────
+function selectColor(hex){
+  _data.couleur = hex;
+  document.querySelectorAll('.color-swatch-su').forEach(function(s){
+    s.classList.toggle('active', s.dataset.color === hex);
+  });
+}
+
 // ── Plan selection ────────────────────────────────────────────
 function _preselectPlan(){
   const s = _data.sites || 1;
@@ -101,6 +187,8 @@ function selectPlan(plan){
 
 // ── Recap ─────────────────────────────────────────────────────
 function _fillRecap(){
+  const fullName = (_data.firstName + ' ' + _data.lastName).trim();
+  _set('recap-name', fullName || '—');
   _set('recap-email', _data.email || '—');
   _set('recap-company', _data.company || '—');
   const typeLabels = {
@@ -113,7 +201,7 @@ function _fillRecap(){
   _set('recap-plan', planLabels[_data.plan] || _data.plan);
 }
 
-// ── Signup ────────────────────────────────────────────────────
+// ── Signup (étape 4) ──────────────────────────────────────────
 async function doSignup(){
   const btn   = document.getElementById('btn-signup');
   const label = document.getElementById('btn-signup-label');
@@ -124,45 +212,47 @@ async function doSignup(){
   hideErr(4);
 
   try {
-    // 1. Créer utilisateur Supabase Auth
-    const r1 = await fetch(`${_SU}/auth/v1/signup`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':_SK},
-      body:JSON.stringify({ email:_data.email, password:_data.password })
-    });
-    const auth = await r1.json();
+    let token  = _supaAuth?.token  || null;
+    let userId = _supaAuth?.userId || null;
+    const isPending = _supaAuth?.pending || false;
 
-    // Detect duplicate email — Supabase may return 200 with identities:[] when email
-    // confirmation is on and the address already exists (silent re-send, no error key)
-    const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
-    const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
-      || auth.error_code === 'user_already_exists' || auth.code === 422
-      || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
-      || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
-
-    if(isDup){
-      const el = document.getElementById('err-4');
-      if(el){
-        el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
-        el.style.display = 'block';
+    // Fallback si _supaAuth n'est pas défini (cas exceptionnel)
+    if(!_supaAuth){
+      const r1 = await fetch(`${_SU}/auth/v1/signup`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':_SK},
+        body:JSON.stringify({ email:_data.email, password:_data.password })
+      });
+      const auth = await r1.json();
+      const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
+      const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
+        || auth.error_code === 'user_already_exists' || auth.code === 422
+        || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
+        || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
+      if(isDup){
+        const el = document.getElementById('err-4');
+        if(el){
+          el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
+          el.style.display = 'block';
+        }
+        btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
+        return;
       }
-      btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
-      return;
+      if(auth.error) throw new Error(auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription');
+      token  = auth.access_token;
+      userId = auth.user?.id || auth.id;
+      if(!token){ _showSuccessEmailConfirm(); return; }
     }
 
-    if(auth.error || auth.code === 400){
-      const msg = auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription';
-      throw new Error(msg);
-    }
-
-    const token  = auth.access_token;
-    const userId = auth.user?.id || auth.id;
-
-    // Email confirmation required (no token returned)
-    if(!token){
+    // Confirmation email requise
+    if(isPending){
       _showSuccessEmailConfirm();
       return;
     }
+
+    if(!token) throw new Error('Aucun token reçu. Réessayez.');
+
+    const fullName = (_data.firstName + ' ' + _data.lastName).trim() || _data.company;
 
     // 2. Créer le tenant
     let tenantId = null;
@@ -174,7 +264,7 @@ async function doSignup(){
           'Authorization':`Bearer ${token}`,
           'Prefer':'return=representation'
         },
-        body:JSON.stringify({ name:_data.company, type:_data.type })
+        body:JSON.stringify({ name:_data.company, type:_data.type, primary_color:_data.couleur })
       });
       if(r2.ok){
         const tenants = await r2.json();
@@ -193,7 +283,7 @@ async function doSignup(){
         },
         body:JSON.stringify({
           id:userId, tenant_id:tenantId,
-          role:'directeur', full_name:_data.company
+          role:'directeur', full_name:fullName
         })
       }).catch(()=>{});
 
@@ -215,22 +305,21 @@ async function doSignup(){
       }).catch(()=>{});
     }
 
-    // 5. Sauvegarder la session et rediriger
+    // 5. Sauvegarder la session
     localStorage.setItem('haccpro_session', JSON.stringify({
       token, userId, role:'directeur',
-      tenantId, fullName:_data.company,
-      plan: _data.plan
+      tenantId, fullName, plan:_data.plan
     }));
     localStorage.setItem('haccpro_signup_data', JSON.stringify({
-      company:_data.company, type:_data.type,
-      sites:_data.sites, plan:_data.plan
+      company:_data.company, type:_data.type, sites:_data.sites, plan:_data.plan,
+      firstName:_data.firstName, lastName:_data.lastName, couleur:_data.couleur
     }));
 
-    // 6. Email de bienvenue via Resend (non bloquant)
+    // 6. Email de bienvenue (non bloquant)
     fetch('/.netlify/functions/send-email', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ type:'welcome', to:_data.email, company:_data.company, plan:_data.plan })
+      body:JSON.stringify({ type:'welcome', to:_data.email, company:_data.company, plan:_data.plan, fullName })
     }).catch(()=>{});
 
     _showSuccessRedirect();
@@ -244,9 +333,12 @@ async function doSignup(){
 }
 
 function _showSuccessEmailConfirm(){
+  const fullName = (_data.firstName + ' ' + _data.lastName).trim() || _data.company;
   try {
     localStorage.setItem('haccpro_pending_signup', JSON.stringify({
-      company:_data.company, type:_data.type, sites:_data.sites, plan:_data.plan
+      company:_data.company, type:_data.type, sites:_data.sites, plan:_data.plan,
+      firstName:_data.firstName, lastName:_data.lastName,
+      couleur:_data.couleur, fullName
     }));
   } catch(e){ console.error('pending signup save:', e); }
   _showStep('success');

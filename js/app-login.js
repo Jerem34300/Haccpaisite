@@ -243,43 +243,43 @@ async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
   const type    = sd.type    || 'restaurant';
   const plan    = sd.plan    || 'multi';
 
+  // Utiliser le proxy Netlify (service_role) pour contourner les RLS Supabase
+  // et garantir la création du tenant même pour un nouvel utilisateur sans rôle
   let tenantId = null;
   try {
-    const r = await fetch(`${url}/rest/v1/tenants`, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json','apikey':key,
-        'Authorization':`Bearer ${token}`,'Prefer':'return=representation'
-      },
-      body:JSON.stringify({ name:company, type })
+    const r = await fetch('/.netlify/functions/signup-setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userJwt: token, company, type, plan })
     });
-    if(r.ok){ const t = await r.json(); tenantId = Array.isArray(t) ? t[0]?.id : t?.id; }
-  } catch(e){ console.error('tenant:', e); }
+    if(r.ok){
+      const d = await r.json();
+      tenantId = d.tenantId || null;
+    } else {
+      console.error('signup-setup proxy:', r.status, await r.text());
+    }
+  } catch(e){ console.error('signup-setup proxy:', e); }
 
-  if(tenantId){
-    await fetch(`${url}/rest/v1/profiles`, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json','apikey':key,
-        'Authorization':`Bearer ${token}`,
-        'Prefer':'return=minimal,resolution=merge-duplicates'
-      },
-      body:JSON.stringify({ id:userId, tenant_id:tenantId, role:'directeur', full_name:company })
-    }).catch(e=>console.error('profile:', e));
+  // Fallback direct Supabase si le proxy Netlify n'est pas disponible (dev local)
+  if(!tenantId){
+    try {
+      const r = await fetch(`${url}/rest/v1/tenants`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':key,'Authorization':`Bearer ${token}`,'Prefer':'return=representation'},
+        body:JSON.stringify({ name:company, type })
+      });
+      if(r.ok){ const t = await r.json(); tenantId = Array.isArray(t) ? t[0]?.id : t?.id; }
+    } catch(e){ console.error('tenant POST direct:', e); }
+  }
 
-    const trialEnd = new Date(Date.now() + 14*24*60*60*1000).toISOString();
-    await fetch(`${url}/rest/v1/subscriptions`, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json','apikey':key,
-        'Authorization':`Bearer ${token}`,'Prefer':'return=minimal'
-      },
-      body:JSON.stringify({
-        tenant_id:tenantId, plan,
-        price_per_month:{solo:29,multi:49,enterprise:0}[plan] ?? 49,
-        status:'trial', trial_ends_at:trialEnd
-      })
-    }).catch(e=>console.error('subscription:', e));
+  // Dernier recours : trouver un tenant existant
+  if(!tenantId){
+    try {
+      const gr = await fetch(`${url}/rest/v1/tenants?select=id&limit=1`, {
+        headers:{'apikey':key,'Authorization':`Bearer ${token}`,'Accept':'application/json'}
+      });
+      if(gr.ok){ const ts = await gr.json(); tenantId = ts?.[0]?.id || null; }
+    } catch(e){ console.error('tenant GET:', e); }
   }
 
   localStorage.setItem('haccpro_session', JSON.stringify({

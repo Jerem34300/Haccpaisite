@@ -6,16 +6,28 @@
   node_bundler = "esbuild"
 
 [[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+
+[[headers]]
   for = "/*.html"
   [headers.values]
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
   for = "/netlify/functions/*"
   [headers.values]
     Access-Control-Allow-Origin = "*"
+
+# Serve landing.html at root for SEO (JS session guard inside landing.html handles auth redirect)
+[[redirects]]
+  from = "/"
+  to = "/landing.html"
+  status = 200
 
 # Clean URL redirects (removes .html extension)
 [[redirects]]

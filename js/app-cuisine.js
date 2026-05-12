@@ -565,12 +565,21 @@ const ALL=[
   {id:'enr25',short:'🔬 Contrôle labo',label:'ENR25 – Plan de contrôle microbiologique',cat:'suivi'},
 ];
 
+/* Set of ENR IDs allowed by the tenant — null means no restriction */
+window._tenantAllowedEnr = null;
+
 function navOrder(){
   const cfg=S.navCfg||{},hid=cfg.hidden||{};
   let order=cfg.order||ALL.map(s=>s.id);
-  // Ajouter les nouvelles sections (built-in + custom) absentes de l'ordre sauvegardé
   ALL.forEach(s=>{if(!order.includes(s.id))order.push(s.id);});
-  return order.filter(id=>{const s=ALL.find(s=>s.id===id);return s&&(s.fixed||!hid[id]);});
+  const allowed=window._tenantAllowedEnr;
+  return order.filter(id=>{
+    const s=ALL.find(s=>s.id===id);
+    if(!s) return false;
+    if(s.fixed) return true;
+    if(allowed && !allowed.has(id)) return false;
+    return !hid[id];
+  });
 }
 // ════════════════════════════════════════════════════
 // BADGES DE NAVIGATION — alertes visuelles par module
@@ -853,7 +862,7 @@ function licKeyInput(raw){
   if(parsed.expired){
     inp.className='lic-key-input err';
     stat.className='lic-status warn';
-    stat.innerHTML='⚠️ Licence expirée. Mode lecture seule actif. Renouvelez auprès de Restalliance.';
+    stat.innerHTML='⚠️ Licence expirée. Mode lecture seule actif. Renouvelez auprès de votre prestataire.';
     btn.style.opacity='.4';btn.style.pointerEvents='none';
   } else {
     inp.className='lic-key-input ok';
@@ -1272,7 +1281,7 @@ function applyHeaderName(){
   const elG=document.getElementById('header-groupe');
   const elN=document.getElementById('header-nom');
   if(elG)elG.textContent=groupe||(S.config.headerGroupe||'GROUPE');
-  if(elN)elN.textContent=nom||(S.config.headerNom||'restalliance');
+  if(elN)elN.textContent=nom||(S.config.headerNom||'Mon Établissement');
 }
 
 function applyHeaderLogo(input){
@@ -1315,25 +1324,34 @@ function initHeaderBranding(){
   const cfg=S.config||{};
   const elG=document.getElementById('header-groupe');
   const elN=document.getElementById('header-nom');
+  // Texte : toujours depuis S.config (paramètres utilisateur) — jamais écrasé par le tenant
   if(elG&&cfg.headerGroupe)elG.textContent=cfg.headerGroupe;
-  if(elN&&cfg.headerNom)elN.textContent=cfg.headerNom;
+  if(elN&&(cfg.headerNom||cfg.etab))elN.textContent=cfg.headerNom||cfg.etab;
   if(cfg.headerLogo)updateHeaderLogo(cfg.headerLogo);
 
-  // Charger le branding depuis Supabase tenant
+  // Charger logo et couleur depuis Supabase tenant (NE PAS toucher au texte de l'en-tête)
   const supaCfg = SupaEngine.cfg();
   if (supaCfg.tenantId && supaCfg.url && supaCfg.anonKey) {
-    fetch(`${supaCfg.url}/rest/v1/tenants?id=eq.${supaCfg.tenantId}&select=name,tagline,primary_color,accent_color,logo_url&limit=1`, {
+    fetch(`${supaCfg.url}/rest/v1/tenants?id=eq.${supaCfg.tenantId}&select=primary_color,logo_url,allowed_enr&limit=1`, {
       headers: { 'apikey': supaCfg.anonKey, 'Authorization': `Bearer ${supaCfg.userToken || supaCfg.anonKey}`, 'Accept': 'application/json' }
     }).then(r => r.json()).then(data => {
       const t = data?.[0];
       if (!t) return;
-      // Nom entreprise
-      if (t.name && elG) elG.textContent = t.name;
-      if (t.tagline && elN) elN.textContent = t.tagline;
-      // Logo
-      if (t.logo_url) updateHeaderLogo(t.logo_url);
+      // Logo : depuis le tenant uniquement si aucun logo local défini
+      if (t.logo_url && !cfg.headerLogo) updateHeaderLogo(t.logo_url);
       // Couleur primaire
       if (t.primary_color) applyTheme(t.primary_color);
+      // Modules autorisés — filtre les onglets ENR non souscrits
+      if (t.allowed_enr) {
+        try {
+          const arr = Array.isArray(t.allowed_enr) ? t.allowed_enr
+            : (typeof t.allowed_enr === 'string' ? JSON.parse(t.allowed_enr) : null);
+          if (arr && arr.length) {
+            window._tenantAllowedEnr = new Set(arr);
+            renderNav();
+          }
+        } catch(e) {}
+      }
     }).catch(() => {});
   }
 }
@@ -3468,7 +3486,7 @@ const FDEFS={
     fields:[{id:'date',label:'Date',inputType:'date',autoDate:true},{id:'heure',label:'Heure',type:'time',autoTime:true},{id:'association',label:"Nom de l'association"},
       {id:'prod_f',label:'Produit froid',type:'prod'},{id:'t_f',label:'T°C froid',type:'temp',presets:TP_COLD},{id:'conf_f',label:'Froid conf. ? (auto)',type:'conf',auto:true},
       {id:'prod_c',label:'Produit chaud',type:'prod'},{id:'t_c',label:'T°C chaud',type:'temp',presets:[60,63,75]},{id:'conf_c',label:'Chaud conf. ? (auto)',type:'conf'},
-      {id:'dlc',label:'DLC',inputType:'date'},{id:'cuisinier',label:'Visa Restalliance',type:'chef'},{id:'visa_assoc',label:'Visa Association'}]},
+      {id:'dlc',label:'DLC',inputType:'date'},{id:'cuisinier',label:'Cuisinier / Visa',type:'chef'},{id:'visa_assoc',label:'Visa Association'}]},
   enr24:{id:'enr24',title:'🔧 Plan de maintenance équipements',tag:'',tagCat:'',
     regle:'Enregistrer chaque intervention sur les équipements (préventive, corrective, réglementaire).',
     fields:[
@@ -8917,7 +8935,7 @@ function _pdfWrap(title, accentColor, site, code, mois, moisLabel, dateGen, body
 </div>
 ${bodyHtml}
 <div class="footer">
-  <span>PMS HACCP Restalliance — ${site}${code?' ('+code+')':''}</span>
+  <span>PMS HACCP — ${S.config?.headerGroupe||'HACC.PRO'} — ${site}${code?' ('+code+')':''}</span>
   <span>Généré le ${new Date().toLocaleString('fr-FR')}</span>
 </div>
 </body></html>`;
@@ -9736,11 +9754,29 @@ async function _loadFromSupabase() {
           if (key === 'config') {
             S.config = S.config || {};
             const cc = cloud.config || {};
-            Object.keys(cc).forEach(k => { if (cc[k] !== undefined) S.config[k] = cc[k]; });
+            // headerGroupe/headerNom sont rechargés depuis tenants/sites —
+            // ne pas laisser des valeurs cloud obsolètes les écraser
+            const SKIP_HEADER = new Set(['headerGroupe', 'headerNom']);
+            Object.keys(cc).forEach(k => {
+              if (cc[k] !== undefined && !SKIP_HEADER.has(k)) S.config[k] = cc[k];
+            });
           } else {
             S[key] = cloud[key];
           }
         });
+
+        // ── Initialiser l'en-tête si non encore configuré ──
+        // site.name = fallback pour header-nom si l'utilisateur n'a rien défini
+        if (site.name && !S.config.headerNom) {
+          S.config.headerNom = site.name;
+          const _elN = document.getElementById('header-nom');
+          if (_elN && (_elN.textContent === 'Mon Établissement' || _elN.textContent === 'GROUPE' || !_elN.textContent.trim())) {
+            _elN.textContent = site.name;
+          }
+        }
+        // Mettre à jour etab-nom dans le panel config si ouvert
+        const _etabNomEl = document.getElementById('etab-nom');
+        if (_etabNomEl && site.name) _etabNomEl.value = site.name;
       }
     }
 

@@ -8,8 +8,8 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v384';
-const CDN_CACHE_NAME = 'haccpro-cdn-v384';
+const CACHE_NAME = 'haccpro-v386';
+const CDN_CACHE_NAME = 'haccpro-cdn-v386';
 
 // Assets à mettre en cache dès l'installation
 // ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
@@ -149,7 +149,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Assets statiques (JS/CSS/images) : Cache-First avec fallback réseau
+  // JS et CSS : Network-First avec fallback cache (garantit la version à jour)
+  if (url.includes('/js/') || url.includes('/css/') || url.match(/\.(js|css)(\?|$)/)) {
+    event.respondWith(
+      fetch(request).then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return response;
+      }).catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Assets statiques (images/manifests) : Cache-First avec fallback réseau
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;

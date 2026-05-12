@@ -119,6 +119,14 @@ function saveCfg(){
 // ════════════════════════════════════════════════════
 // MOBILE NAV
 // ════════════════════════════════════════════════════
+function setUserAvatar(name) {
+  const el = document.getElementById('sb-avatar');
+  if (!el) return;
+  const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+  el.textContent = parts.length >= 2
+    ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+    : (parts[0] ? parts[0].slice(0, 2).toUpperCase() : '?');
+}
 function toggleSidebar(){
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebar-overlay').classList.toggle('open');
@@ -130,6 +138,38 @@ function closeSidebar(){
 function navTo(page){
   showPage(page);
   closeSidebar();
+}
+
+function openCuisine(siteId, siteCode, siteName){
+  var sc = {};
+  try { sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
+  // cuisine.html uses c.siteId for `sites?code=eq.{siteId}` — must be the text code, not UUID
+  sc.siteId    = siteCode || siteId;
+  sc.siteUUID  = siteId;
+  sc.siteNom   = siteName;
+  sc.nom       = localStorage.getItem('sa_tenant_name') || siteName;
+  sc.url       = SUPA_URL;
+  sc.anonKey   = SUPA_KEY;
+  sc.userToken = _token;
+  sc.token     = _token;
+  sc.userId    = _userId;
+  if(_profile && _profile.tenant_id) sc.tenantId = _profile.tenant_id;
+  localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
+
+  // Reset branding fields in haccp_v6 so cuisine.html shows the correct
+  // site name/logo and not the stale values from the previous session.
+  var tenantName = (document.getElementById('sidebar-tenant-name') || {}).textContent
+                 || localStorage.getItem('sa_tenant_name') || '';
+  try {
+    var v6 = JSON.parse(localStorage.getItem('haccp_v6') || '{}');
+    v6.config = v6.config || {};
+    v6.config.headerGroupe = tenantName;
+    v6.config.headerNom    = siteName;
+    delete v6.config.headerLogo;   // let cuisine.html reload tenant logo from Supabase
+    localStorage.setItem('haccp_v6', JSON.stringify(v6));
+  } catch(e){}
+
+  window.location.href = 'cuisine.html';
 }
 
 // syncFilterMobile supprimé
@@ -192,6 +232,7 @@ function activerModeDemo() {
   document.getElementById('app').style.display = 'block';
   document.getElementById('sb-name').textContent = 'Mode Démo';
   document.getElementById('sb-role').textContent = 'Siège';
+  setUserAvatar('Mode Démo');
   ['nav-admin','nav-gmo','nav-compare'].forEach(id => {
     const el = document.getElementById(id); if (el) el.style.display = 'flex';
   });
@@ -612,6 +653,7 @@ async function bootApp(){
     if (_profile.data_locked && _profile.role !== 'super_admin') {
       document.getElementById('sb-name').textContent = _profile.full_name||'Utilisateur';
       document.getElementById('sb-role').textContent = 'Accès restreint';
+      setUserAvatar(_profile.full_name||'Utilisateur');
       // Masquer tout sauf GMO dans la sidebar
       document.querySelectorAll('.nav-item').forEach(el => {
         if (!el.getAttribute('onclick')?.includes('gmo')) el.style.display = 'none';
@@ -630,8 +672,9 @@ async function bootApp(){
       return;
     }
     document.getElementById('sb-name').textContent=_profile.full_name||'Utilisateur';
-    const roleLabels={cuisinier:'Cuisinier',chef_secteur:'Chef de secteur',directeur:'Directeur',siege:'Siège'};
+    const roleLabels={cuisinier:'Cuisinier',chef_secteur:'Chef de secteur',directeur:'Administrateur',siege:'Siège'};
     document.getElementById('sb-role').textContent=roleLabels[_profile.role]||_profile.role;
+    setUserAvatar(_profile.full_name||'Utilisateur');
 
     // ── Charger le branding depuis tenants ─────────────────────
     if (_profile.tenant_id) {
@@ -664,6 +707,10 @@ async function bootApp(){
     if(_profile.role==='chef_secteur'||_profile.role==='siege'||_profile.role==='directeur'){
       document.getElementById('nav-gmo').style.display='flex';
       document.getElementById('nav-compare').style.display='flex';
+    }
+    if(_profile.role==='siege'){
+      const navSub = document.getElementById('nav-subscription');
+      if(navSub) navSub.style.display='flex';
     }
     await loadData();
     showPage('overview');
@@ -722,8 +769,13 @@ async function loadData(){
   _setStep('Connexion Supabase…');
   try{
     const _get = async (table, query) => { _setStep('Chargement ' + table + '…'); return supaGet(table, query); };
-    // Filtre tenant — tout le monde filtre par son propre tenant, y compris super_admin
-    // Le super_admin voit tout UNIQUEMENT dans la console Super Admin
+    // Filtre tenant — obligatoire pour tous les rôles sauf super_admin
+    // Sans tenant_id, on ne charge rien pour éviter de voir les données des autres entreprises
+    if(_profile?.role !== 'super_admin' && !_profile?.tenant_id){
+      _setStep('');
+      setContent(`<div class="empty"><div class="empty-ico">⚠️</div><strong>Configuration incomplète</strong><br>Votre compte n'est pas encore rattaché à une organisation.<br><br><a href="onboarding.html" style="color:var(--navy);font-weight:800">Terminer la configuration →</a></div>`);
+      return;
+    }
     const tenantFilter = _profile?.tenant_id
       ? `&tenant_id=eq.${_profile.tenant_id}` : '';
 
@@ -1052,6 +1104,7 @@ function renderPage(page){
     else if(page==='alerts'){_adminTab='alerts';renderAdmin();}
     else if(page==='actions-nc'){_adminTab='corrective';renderAdmin();}
     else if(page==='super')renderSuperAdmin();
+    else if(page==='subscription')renderSubscription();
   } catch(e) {
     console.error('[renderPage] crash:', page, e);
     setContent('<div style="padding:24px;text-align:center">'
@@ -1516,6 +1569,13 @@ function renderOverview(){
         <span style="font-size:.7rem;color:var(--muted)">›</span>
       </div>
       ${catBadges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px">${catBadges}</div>`:''}
+      <div style="margin-top:10px;text-align:right">
+        <button onclick="event.stopPropagation();openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+          style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:background .15s"
+          onmouseover="this.style.background='var(--navy2)'" onmouseout="this.style.background='var(--navy)'">
+          Ouvrir PMS →
+        </button>
+      </div>
     </div>`;
   }
 
@@ -1935,11 +1995,15 @@ async function renderAdmin(){
   } else {
     await loadTabletAlertsHistory();
   }
-  // Charger profils filtrés par tenant — tout le monde filtre par son propre tenant
+  // Charger profils — super_admin voit tout via proxy, les autres filtrent par tenant
   let profiles = [];
-  const tenantFilter = _profile?.tenant_id ? `&tenant_id=eq.${_profile.tenant_id}` : '';
+  const adminTenantFilter = _profile?.tenant_id ? `&tenant_id=eq.${_profile.tenant_id}` : '';
   if(canManageOrg){
-    try { profiles = await supaGet('profiles', `select=*&order=created_at${tenantFilter}`); } catch{}
+    if(_profile?.role === 'super_admin'){
+      try { profiles = await supaAdmin('GET', `/rest/v1/profiles?select=*&order=created_at`, null); } catch{}
+    } else {
+      try { profiles = await supaGet('profiles', `select=*&order=created_at${adminTenantFilter}`); } catch{}
+    }
   }
 
   const knownCodes = new Set(_sites.map(s=>s.code));
@@ -5905,7 +5969,7 @@ const GMO_AXES = [
   { key:'tracabilite', label:'Traçabilité & Documentation', coeff:10, icon:'📋',
     criteres:[
       { key:'enreg_pms', label:'Enregistrements PMS complétés quotidiennement',
-        aide:'Vérifiez que l\'ensemble des fiches PMS (températures frigos, cuissons, réceptions, nettoyage, plats témoins) est complété au quotidien et signé. Les fiches numériques ou papier doivent être à jour. L\'application HACCP (PMS Restalliance) doit montrer des saisies régulières.',
+        aide:'Vérifiez que l\'ensemble des fiches PMS (températures frigos, cuissons, réceptions, nettoyage, plats témoins) est complété au quotidien et signé. Les fiches numériques ou papier doivent être à jour. L\'application HACC.PRO doit montrer des saisies régulières.',
         ok:'Toutes les fiches PMS à jour sur les 7 derniers jours, signées, sans jour manquant.',
         nc_min:'Quelques fiches incomplètes (1-2 jours), signatures manquantes sur certaines fiches.',
         nc_maj:'Fiches PMS non tenues depuis plus de 3 jours, saisies manquantes systématiquement, fiches remplies en masse a posteriori.' },
@@ -8463,7 +8527,7 @@ async function renderSuperAdmin() {
 
   // ── Sync tenants depuis Supabase ──────────────────────────────
   try {
-    const supaCompanies = await supaGet('tenants', 'select=id,name,tagline,primary_color,accent_color,logo_url,plan,created_at&order=created_at');
+    const supaCompanies = await supaAdmin('GET', '/rest/v1/tenants?select=id,name,tagline,primary_color,accent_color,logo_url,plan,created_at&order=created_at', null);
     if (supaCompanies && supaCompanies.length > 0) {
       // Fusionner avec les données locales (adminEmail etc.)
       const localCompanies = saGetCompanies();
@@ -8486,12 +8550,12 @@ async function renderSuperAdmin() {
       const localOnly = localCompanies.filter(c => !supaIds.has(c.id));
       saSaveCompanies([...merged, ...localOnly]);
     } else {
-      // Pas de tenants Supabase → init Restalliance local si liste vide
+      // Pas de tenants Supabase → init compte local par défaut si liste vide
       const existingCompanies = saGetCompanies();
       if (existingCompanies.length === 0) {
         const restalliance = {
           id: 'co_restalliance',
-          name: localStorage.getItem('sa_tenant_name') || 'Restalliance',
+          name: localStorage.getItem('sa_tenant_name') || 'Mon Organisation',
           tagline: 'HACC.PRO Platform',
           colorNavy:  localStorage.getItem('sa_color_navy')  || '#0F2240',
           colorGreen: localStorage.getItem('sa_color_green') || '#8DC63F',
@@ -8510,7 +8574,7 @@ async function renderSuperAdmin() {
     const existingCompanies = saGetCompanies();
     if (existingCompanies.length === 0) {
       saSaveCompanies([{
-        id: 'co_restalliance', name: 'Restalliance', tagline: 'HACC.PRO Platform',
+        id: 'co_restalliance', name: 'Mon Organisation', tagline: 'HACC.PRO Platform',
         colorNavy: '#0F2240', colorGreen: '#8DC63F', logo: null,
         plan: 'enterprise', adminEmail: '', createdAt: new Date().toISOString(),
       }]);
@@ -8518,7 +8582,7 @@ async function renderSuperAdmin() {
     }
   }
 
-  const tenantName = localStorage.getItem('sa_tenant_name') || 'Restalliance';
+  const tenantName = localStorage.getItem('sa_tenant_name') || 'Mon Organisation';
   const colorNavy  = localStorage.getItem('sa_color_navy')  || '#0F2240';
   const colorGreen = localStorage.getItem('sa_color_green') || '#8DC63F';
   const logoSrc    = localStorage.getItem('sa_logo') || 'data:image/png;base64,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';
@@ -9300,7 +9364,7 @@ function saResetBranding() {
   document.documentElement.style.setProperty('--navy', '#0F2240');
   document.documentElement.style.setProperty('--green', '#8DC63F');
   const el = document.getElementById('sidebar-tenant-name');
-  if (el) el.textContent = 'Restalliance';
+  if (el) el.textContent = 'Mon Organisation';
   showToast('Réinitialisé', 'info');
   renderSuperAdmin();
 }
@@ -9342,6 +9406,134 @@ document.addEventListener('click', function(e) {
   const modal = document.getElementById('sa-company-modal');
   if (modal && e.target === modal) saCloseCompanyModal();
 });
+
+// ════════════════════════════════════════════════════
+// MON ABONNEMENT
+// ════════════════════════════════════════════════════
+async function renderSubscription(){
+  setContent('<div style="padding:24px;text-align:center;color:var(--muted);font-size:.85rem">Chargement…</div>');
+
+  const tenantId = _profile?.tenant_id;
+  const font = 'font-family:var(--font)';
+
+  let sub = null, sites = [], tenantData = null;
+
+  try {
+    if(tenantId){
+      const [subs, sitesRes, tenants] = await Promise.all([
+        supaGet('subscriptions', `select=plan,status,price_per_month,trial_ends_at&tenant_id=eq.${tenantId}&limit=1`).catch(()=>[]),
+        supaGet('sites', `select=id,name,code&tenant_id=eq.${tenantId}&order=name`).catch(()=>[]),
+        supaGet('tenants', `select=id,name,primary_color&id=eq.${tenantId}&limit=1`).catch(()=>[])
+      ]);
+      sub = subs[0] || null;
+      sites = Array.isArray(sitesRes) ? sitesRes : [];
+      tenantData = tenants[0] || null;
+    }
+  } catch(e){ console.warn('[renderSubscription]', e); }
+
+  const planLabels = { solo:'Solo', multi:'Multi', enterprise:'Entreprise' };
+  const planColors = { solo:'#16a34a', multi:'#0F2240', enterprise:'#7c3aed' };
+  const planDesc   = { solo:'1 cuisine', multi:'Jusqu\'à 3 cuisines · +19€/cuisine supp.', enterprise:'Cuisines illimitées · API · SSO' };
+  const planPrices = { solo:'29€/mois', multi:'49€/mois', enterprise:'Sur devis' };
+
+  const planKey   = sub?.plan || _profile?.plan || 'multi';
+  const planLabel = planLabels[planKey] || planKey;
+  const planColor = planColors[planKey] || '#64748b';
+
+  let statusHtml = '';
+  if(sub){
+    if(sub.status === 'trial' && sub.trial_ends_at){
+      const trialDate = new Date(sub.trial_ends_at);
+      const today = new Date();
+      const daysLeft = Math.max(0, Math.ceil((trialDate - today) / 86400000));
+      const trialStr = trialDate.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
+      statusHtml = daysLeft > 0
+        ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Essai gratuit — ${daysLeft} jour${daysLeft>1?'s':''} restant${daysLeft>1?'s':''} (jusqu'au ${trialStr})</span>`
+        : `<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Essai expiré le ${trialStr}</span>`;
+    } else if(sub.status === 'active'){
+      statusHtml = `<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Abonnement actif</span>`;
+    } else {
+      statusHtml = `<span style="background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">${sub.status||'—'}</span>`;
+    }
+  }
+
+  const sitesHtml = sites.length
+    ? sites.map(s => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:10px;margin-bottom:6px">
+          <div>
+            <div style="font-size:.85rem;font-weight:800;color:var(--text)">${escH(s.name)}</div>
+            <div style="font-size:.65rem;color:var(--muted);margin-top:1px">Code : ${escH(s.code||s.id)}</div>
+          </div>
+          <button onclick="openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+            style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;${font}">
+            Ouvrir PMS →
+          </button>
+        </div>`).join('')
+    : '<div style="color:var(--muted);font-size:.82rem;padding:10px 0">Aucune cuisine configurée.</div>';
+
+  const addKitchenHtml = ['multi','enterprise'].includes(planKey)
+    ? `<div style="margin-top:8px;padding:14px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px">
+        <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:4px">Ajouter une cuisine</div>
+        <div style="font-size:.75rem;color:#166534;margin-bottom:10px">+19€/mois par cuisine supplémentaire</div>
+        <a href="mailto:contact@hacc.pro?subject=Ajout%20cuisine%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
+          style="display:inline-block;padding:7px 16px;background:#166534;color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
+          Demander l'ajout →
+        </a>
+      </div>`
+    : `<div style="margin-top:8px;padding:14px;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px">
+        <div style="font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:4px">Passer en plan Multi</div>
+        <div style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Gérez jusqu'à 3 cuisines pour 49€/mois</div>
+        <a href="mailto:contact@hacc.pro?subject=Upgrade%20plan%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
+          style="display:inline-block;padding:7px 16px;background:var(--navy);color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
+          Upgrader mon plan →
+        </a>
+      </div>`;
+
+  const html = `
+  <div style="max-width:600px;margin:0 auto;padding:24px 16px">
+    <div style="font-size:1.05rem;font-weight:900;color:var(--navy);margin-bottom:20px">Mon abonnement</div>
+
+    <!-- Plan actuel -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Plan actuel</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:1.3rem;font-weight:900;color:${planColor}">${escH(planLabel)}</span>
+        <span style="font-size:.8rem;font-weight:700;color:var(--muted)">${escH(planPrices[planKey]||'')}</span>
+        ${statusHtml}
+      </div>
+      <div style="font-size:.75rem;color:var(--muted);margin-top:6px">${escH(planDesc[planKey]||'')}</div>
+    </div>
+
+    <!-- Mes cuisines -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Mes cuisines (${sites.length})</div>
+      ${sitesHtml}
+      ${addKitchenHtml}
+    </div>
+
+    <!-- Compte -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Mon compte</div>
+      <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:4px">${escH(_profile?.full_name||'—')}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">${escH(_profile?.email||'')}</div>
+      <a href="reset-password.html" style="font-size:.78rem;font-weight:800;color:var(--navy);text-decoration:none">
+        Changer mon mot de passe →
+      </a>
+    </div>
+
+    <!-- Modifier le plan -->
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px">
+      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Modifier mon plan</div>
+      <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">Pour modifier votre abonnement, annuler ou obtenir une facture, contactez-nous.</div>
+      <a href="mailto:contact@hacc.pro?subject=Modification%20abonnement%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
+        style="display:inline-block;padding:7px 16px;background:var(--navy);color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
+        Contacter le support →
+      </a>
+    </div>
+  </div>`;
+
+  setContent(html);
+}
 
 
 
