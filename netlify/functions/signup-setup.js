@@ -96,12 +96,18 @@ exports.handler = async function(event) {
   }
 
   // ── 4. Créer le tenant ────────────────────────────────────────
+  // Générer un slug unique à partir du nom de l'entreprise
+  const slug = company.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+    + '-' + Math.random().toString(36).slice(2, 7);
+
   let tenantId = null;
   try {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'return=representation' },
-      body: JSON.stringify({ name: company, type })
+      body: JSON.stringify({ name: company, slug })
     });
     if (r.ok) {
       const t = await r.json();
