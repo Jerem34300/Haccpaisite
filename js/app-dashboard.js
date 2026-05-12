@@ -49,7 +49,7 @@ function isNCCloturee(r){
 const _SUPA_URL_DEFAULT = SUPABASE_URL;
 const _SUPA_KEY_DEFAULT = SUPABASE_ANON_KEY;
 const _SUPA_SVC_DEFAULT = ''; // clé service_role supprimée — proxy Netlify utilisé
-let SUPA_URL=_SUPA_URL_DEFAULT, SUPA_KEY=_SUPA_KEY_DEFAULT, SUPA_SERVICE_KEY=_SUPA_SVC_DEFAULT, _token='', _refreshToken='', _userId='', _profile=null;
+let SUPA_URL=_SUPA_URL_DEFAULT, SUPA_KEY=_SUPA_KEY_DEFAULT, SUPA_SERVICE_KEY=_SUPA_SVC_DEFAULT, _token='', _refreshToken='', _userId='', _profile=null, _viewTenant=null;
 let _records=[], _gmos=[], _sites=[], _sectors=[], _territories=[];
 let _encConfigs={}; // { siteId: { data: [...enceintes] } }
 let _caniculeConfigs={}; // { siteId: { data: {active:bool} } }
@@ -648,7 +648,30 @@ async function bootApp(){
       }
     }
     _profile=profiles[0]||{role:'siege'};
-  
+
+    // ── Mode impersonation super_admin ─────────────────────
+    if (_profile?.role === 'super_admin') {
+      try {
+        const _imp = JSON.parse(sessionStorage.getItem('sa_view_tenant') || 'null');
+        if (_imp?.id && _imp?.name) _viewTenant = _imp;
+      } catch(e) {}
+    }
+    // Bannière d'impersonation
+    const _impBanner = document.getElementById('sa-impersonate-banner');
+    if (_impBanner) {
+      if (_viewTenant) {
+        _impBanner.innerHTML =
+          '<span>👁 Vue entreprise&nbsp;: <strong>' + (_viewTenant.name||'') + '</strong></span>'
+          + '<button onclick="sessionStorage.removeItem(\'sa_view_tenant\');window.location.href=\'superadmin.html\'" style="background:#92400e;color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:.75rem;font-weight:800;cursor:pointer">← Retour SuperAdmin</button>';
+        _impBanner.style.display = 'flex';
+        // Afficher le nom du tenant impersonné dans la sidebar
+        const _tnEl = document.getElementById('sidebar-tenant-name');
+        if (_tnEl) _tnEl.textContent = _viewTenant.name;
+      } else {
+        _impBanner.style.display = 'none';
+      }
+    }
+
     // ── Vérifier verrou données ────────────────────────────
     if (_profile.data_locked && _profile.role !== 'super_admin') {
       document.getElementById('sb-name').textContent = _profile.full_name||'Utilisateur';
@@ -776,8 +799,9 @@ async function loadData(){
       setContent(`<div class="empty"><div class="empty-ico">⚠️</div><strong>Configuration incomplète</strong><br>Votre compte n'est pas encore rattaché à une organisation.<br><br><a href="onboarding.html" style="color:var(--navy);font-weight:800">Terminer la configuration →</a></div>`);
       return;
     }
-    const tenantFilter = _profile?.tenant_id
-      ? `&tenant_id=eq.${_profile.tenant_id}` : '';
+    // En mode impersonation, filtrer sur le tenant sélectionné dans superadmin
+    const _effectiveTenantId = _viewTenant?.id || _profile?.tenant_id || null;
+    const tenantFilter = _effectiveTenantId ? `&tenant_id=eq.${_effectiveTenantId}` : '';
 
     _sites=await _get('sites',`select=*,sectors(*,territories(*))&order=name${tenantFilter}`);
     _sectors=await _get('sectors',`select=*,territories(*)&order=name${tenantFilter}`);

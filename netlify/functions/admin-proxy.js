@@ -130,6 +130,12 @@ exports.handler = async function(event) {
     if (reqBody && method !== 'GET') opts.body = JSON.stringify(reqBody);
 
     const supaRes = await fetch(`${SUPABASE_URL}${path}`, opts);
+
+    // 204 No Content (PATCH/DELETE avec Prefer: return=minimal) → corps vide
+    if (supaRes.status === 204) {
+      return { statusCode: 200, headers, body: '[]' };
+    }
+
     const ct = supaRes.headers.get('content-type') || '';
     const responseBody = ct.includes('json') ? await supaRes.json() : await supaRes.text();
 

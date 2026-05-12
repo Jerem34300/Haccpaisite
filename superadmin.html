@@ -388,11 +388,23 @@ async function api(method, path, body, extraHeaders) {
   }
 }
 
+/* ── Voir les données d'une entreprise depuis le dashboard ── */
+function viewTenantData(tenantId, tenantName) {
+  sessionStorage.setItem('sa_view_tenant', JSON.stringify({id: tenantId, name: tenantName}));
+  window.location.href = 'dashboard.html';
+}
+
 /* ── Companies ── */
 async function loadCompanies() {
   document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:rgba(255,255,255,.35);font-size:.8rem;text-align:center">Chargement…</div>';
   try {
-    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at,extra_sites,subscriptions(status,trial_ends_at)&order=name.asc');
+    var tenants;
+    try {
+      tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at,extra_sites,subscriptions(status,trial_ends_at)&order=name.asc');
+    } catch(e1) {
+      // extra_sites ou subscriptions pas encore disponibles — fallback sans ces colonnes
+      tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
+    }
     _companies = Array.isArray(tenants) ? tenants : [];
     renderSidebar(_companies);
   } catch(e) {
@@ -459,6 +471,7 @@ function renderCompanyDetail() {
       +'<div class="co-hd-right">'
         +'<span class="badge-plan '+(_planBadge(co.plan))+'">'+planLbl+'</span>'
         +'<button class="btn-edit-co" id="btn-hd-edit">✏️ Modifier</button>'
+        +'<button onclick="viewTenantData(\''+_esc(co.id)+'\',\''+_esc(co.name)+'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>'
       +'</div>'
     +'</div>'
     +'<div class="co-tabs">'
