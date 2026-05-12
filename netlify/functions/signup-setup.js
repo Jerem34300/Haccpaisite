@@ -127,7 +127,7 @@ exports.handler = async function(event) {
     const profRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'return=minimal,resolution=merge-duplicates' },
-      body: JSON.stringify({ id: userId, tenant_id: tenantId, role: 'directeur', full_name: company })
+      body: JSON.stringify({ id: userId, tenant_id: tenantId, role: 'siege', full_name: company })
     });
     if (!profRes.ok) {
       const profErr = await profRes.text();
