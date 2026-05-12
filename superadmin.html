@@ -392,7 +392,7 @@ async function api(method, path, body, extraHeaders) {
 async function loadCompanies() {
   document.getElementById('sb-list').innerHTML = '<div style="padding:16px;color:rgba(255,255,255,.35);font-size:.8rem;text-align:center">Chargement…</div>';
   try {
-    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
+    var tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at,extra_sites,subscriptions(status,trial_ends_at)&order=name.asc');
     _companies = Array.isArray(tenants) ? tenants : [];
     renderSidebar(_companies);
   } catch(e) {
@@ -411,11 +411,14 @@ function renderSidebar(list) {
   el.innerHTML = list.map(function(co) {
     var initials = (co.name||'?').slice(0,2).toUpperCase();
     var planLbl  = co.plan === 'enterprise' ? 'ENT' : (co.plan === 'multi' || co.plan === 'pro') ? 'MULTI' : 'SOLO';
+    var sub = (Array.isArray(co.subscriptions) ? co.subscriptions : [])[0] || null;
+    var isTrial = sub && sub.status === 'trial';
+    var trialExpired = isTrial && sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date();
     var isActive = _selectedCo && _selectedCo.id === co.id;
     return '<div class="co-item'+(isActive?' active':'')+'" data-coid="'+_esc(co.id)+'">'
       +'<div class="co-avatar">'+_esc(initials)+'</div>'
       +'<div class="co-name">'+_esc(co.name||'—')+'</div>'
-      +'<div class="co-plan">'+planLbl+'</div>'
+      +'<div class="co-plan">'+(trialExpired?'⚠ ':isTrial?'🕐 ':'')+planLbl+'</div>'
       +'</div>';
   }).join('');
   el.querySelectorAll('[data-coid]').forEach(function(item) {
@@ -484,9 +487,20 @@ function renderInfoPanel(co) {
   var planDisplay = planNames[co.plan] || co.plan || '—';
   var extraSites = co.extra_sites || 0;
   var mensuel = (co.plan==='solo'||co.plan==='starter') ? 29 : (co.plan==='multi'||co.plan==='pro') ? 49 + extraSites*19 : 0;
+  var sub = (Array.isArray(co.subscriptions) ? co.subscriptions : [])[0] || null;
+  var subStatus = sub ? sub.status : null;
+  var trialEnd = sub && sub.trial_ends_at ? new Date(sub.trial_ends_at) : null;
+  var trialStr = trialEnd ? trialEnd.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}) : '—';
+  var trialExpired = trialEnd && trialEnd < new Date();
+  var statusColors = {trial:'#f59e0b',active:'#22c55e',cancelled:'#ef4444',past_due:'#ef4444'};
+  var statusLabels = {trial:'Essai',active:'Actif',cancelled:'Résilié',past_due:'Impayé'};
+  var statusColor = statusColors[subStatus] || '#94a3b8';
+  var statusLabel = statusLabels[subStatus] || (subStatus || '—');
   return '<div style="padding:24px"><div class="info-grid">'
     +'<div class="info-card"><div class="info-card-label">Nom</div><div class="info-card-value">'+_esc(co.name||'—')+'</div></div>'
     +'<div class="info-card"><div class="info-card-label">Plan</div><div class="info-card-value">'+_esc(planDisplay)+'</div></div>'
+    +'<div class="info-card"><div class="info-card-label">Statut abonnement</div><div class="info-card-value"><span style="color:'+statusColor+';font-weight:900">'+statusLabel+'</span></div></div>'
+    +(subStatus==='trial'?'<div class="info-card"><div class="info-card-label">Fin d\'essai</div><div class="info-card-value" style="color:'+(trialExpired?'#ef4444':'var(--green)')+'">'+trialStr+(trialExpired?' <span style="color:#ef4444;font-size:.72rem;font-weight:800">(expiré)</span>':'')+'</div></div>':'')
     +'<div class="info-card"><div class="info-card-label">Cuisines supplémentaires</div><div class="info-card-value">'+extraSites+' <span style="color:var(--muted);font-size:.75rem;font-weight:700">'+(extraSites>0?'(+'+extraSites*19+'€/mois)':'')+'</span></div></div>'
     +(mensuel>0?'<div class="info-card"><div class="info-card-label">Facturation mensuelle</div><div class="info-card-value" style="color:var(--green)">'+mensuel+'€ <span style="color:var(--muted);font-size:.72rem;font-weight:700">/mois</span></div></div>':'')
     +'<div class="info-card"><div class="info-card-label">Créé le</div><div class="info-card-value muted">'+(co.created_at?new Date(co.created_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'}):'—')+'</div></div>'

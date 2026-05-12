@@ -89,7 +89,8 @@ async function checkEmailAndGoStep2(){
     const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
     const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
       || auth.error_code === 'user_already_exists' || auth.code === 422
-      || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0);
+      || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
+      || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
 
     if(isDup){
       const el = document.getElementById('err-1');
@@ -226,7 +227,8 @@ async function doSignup(){
       const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
       const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
         || auth.error_code === 'user_already_exists' || auth.code === 422
-        || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0);
+        || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
+        || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
       if(isDup){
         const el = document.getElementById('err-4');
         if(el){
