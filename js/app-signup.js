@@ -132,6 +132,24 @@ async function doSignup(){
     });
     const auth = await r1.json();
 
+    // Detect duplicate email — Supabase may return 200 with identities:[] when email
+    // confirmation is on and the address already exists (silent re-send, no error key)
+    const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
+    const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
+      || auth.error_code === 'user_already_exists' || auth.code === 422
+      || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
+      || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
+
+    if(isDup){
+      const el = document.getElementById('err-4');
+      if(el){
+        el.innerHTML = '⚠️ Cet email est déjà associé à un compte. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
+        el.style.display = 'block';
+      }
+      btn.disabled = false; label.style.display = 'inline'; spin.style.display = 'none';
+      return;
+    }
+
     if(auth.error || auth.code === 400){
       const msg = auth.error?.message || auth.msg || auth.message || 'Erreur lors de l\'inscription';
       throw new Error(msg);
