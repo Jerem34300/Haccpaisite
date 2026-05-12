@@ -552,9 +552,11 @@ window.generatePMS = async function() {
     } catch(e) { console.warn('[Onboarding] tenant PATCH:', e); }
   } else {
     try {
+      var _tSlug = (_data.nom||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)
+        + '-' + Math.random().toString(36).slice(2,7);
       var r = await fetch(SUPABASE_URL + '/rest/v1/tenants', {
         method: 'POST', headers: hdrRep,
-        body: JSON.stringify({ name: _data.nom, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
+        body: JSON.stringify({ name: _data.nom, slug: _tSlug, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
       });
       if (r.ok) {
         var tenants = await r.json();
@@ -585,13 +587,12 @@ window.generatePMS = async function() {
     } catch(e) { console.warn('[Onboarding] sites:', e); }
   }
 
-  /* 4. Lier profile */
-  var finalRole = 'directeur';
+  /* 4. Lier profile — ne jamais écraser le rôle (déjà défini par signup-setup) */
   if (userId && token && tenantId) {
     try {
       await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + userId, {
         method: 'PATCH', headers: hdrMin,
-        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null, role: finalRole })
+        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null })
       });
     } catch(e) { console.warn('[Onboarding] profile:', e); }
   }

@@ -321,6 +321,7 @@ function doLogout(){
     localStorage.removeItem(CFG_STORE);
     localStorage.removeItem('haccpro_session');
     localStorage.removeItem('sa_active_company');
+    sessionStorage.removeItem('sa_view_tenant');
   } catch(e){}
   // Retour à la page de connexion
   window.location.replace('/');
