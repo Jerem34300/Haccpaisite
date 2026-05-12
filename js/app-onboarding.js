@@ -586,8 +586,7 @@ window.generatePMS = async function() {
   }
 
   /* 4. Lier profile */
-  var plan = _session.plan || _signupData.plan || '';
-  var finalRole = plan === 'solo' ? 'cuisinier' : 'siege';
+  var finalRole = 'directeur';
   if (userId && token && tenantId) {
     try {
       await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + userId, {
@@ -670,16 +669,14 @@ window.generatePMS = async function() {
     localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
   } catch(e) { console.warn('[Onboarding] siteId:', e); }
 
-  /* 8. Mettre à jour haccpro_session.role si admin (siège) */
-  if (finalRole !== 'cuisinier') {
-    try {
-      var sess = {};
-      try { sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}'); } catch(e2){}
-      sess.role = finalRole;
-      if (tenantId) sess.tenantId = tenantId;
-      localStorage.setItem('haccpro_session', JSON.stringify(sess));
-    } catch(e) { console.warn('[Onboarding] session update:', e); }
-  }
+  /* 8. Mettre à jour haccpro_session avec le rôle final et le tenantId */
+  try {
+    var sess = {};
+    try { sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}'); } catch(e2){}
+    sess.role = finalRole;
+    if (tenantId) sess.tenantId = tenantId;
+    localStorage.setItem('haccpro_session', JSON.stringify(sess));
+  } catch(e) { console.warn('[Onboarding] session update:', e); }
 
   /* 9. Afficher succès */
   if (spin)  spin.style.display = 'none';
@@ -687,9 +684,8 @@ window.generatePMS = async function() {
   var doneEl = document.getElementById('gen-done');
   if (doneEl) doneEl.style.display = 'block';
 
-  /* 10. Rediriger après 2 s selon le plan */
-  var redirect = finalRole !== 'cuisinier' ? 'dashboard.html' : 'cuisine.html';
-  setTimeout(function(){ window.location.href = redirect; }, 2000);
+  /* 10. Rediriger vers le dashboard */
+  setTimeout(function(){ window.location.href = 'dashboard.html'; }, 2000);
 };
 
 /* ─── Logo upload ─── */

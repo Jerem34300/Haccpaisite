@@ -769,8 +769,13 @@ async function loadData(){
   _setStep('Connexion Supabase…');
   try{
     const _get = async (table, query) => { _setStep('Chargement ' + table + '…'); return supaGet(table, query); };
-    // Filtre tenant — tout le monde filtre par son propre tenant, y compris super_admin
-    // Le super_admin voit tout UNIQUEMENT dans la console Super Admin
+    // Filtre tenant — obligatoire pour tous les rôles sauf super_admin
+    // Sans tenant_id, on ne charge rien pour éviter de voir les données des autres entreprises
+    if(_profile?.role !== 'super_admin' && !_profile?.tenant_id){
+      _setStep('');
+      setContent(`<div class="empty"><div class="empty-ico">⚠️</div><strong>Configuration incomplète</strong><br>Votre compte n'est pas encore rattaché à une organisation.<br><br><a href="onboarding.html" style="color:var(--navy);font-weight:800">Terminer la configuration →</a></div>`);
+      return;
+    }
     const tenantFilter = _profile?.tenant_id
       ? `&tenant_id=eq.${_profile.tenant_id}` : '';
 
@@ -1990,11 +1995,15 @@ async function renderAdmin(){
   } else {
     await loadTabletAlertsHistory();
   }
-  // Charger profils filtrés par tenant — tout le monde filtre par son propre tenant
+  // Charger profils — super_admin voit tout via proxy, les autres filtrent par tenant
   let profiles = [];
-  const tenantFilter = _profile?.tenant_id ? `&tenant_id=eq.${_profile.tenant_id}` : '';
+  const adminTenantFilter = _profile?.tenant_id ? `&tenant_id=eq.${_profile.tenant_id}` : '';
   if(canManageOrg){
-    try { profiles = await supaGet('profiles', `select=*&order=created_at${tenantFilter}`); } catch{}
+    if(_profile?.role === 'super_admin'){
+      try { profiles = await supaAdmin('GET', `/rest/v1/profiles?select=*&order=created_at`, null); } catch{}
+    } else {
+      try { profiles = await supaGet('profiles', `select=*&order=created_at${adminTenantFilter}`); } catch{}
+    }
   }
 
   const knownCodes = new Set(_sites.map(s=>s.code));
@@ -8518,7 +8527,7 @@ async function renderSuperAdmin() {
 
   // ── Sync tenants depuis Supabase ──────────────────────────────
   try {
-    const supaCompanies = await supaGet('tenants', 'select=id,name,tagline,primary_color,accent_color,logo_url,plan,created_at&order=created_at');
+    const supaCompanies = await supaAdmin('GET', '/rest/v1/tenants?select=id,name,tagline,primary_color,accent_color,logo_url,plan,created_at&order=created_at', null);
     if (supaCompanies && supaCompanies.length > 0) {
       // Fusionner avec les données locales (adminEmail etc.)
       const localCompanies = saGetCompanies();
