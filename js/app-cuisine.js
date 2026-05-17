@@ -16232,17 +16232,24 @@ function _wgRenderOne(w){
     var svcs2 = getDistribServices();
     var svc = svcs2.find(function(s){ return s.id===svcId; });
     if(!svc) return '';
-    var draft2 = distribSvcDraft(svcId);
     var todayStr2 = today();
-    // Vérifier que le draft est bien d'AUJOURD'HUI (pas celui de la veille)
+    var draft2 = distribSvcDraft(svcId);
     var draftIsToday = draft2.date === todayStr2;
-    var done = draftIsToday && draft2[slot3+'_valide']==='OUI';
-    var tF = (draftIsToday && draft2[slot3+'_froid_temp']) ? parseFloat(draft2[slot3+'_froid_temp']).toFixed(1)+'°' : '—';
-    var tC = (draftIsToday && draft2[slot3+'_chaud_temp']) ? parseFloat(draft2[slot3+'_chaud_temp']).toFixed(1)+'°' : '—';
-    var platF = draftIsToday ? draft2[slot3+'_froid_plat'] || '' : '';
-    var platC = draftIsToday ? draft2[slot3+'_chaud_plat'] || '' : '';
-    var confF = draftIsToday ? distribTempConf(draft2[slot3+'_froid_temp'],'froid') : 'nd';
-    var confC = draftIsToday ? distribTempConf(draft2[slot3+'_chaud_temp'],'chaud') : 'nd';
+    // Chercher aussi dans les lignes d'aujourd'hui (persistées dans le cloud)
+    var lignes2 = (S['enr_distrib_'+svcId]||{}).lignes || [];
+    var todayLigne = lignes2.find(function(r){ return r.date === todayStr2; });
+    // Source de vérité : ligne cloud si disponible, sinon draft
+    var valide = (todayLigne && todayLigne[slot3+'_valide']==='OUI')
+              || (draftIsToday && draft2[slot3+'_valide']==='OUI');
+    var rawTF = (todayLigne && todayLigne[slot3+'_froid_temp']) || (draftIsToday && draft2[slot3+'_froid_temp']) || '';
+    var rawTC = (todayLigne && todayLigne[slot3+'_chaud_temp']) || (draftIsToday && draft2[slot3+'_chaud_temp']) || '';
+    var tF = rawTF ? parseFloat(rawTF).toFixed(1)+'°' : '—';
+    var tC = rawTC ? parseFloat(rawTC).toFixed(1)+'°' : '—';
+    var platF = (todayLigne && todayLigne[slot3+'_froid_plat']) || (draftIsToday && draft2[slot3+'_froid_plat']) || '';
+    var platC = (todayLigne && todayLigne[slot3+'_chaud_plat']) || (draftIsToday && draft2[slot3+'_chaud_plat']) || '';
+    var done = valide;
+    var confF = rawTF ? distribTempConf(rawTF,'froid') : 'nd';
+    var confC = rawTC ? distribTempConf(rawTC,'chaud') : 'nd';
     var cls = done ? 'wc-ok' : (confF==='nc'||confC==='nc') ? 'wc-danger' : 'wc-warn';
     var slotLabel3 = slot3==='midi'?'🌞 Midi':'🌙 Soir';
     var scrollId3 = 'dsvc-slot-'+svcId+'-'+slot3;
@@ -16451,13 +16458,13 @@ function _wgRenderGrid(container, list){
             +'<div class="wg-drag-handle" ontouchstart="wgDragStart(event,\''+nx.id+'\')" ontouchmove="wgDragMove(event)" ontouchend="wgDragEnd(event)">☰</div>';
         }
         out+='<div class="wg-row">'
-          +'<div class="wg-half wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative">'+eb+c+'</div>':c)+'</div>'
-          +'<div class="wg-half wg-card-wrap" data-wid="'+nx.id+'">'+(_wgEditing&&cn?'<div style="position:relative">'+ebn+cn+'</div>':cn)+'</div>'
+          +'<div class="wg-half wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+eb+c+'</div>':c)+'</div>'
+          +'<div class="wg-half wg-card-wrap" data-wid="'+nx.id+'">'+(_wgEditing&&cn?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+ebn+cn+'</div>':cn)+'</div>'
           +'</div>';
         i+=2; continue;
       }
     }
-    out+='<div class="wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative">'+eb+c+'</div>':c)+'</div>';
+    out+='<div class="wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+eb+c+'</div>':c)+'</div>';
     i++;
   }
   if(_wgEditing) out+='<button class="wg-add-btn" onclick="wgCatalogOpen()">➕ Ajouter un widget</button>';
