@@ -123,7 +123,8 @@ button{font-family:var(--font)}
 .btn-add-user{padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s}
 .btn-add-user:hover{background:var(--green2)}
 .user-table{background:var(--white);border:1px solid var(--border);border-radius:14px;overflow:hidden}
-.user-row{display:grid;grid-template-columns:1.2fr 1.8fr 1fr 90px 80px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;font-size:.82rem;transition:background .15s}
+.user-row{display:grid;grid-template-columns:1.2fr 1.5fr 1fr 1fr 90px 80px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;font-size:.82rem;transition:background .15s}
+.user-site{color:var(--muted);font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .user-row:last-child{border-bottom:none}
 .user-row:hover{background:#fafafa}
 .user-row.thead{background:#faf7fa;font-size:.63rem;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:8px 16px;border-bottom:2px solid var(--border)}
@@ -194,7 +195,7 @@ button{font-family:var(--font)}
   .topbar-badge{font-size:.6rem;padding:2px 6px}
   .info-grid{grid-template-columns:1fr}
   .user-row{grid-template-columns:1fr 90px 80px}
-  .user-row .user-email,.user-row .user-since{display:none}
+  .user-row .user-email,.user-row .user-since,.user-row .user-site{display:none}
   .co-panel{padding:16px}
   .co-header{flex-wrap:wrap;gap:10px}
   .co-hd-right{flex-basis:100%}
@@ -283,6 +284,7 @@ var _allAuthUsers = {}; // id → {email, last_sign_in_at}
 var _authUsersLoaded = false;
 var _selectedCo = null;
 var _coUsers    = [];
+var _coSites    = [];
 var _activeTab  = 'users';
 
 /* ── Init ── */
@@ -400,10 +402,15 @@ async function loadCompanies() {
   try {
     var tenants;
     try {
-      tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at,extra_sites,subscriptions(status,trial_ends_at)&order=name.asc');
+      tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at,extra_sites,color,subscriptions(status,trial_ends_at)&order=name.asc');
     } catch(e1) {
-      // extra_sites ou subscriptions pas encore disponibles — fallback sans ces colonnes
-      tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
+      try {
+        // color pas encore disponible — fallback sans color
+        tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at,extra_sites,subscriptions(status,trial_ends_at)&order=name.asc');
+      } catch(e2) {
+        // extra_sites ou subscriptions pas encore disponibles — fallback minimal
+        tenants = await api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=name.asc');
+      }
     }
     _companies = Array.isArray(tenants) ? tenants : [];
     renderSidebar(_companies);
@@ -427,8 +434,9 @@ function renderSidebar(list) {
     var isTrial = sub && sub.status === 'trial';
     var trialExpired = isTrial && sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date();
     var isActive = _selectedCo && _selectedCo.id === co.id;
+    var avatarStyle = (!isActive && co.color) ? ' style="background:'+_esc(co.color)+'"' : '';
     return '<div class="co-item'+(isActive?' active':'')+'" data-coid="'+_esc(co.id)+'">'
-      +'<div class="co-avatar">'+_esc(initials)+'</div>'
+      +'<div class="co-avatar"'+avatarStyle+'>'+_esc(initials)+'</div>'
       +'<div class="co-name">'+_esc(co.name||'—')+'</div>'
       +'<div class="co-plan">'+(trialExpired?'⚠ ':isTrial?'🕐 ':'')+planLbl+'</div>'
       +'</div>';
@@ -465,7 +473,7 @@ function renderCompanyDetail() {
 
   document.getElementById('co-detail').innerHTML =
     '<div class="co-header">'
-      +'<div class="co-hd-avatar" style="background:var(--navy2)">'+initials+'</div>'
+      +'<div class="co-hd-avatar" style="background:'+(co.color||'var(--navy2)')+'">'+initials+'</div>'
       +'<div><div class="co-hd-name">'+_esc(co.name||'—')+'</div>'
         +'<div class="co-hd-meta">Inscrit le '+since+'</div></div>'
       +'<div class="co-hd-right">'
@@ -542,11 +550,15 @@ async function loadCompanyUsers(tenantId) {
   if (!el) return;
   el.innerHTML = '<div class="users-loading">⏳ Chargement des utilisateurs…</div>';
   try {
-    var profiles = await api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id,full_name,role,created_at&order=created_at.asc&limit=500');
-    profiles = Array.isArray(profiles) ? profiles : [];
+    var [profilesRaw, sitesData] = await Promise.all([
+      api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id,full_name,role,created_at,site_id&order=created_at.asc&limit=500'),
+      api('GET', '/rest/v1/sites?tenant_id=eq.'+tenantId+'&select=id,nom&order=nom.asc').catch(function(){ return []; })
+    ]);
+    var profiles = Array.isArray(profilesRaw) ? profilesRaw : [];
     // Deduplicate by id (guard against duplicate DB rows)
     var seen = {}; profiles = profiles.filter(function(p){ if(seen[p.id]) return false; seen[p.id]=1; return true; });
     _coUsers = profiles;
+    _coSites = Array.isArray(sitesData) ? sitesData : [];
 
     // Always (re)load auth users to get fresh emails
     try {
@@ -568,14 +580,18 @@ function renderUsersPanel(profiles, tenantId) {
 
   var rows = profiles.map(function(p) {
     var authU = _allAuthUsers[p.id] || {};
-    var email  = authU.email || '—';
+    var email  = authU.email;
+    var emailHtml = email ? _esc(email) : '<em style="color:var(--muted)">—</em>';
     var since  = p.created_at ? new Date(p.created_at).toLocaleDateString('fr-FR') : '—';
     var rLabel = ROLE_LABELS[p.role] || p.role || '—';
     var rClass = 'role-'+(p.role||'cuisinier');
+    var siteObj = p.site_id ? _coSites.find(function(s){ return s.id === p.site_id; }) : null;
+    var siteHtml = siteObj ? _esc(siteObj.nom||siteObj.name||'—') : '<em style="color:var(--muted)">—</em>';
     return '<div class="user-row">'
       +'<div class="user-name">'+_esc(p.full_name||'—')+'</div>'
-      +'<div class="user-email" title="'+_esc(email)+'">'+_esc(email)+'</div>'
+      +'<div class="user-email" title="'+(email?_esc(email):'—')+'">'+emailHtml+'</div>'
       +'<div><span class="role-badge '+rClass+'">'+_esc(rLabel)+'</span></div>'
+      +'<div class="user-site">'+siteHtml+'</div>'
       +'<div class="user-since">'+since+'</div>'
       +'<div class="user-actions">'
         +'<button class="btn-icon role" title="Changer le rôle" data-action="role" data-uid="'+_esc(p.id)+'" data-role="'+_esc(p.role||'')+'" data-name="'+_esc(p.full_name||'')+'">⚙️</button>'
@@ -591,7 +607,7 @@ function renderUsersPanel(profiles, tenantId) {
       +'<button class="btn-add-user" id="btn-add-user">+ Ajouter un utilisateur</button>'
     +'</div>'
     +'<div class="user-table">'
-      +'<div class="user-row thead"><div>Nom</div><div>Email</div><div>Rôle</div><div>Inscrit le</div><div></div></div>'
+      +'<div class="user-row thead"><div>Nom</div><div>Email</div><div>Rôle</div><div>Site</div><div>Inscrit le</div><div></div></div>'
       +(rows || '<div style="padding:24px;text-align:center;color:var(--muted);font-size:.85rem">Aucun utilisateur pour cette entreprise</div>')
     +'</div>';
 
@@ -673,22 +689,33 @@ function confirmDelete(userId, userName) {
 }
 
 /* ── Add User Modal ── */
-function openAddUserModal(tenantId) {
+async function openAddUserModal(tenantId) {
   var roleOpts = ['directeur','chef_secteur','cuisinier'].map(function(r){
     return '<option value="'+r+'">'+ROLE_LABELS[r]+'</option>';
   }).join('');
+  var siteOpts = '<option value="">— Aucun site —</option>';
+  try {
+    var sites = await api('GET', '/rest/v1/sites?tenant_id=eq.'+tenantId+'&select=id,nom&order=nom.asc');
+    if (Array.isArray(sites)) {
+      siteOpts += sites.map(function(s){
+        return '<option value="'+_esc(s.id)+'">'+_esc(s.nom||s.name||'Sans nom')+'</option>';
+      }).join('');
+    }
+  } catch(e) { /* sites won't show if this fails */ }
   showModal(
     '+ Ajouter un utilisateur',
     '<div class="mf"><label>Prénom et Nom</label><input type="text" id="m-name" placeholder="Jean Dupont"></div>'
     +'<div class="mf"><label>Email</label><input type="email" id="m-email" placeholder="jean@entreprise.fr"></div>'
     +'<div class="mf"><label>Rôle</label><select id="m-urole">'+roleOpts+'</select></div>'
+    +'<div class="mf"><label>Site / Cuisine</label><select id="m-usite">'+siteOpts+'</select></div>'
     +'<div class="mf"><label>Mot de passe temporaire</label><input type="password" id="m-upass" placeholder="Minimum 8 caractères"></div>',
     [
       {label:'Créer l\'utilisateur', cls:'btn-primary green', fn: async function() {
-        var name  = document.getElementById('m-name').value.trim();
-        var email = document.getElementById('m-email').value.trim();
-        var role  = document.getElementById('m-urole').value;
-        var pass  = document.getElementById('m-upass').value;
+        var name   = document.getElementById('m-name').value.trim();
+        var email  = document.getElementById('m-email').value.trim();
+        var role   = document.getElementById('m-urole').value;
+        var siteId = document.getElementById('m-usite').value;
+        var pass   = document.getElementById('m-upass').value;
         if (!name)        { showModalMsg('Nom requis.', true); return false; }
         if (!email)       { showModalMsg('Email requis.', true); return false; }
         if (pass.length < 8) { showModalMsg('Mot de passe : 8 caractères minimum.', true); return false; }
@@ -697,13 +724,23 @@ function openAddUserModal(tenantId) {
         var uid = authUser.id;
         if (!uid) throw new Error('Création compte échouée');
         // Create profile
-        await api('POST', '/rest/v1/profiles', {id:uid, full_name:name, role:role, tenant_id:tenantId}, {'Prefer':'return=minimal'});
+        var profilePayload = {id:uid, full_name:name, role:role, tenant_id:tenantId};
+        if (siteId) profilePayload.site_id = siteId;
+        await api('POST', '/rest/v1/profiles', profilePayload, {'Prefer':'return=minimal'});
         toast('Utilisateur créé ✓', 'green');
-        _authUsersLoaded = false; // force reload emails
+        _authUsersLoaded = false;
         loadCompanyUsers(tenantId);
-        return true;
+        var msgEl = document.getElementById('modal-msg');
+        if (msgEl) {
+          msgEl.innerHTML = '<strong>✓ Utilisateur créé !</strong>'
+            +'<br><button style="margin-top:8px;padding:6px 14px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:var(--font)"'
+            +' onclick="navigator.clipboard.writeText(\'https://hacc.pro/login.html\').then(function(){toast(\'Lien copié ✓\',\'green\')}).catch(function(){})">📋 Copier le lien de connexion</button>';
+          msgEl.className = 'modal-msg ok';
+          msgEl.style.display = 'block';
+        }
+        return false;
       }},
-      {label:'Annuler', cls:'btn-cancel', fn: null}
+      {label:'Fermer', cls:'btn-cancel', fn: null}
     ]
   );
 }
@@ -717,6 +754,7 @@ function openCoModal(id) {
     return '<option value="'+p+'"'+(p===planNorm?' selected':'')+'>'+(p==='solo'?'Solo — 29€/mois':p==='multi'?'Multi — 49€/mois':'Entreprise — Sur devis')+'</option>';
   }).join('');
   var extraVal = (co?.extra_sites || 0);
+  var coColor  = co?.color || '#0F2240';
   showModal(
     title,
     '<div class="mf"><label>Nom de l\'entreprise <span style="color:var(--danger)">*</span></label><input type="text" id="m-coname" placeholder="Restaurant Le Provence" value="'+_esc(co?.name||'')+'"></div>'
@@ -724,6 +762,12 @@ function openCoModal(id) {
     +'<div class="mf" id="mf-extra" style="'+(planNorm==='multi'?'':'display:none')+'">'
       +'<label>Cuisines supplémentaires <span style="color:var(--green);font-size:.75rem">(+19€/mois chacune)</span></label>'
       +'<input type="number" id="m-extra" min="0" max="50" value="'+extraVal+'" placeholder="0">'
+    +'</div>'
+    +'<div class="mf"><label>Couleur de l\'entreprise</label>'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +'<input type="color" id="m-cocolor" value="'+_esc(coColor)+'" style="width:44px;height:36px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;padding:2px;background:#f8fafc" oninput="document.getElementById(\'m-cocolor-hex\').textContent=this.value">'
+        +'<span id="m-cocolor-hex" style="font-size:.82rem;font-weight:800;color:var(--text);font-family:monospace">'+_esc(coColor)+'</span>'
+      +'</div>'
     +'</div>'
     +(co ? '' :
       '<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">'
@@ -736,14 +780,19 @@ function openCoModal(id) {
         var name  = document.getElementById('m-coname').value.trim();
         var plan  = document.getElementById('m-coplan').value;
         var extra = parseInt(document.getElementById('m-extra')?.value||'0', 10) || 0;
+        var color = document.getElementById('m-cocolor').value;
         if (!name) { showModalMsg('Le nom est obligatoire.', true); return false; }
         if (co) {
-          // Try with extra_sites; fall back without if column doesn't exist yet
+          // Try with extra_sites + color; fall back progressively if columns don't exist yet
           try {
-            await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan, extra_sites: extra});
+            await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan, extra_sites: extra, color: color});
           } catch(e) {
-            if (e.message.includes('extra_sites') || e.message.includes('column')) {
-              await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan});
+            if (e.message.includes('extra_sites') || e.message.includes('color') || e.message.includes('column')) {
+              try {
+                await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan, extra_sites: extra});
+              } catch(e2) {
+                await api('PATCH', '/rest/v1/tenants?id=eq.'+co.id, {name, plan});
+              }
             } else { throw e; }
           }
           toast('Entreprise mise à jour ✓', 'green');
@@ -752,14 +801,17 @@ function openCoModal(id) {
           var pass  = (document.getElementById('m-copass')||{}).value||'';
           var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
             + '-' + Math.random().toString(36).slice(2, 7);
-          var payload = {name, plan, slug};
-          // Try with extra_sites; silently omit if column not yet created in Supabase
+          // Try with extra_sites + color; silently omit if columns not yet created in Supabase
           var rows;
           try {
-            rows = await api('POST', '/rest/v1/tenants', {name, plan, slug, extra_sites: extra}, {'Prefer':'return=representation'});
+            rows = await api('POST', '/rest/v1/tenants', {name, plan, slug, extra_sites: extra, color: color}, {'Prefer':'return=representation'});
           } catch(e) {
-            if (e.message.includes('extra_sites') || e.message.includes('column')) {
-              rows = await api('POST', '/rest/v1/tenants', payload, {'Prefer':'return=representation'});
+            if (e.message.includes('extra_sites') || e.message.includes('color') || e.message.includes('column')) {
+              try {
+                rows = await api('POST', '/rest/v1/tenants', {name, plan, slug, extra_sites: extra}, {'Prefer':'return=representation'});
+              } catch(e2) {
+                rows = await api('POST', '/rest/v1/tenants', {name, plan, slug}, {'Prefer':'return=representation'});
+              }
             } else { throw e; }
           }
           var newCo = Array.isArray(rows) ? rows[0] : rows;
@@ -799,25 +851,87 @@ async function loadCompanyStats(tenantId) {
   if (!el) return;
   el.innerHTML = '<div class="users-loading">⏳ Chargement…</div>';
   try {
-    var [sites, profiles, records] = await Promise.all([
-      api('GET', '/rest/v1/sites?tenant_id=eq.'+tenantId+'&select=id,nom').catch(function(){return[];}),
-      api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id').catch(function(){return[];}),
+    var sitesData = await api('GET', '/rest/v1/sites?tenant_id=eq.'+tenantId+'&select=id,nom,color&order=nom.asc').catch(function(){
+      return api('GET', '/rest/v1/sites?tenant_id=eq.'+tenantId+'&select=id,nom&order=nom.asc').catch(function(){ return []; });
+    });
+    var [profiles, records] = await Promise.all([
+      api('GET', '/rest/v1/profiles?tenant_id=eq.'+tenantId+'&select=id,site_id').catch(function(){return[];}),
       api('GET', '/rest/v1/pms_records?tenant_id=eq.'+tenantId+'&select=id&limit=1000').catch(function(){return[];})
     ]);
-    var siteRows = Array.isArray(sites) ? sites : [];
+    var siteRows = Array.isArray(sitesData) ? sitesData : [];
+    var profList = Array.isArray(profiles) ? profiles : [];
+
+    var siteCards = siteRows.map(function(s) {
+      var sColor = s.color || '#5ab518';
+      var userCount = profList.filter(function(p){ return p.site_id === s.id; }).length;
+      var siteName = _esc(s.nom||s.name||'Sans nom');
+      var siteId   = _esc(s.id);
+      var siteNomQ = _esc(s.nom||s.name||'').replace(/'/g, "\\'");
+      var sColorQ  = _esc(sColor).replace(/'/g, "\\'");
+      return '<div style="background:var(--white);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px;margin-bottom:8px">'
+        +'<div style="width:14px;height:14px;border-radius:4px;background:'+_esc(sColor)+';flex-shrink:0"></div>'
+        +'<div style="flex:1">'
+          +'<div style="font-size:.88rem;font-weight:800;color:var(--text)">'+siteName+'</div>'
+          +'<div style="font-size:.72rem;color:var(--muted);font-weight:700;margin-top:2px">'+userCount+' utilisateur'+(userCount>1?'s':'')+'</div>'
+        +'</div>'
+        +'<button class="btn-icon role" title="Modifier ce site" data-site-id="'+siteId+'" data-site-nom="'+_esc(s.nom||s.name||'')+'" data-site-color="'+_esc(sColor)+'">✏️</button>'
+      +'</div>';
+    }).join('');
+
     el.innerHTML =
       '<div style="padding:24px">'
       +'<div class="kpi-grid">'
         +'<div class="kpi"><div class="kpi-val">'+siteRows.length+'</div><div class="kpi-lbl">Sites</div></div>'
-        +'<div class="kpi"><div class="kpi-val">'+(Array.isArray(profiles)?profiles.length:0)+'</div><div class="kpi-lbl">Utilisateurs</div></div>'
+        +'<div class="kpi"><div class="kpi-val">'+profList.length+'</div><div class="kpi-lbl">Utilisateurs</div></div>'
         +'<div class="kpi"><div class="kpi-val">'+(Array.isArray(records)?records.length:0)+'</div><div class="kpi-lbl">Relevés</div></div>'
       +'</div>'
-      +(siteRows.length ? '<h3 style="font-size:.82rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Sites déclarés</h3>'
-        +'<div class="user-table">'+siteRows.map(function(s){ return '<div class="user-row" style="grid-template-columns:1fr"><div class="user-name">'+_esc(s.nom||s.name||'Sans nom')+'</div></div>'; }).join('')+'</div>' : '')
+      +(siteRows.length
+        ? '<h3 style="font-size:.82rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Sites déclarés</h3>'
+          + siteCards
+        : '')
       +'</div>';
+
+    el.querySelectorAll('[data-site-id]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        openSiteModal(this.getAttribute('data-site-id'), this.getAttribute('data-site-nom'), this.getAttribute('data-site-color'));
+      });
+    });
   } catch(e) {
     el.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:.85rem">Erreur : '+_esc(e.message)+'</div>';
   }
+}
+
+/* ── Site Edit Modal ── */
+function openSiteModal(siteId, currentNom, currentColor) {
+  var colorVal = currentColor || '#5ab518';
+  showModal(
+    '✏️ Modifier le site',
+    '<div class="mf"><label>Nom du site <span style="color:var(--danger)">*</span></label><input type="text" id="m-sitenom" value="'+_esc(currentNom||'')+'"></div>'
+    +'<div class="mf"><label>Couleur du site</label>'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+        +'<input type="color" id="m-sitecolor" value="'+_esc(colorVal)+'" style="width:44px;height:36px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;padding:2px;background:#f8fafc" oninput="document.getElementById(\'m-sitecolor-hex\').textContent=this.value">'
+        +'<span id="m-sitecolor-hex" style="font-size:.82rem;font-weight:800;color:var(--text);font-family:monospace">'+_esc(colorVal)+'</span>'
+      +'</div>'
+    +'</div>',
+    [
+      {label:'Enregistrer', cls:'btn-primary green', fn: async function() {
+        var nom   = document.getElementById('m-sitenom').value.trim();
+        var color = document.getElementById('m-sitecolor').value;
+        if (!nom) { showModalMsg('Le nom est obligatoire.', true); return false; }
+        try {
+          await api('PATCH', '/rest/v1/sites?id=eq.'+siteId, {nom, color});
+        } catch(e) {
+          if (e.message.includes('color') || e.message.includes('column')) {
+            await api('PATCH', '/rest/v1/sites?id=eq.'+siteId, {nom});
+          } else { throw e; }
+        }
+        toast('Site mis à jour ✓', 'green');
+        if (_selectedCo) loadCompanyStats(_selectedCo.id);
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
 }
 
 /* ── Modal Engine ── */
