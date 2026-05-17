@@ -14151,6 +14151,10 @@ function cpDeletePage(cpId){
     if(S.navCfg?.order) S.navCfg.order = S.navCfg.order.filter(id=>id!==cpId);
     if(S.navCfg?.hidden) delete S.navCfg.hidden[cpId];
     save();
+    // Push immédiat — sans ça la suppression est dans le debounce 10s
+    // et rechargement avant expiry = la page revient du cloud
+    if(_cloudSaveTimer){ clearTimeout(_cloudSaveTimer); _cloudSaveTimer=null; }
+    _saveConfigToSupabase();
     if(cur===cpId) goTo('accueil');
     renderCustomPageConfig();
     renderNav();
