@@ -16232,27 +16232,50 @@ function _wgRenderOne(w){
     var svcs2 = getDistribServices();
     var svc = svcs2.find(function(s){ return s.id===svcId; });
     if(!svc) return '';
-    var draft2 = distribSvcDraft(svcId);
     var todayStr2 = today();
-    // Vérifier que le draft est bien d'AUJOURD'HUI (pas celui de la veille)
+    var draft2 = distribSvcDraft(svcId);
     var draftIsToday = draft2.date === todayStr2;
-    var done = draftIsToday && draft2[slot3+'_valide']==='OUI';
-    var tF = (draftIsToday && draft2[slot3+'_froid_temp']) ? parseFloat(draft2[slot3+'_froid_temp']).toFixed(1)+'°' : '—';
-    var tC = (draftIsToday && draft2[slot3+'_chaud_temp']) ? parseFloat(draft2[slot3+'_chaud_temp']).toFixed(1)+'°' : '—';
-    var platF = draftIsToday ? draft2[slot3+'_froid_plat'] || '' : '';
-    var platC = draftIsToday ? draft2[slot3+'_chaud_plat'] || '' : '';
-    var confF = draftIsToday ? distribTempConf(draft2[slot3+'_froid_temp'],'froid') : 'nd';
-    var confC = draftIsToday ? distribTempConf(draft2[slot3+'_chaud_temp'],'chaud') : 'nd';
+    // Chercher aussi dans les lignes d'aujourd'hui (persistées dans le cloud)
+    var lignes2 = (S['enr_distrib_'+svcId]||{}).lignes || [];
+    var todayLigne = lignes2.find(function(r){ return r.date === todayStr2; });
+    // Source de vérité : ligne cloud si disponible, sinon draft
+    var valide = (todayLigne && todayLigne[slot3+'_valide']==='OUI')
+              || (draftIsToday && draft2[slot3+'_valide']==='OUI');
+    var rawTF = (todayLigne && todayLigne[slot3+'_froid_temp']) || (draftIsToday && draft2[slot3+'_froid_temp']) || '';
+    var rawTC = (todayLigne && todayLigne[slot3+'_chaud_temp']) || (draftIsToday && draft2[slot3+'_chaud_temp']) || '';
+    var tF = rawTF ? parseFloat(rawTF).toFixed(1)+'°' : '—';
+    var tC = rawTC ? parseFloat(rawTC).toFixed(1)+'°' : '—';
+    var platF = (todayLigne && todayLigne[slot3+'_froid_plat']) || (draftIsToday && draft2[slot3+'_froid_plat']) || '';
+    var platC = (todayLigne && todayLigne[slot3+'_chaud_plat']) || (draftIsToday && draft2[slot3+'_chaud_plat']) || '';
+    var done = valide;
+    var confF = rawTF ? distribTempConf(rawTF,'froid') : 'nd';
+    var confC = rawTC ? distribTempConf(rawTC,'chaud') : 'nd';
     var cls = done ? 'wc-ok' : (confF==='nc'||confC==='nc') ? 'wc-danger' : 'wc-warn';
     var slotLabel3 = slot3==='midi'?'🌞 Midi':'🌙 Soir';
     var scrollId3 = 'dsvc-slot-'+svcId+'-'+slot3;
     if(done){
       return '<div class="wc wc-ok" onclick="goTo(\'enr_distrib_'+svcId+'\',\''+scrollId3+'\')" style="cursor:pointer">'
-        +'<span class="wc-ico">'+(svc.ico||'🍽️')+'</span>'
-        +'<div class="wc-label">'+escH(svc.label)+'</div>'
-        +'<div style="font-size:.65rem;font-weight:800;color:'+(slot3==='midi'?'#d97706':'#4338ca')+';margin-top:-2px;margin-bottom:4px">'+slotLabel3+'</div>'
-        +'<div class="wc-val ok">✓ Validé</div>'
-        +'<span class="wc-arrow">›</span></div>';
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+        +'<span style="font-size:1.1rem">'+(svc.ico||'🍽️')+'</span>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:.78rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(svc.label)+'</div>'
+        +'<div style="font-size:.63rem;font-weight:800;color:'+(slot3==='midi'?'#d97706':'#4338ca')+'">'+slotLabel3+'</div>'
+        +'</div>'
+        +'<span style="font-size:.7rem;font-weight:800;color:#166534">✓</span>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<div style="flex:1;background:#dcfce7;border-radius:8px;padding:6px 8px;text-align:center">'
+        +'<div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.3px">❄️ Froid</div>'
+        +'<div style="font-size:.95rem;font-weight:900;color:#166534">'+tF+'</div>'
+        +(platF?'<div style="font-size:.6rem;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platF)+'</div>':'')
+        +'</div>'
+        +'<div style="flex:1;background:#dcfce7;border-radius:8px;padding:6px 8px;text-align:center">'
+        +'<div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.3px">🔥 Chaud</div>'
+        +'<div style="font-size:.95rem;font-weight:900;color:#166534">'+tC+'</div>'
+        +(platC?'<div style="font-size:.6rem;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platC)+'</div>':'')
+        +'</div>'
+        +'</div>'
+        +'</div>';
     }
     var scrollId3='dsvc-slot-'+svcId+'-'+slot3;
     return '<div class="wc '+cls+'" onclick="goTo(\'enr_distrib_'+svcId+'\',\''+scrollId3+'\')" style="cursor:pointer">'  
@@ -16435,13 +16458,13 @@ function _wgRenderGrid(container, list){
             +'<div class="wg-drag-handle" ontouchstart="wgDragStart(event,\''+nx.id+'\')" ontouchmove="wgDragMove(event)" ontouchend="wgDragEnd(event)">☰</div>';
         }
         out+='<div class="wg-row">'
-          +'<div class="wg-half wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative">'+eb+c+'</div>':c)+'</div>'
-          +'<div class="wg-half wg-card-wrap" data-wid="'+nx.id+'">'+(_wgEditing&&cn?'<div style="position:relative">'+ebn+cn+'</div>':cn)+'</div>'
+          +'<div class="wg-half wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+eb+c+'</div>':c)+'</div>'
+          +'<div class="wg-half wg-card-wrap" data-wid="'+nx.id+'">'+(_wgEditing&&cn?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+ebn+cn+'</div>':cn)+'</div>'
           +'</div>';
         i+=2; continue;
       }
     }
-    out+='<div class="wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative">'+eb+c+'</div>':c)+'</div>';
+    out+='<div class="wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+eb+c+'</div>':c)+'</div>';
     i++;
   }
   if(_wgEditing) out+='<button class="wg-add-btn" onclick="wgCatalogOpen()">➕ Ajouter un widget</button>';
