@@ -529,8 +529,10 @@ window.generatePMS = async function() {
   };
   var hdrMin = Object.assign({}, hdrRep, { 'Prefer': 'return=minimal' });
 
-  var tenantId = null;
-  var siteIds  = [];
+  var tenantId   = null;
+  var siteIds    = [];
+  var siteCodes  = [];
+  var finalRole  = (_session && _session.role) || 'siege';
   var validSites = _sites.filter(function(s){ return s && s.trim(); });
 
   /* 1. Upload logo */
@@ -580,7 +582,10 @@ window.generatePMS = async function() {
       });
       if (r2.ok) {
         var created = await r2.json();
-        if (created && created.length) siteIds = created.map(function(s){ return s.id; });
+        if (created && created.length) {
+          siteIds   = created.map(function(s){ return s.id; });
+          siteCodes = created.map(function(s){ return s.code; });
+        }
       } else {
         console.warn('[Onboarding] sites:', r2.status, await r2.text());
       }
@@ -605,7 +610,7 @@ window.generatePMS = async function() {
       await fetch(SUPABASE_URL + '/rest/v1/pms_config', {
         method: 'POST', headers: hdrMin,
         body: JSON.stringify({
-          site_id:   siteIds[0],
+          site_id:   siteCodes[0] || _slug(validSites[0] || 'cuisine'),
           tenant_id: tenantId,
           type:      'enceintes',
           data:      encData
@@ -663,7 +668,8 @@ window.generatePMS = async function() {
     sc.userToken = token;
     sc.token     = token;
     sc.userId    = userId;
-    sc.siteId    = siteIds.length ? siteIds[0] : _slug(validSites[0] || 'ma-cuisine');
+    sc.siteId    = siteCodes.length ? siteCodes[0] : _slug(validSites[0] || 'ma-cuisine');
+    sc.siteUUID  = siteIds.length ? siteIds[0] : null;
     sc.siteNom   = validSites[0] || _data.nom || '';
     sc.nom       = _data.nom || '';
     if (tenantId) sc.tenantId = tenantId;

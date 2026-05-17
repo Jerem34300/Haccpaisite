@@ -83,7 +83,8 @@ function loadCfg(){
       // Sauvegarder AVANT de supprimer (ordre critique)
       localStorage.setItem(CFG_STORE, JSON.stringify({
         url: SUPA_URL, key: SUPA_KEY, serviceKey: SUPA_SERVICE_KEY,
-        token: _token, refreshToken: _refreshToken, userId: _userId
+        token: _token, refreshToken: _refreshToken, userId: _userId,
+        tenantId: session.tenantId || ''
       }));
       localStorage.removeItem('haccpro_session');
       window._autoLoginFromSession = true;
@@ -1362,13 +1363,21 @@ function calcEnr19Assiduite(recs, mois) {
   };
 }
 
+// NC ouverte = 0% · NC cloturée (action corrective) = 70% · conforme = 100%
+function _catPct(catRecs) {
+  if (catRecs.length === 0) return null;
+  const ncOpen   = catRecs.filter(r => isNC(r)).length;
+  const ncClosed = catRecs.filter(r => isNCCloturee(r)).length;
+  return Math.round((catRecs.length * 100 - ncOpen * 100 - ncClosed * 30) / catRecs.length);
+}
+
 function pmsWeightedScore(recs, mois) {
   let totalWeight = 0, weightedSum = 0;
   PMS_WEIGHTED_MAP.forEach(cat => {
     const catRecs = recs.filter(r => cat.enrs.includes(r.enr_type));
     if (catRecs.length === 0) return;
-    const nc = catRecs.filter(r => isNC(r)).length;
-    weightedSum += Math.round((1 - nc / catRecs.length) * 100) * cat.coeff;
+    const pct = _catPct(catRecs);
+    weightedSum += pct * cat.coeff;
     totalWeight += cat.coeff;
   });
   // ENR19 assiduité (coeff 15)
@@ -1382,8 +1391,10 @@ function pmsWeightedByCategory(recs, mois) {
   const result = {};
   PMS_WEIGHTED_MAP.forEach(cat => {
     const catRecs = recs.filter(r => cat.enrs.includes(r.enr_type));
-    const nb = catRecs.length, nc = catRecs.filter(r => isNC(r)).length;
-    result[cat.catKey] = { nb, nc, pct: nb > 0 ? Math.round((1 - nc/nb)*100) : null, coeff: cat.coeff };
+    const nb = catRecs.length;
+    const nc = catRecs.filter(r => isNC(r)).length;
+    const ncClosed = catRecs.filter(r => isNCCloturee(r)).length;
+    result[cat.catKey] = { nb, nc, ncClosed, pct: _catPct(catRecs), coeff: cat.coeff };
   });
   const e19 = calcEnr19Assiduite(recs, mois);
   result['temp'] = e19
