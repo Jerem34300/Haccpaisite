@@ -521,19 +521,22 @@ window.generatePMS = async function() {
   var token  = cfg.token || cfg.userToken || '';
   var userId = cfg.userId || cfg.user_id || '';
 
-  var hdrRep = {
-    'Content-Type':  'application/json',
-    'apikey':        SUPABASE_ANON_KEY,
-    'Authorization': 'Bearer ' + token,
-    'Prefer':        'return=representation'
-  };
-  var hdrMin = Object.assign({}, hdrRep, { 'Prefer': 'return=minimal' });
+  if (!token) {
+    _showErr('err-8', 'Session expirée. Veuillez vous reconnecter.');
+    btn.disabled = false;
+    if (label) label.style.display = 'inline';
+    if (spin)  spin.style.display  = 'none';
+    if (back)  back.style.display  = '';
+    if (skip)  skip.style.display  = '';
+    return;
+  }
 
   var tenantId   = null;
   var siteIds    = [];
   var siteCodes  = [];
-  var finalRole  = (_session && _session.role) || 'siege';
+  var finalRole  = (_session && _session.role) || 'directeur';
   var validSites = _sites.filter(function(s){ return s && s.trim(); });
+  var plan       = _session.plan || _signupData.plan || 'solo';
 
   /* 1. Upload logo */
   if (_data.logoFile) {
@@ -542,67 +545,80 @@ window.generatePMS = async function() {
     }
   }
 
-  /* 2. Créer ou mettre à jour le tenant */
-  var existingTenantId = cfg.tenantId || (_session && _session.tenantId) || null;
-  if (existingTenantId) {
-    tenantId = existingTenantId;
-    try {
-      await fetch(SUPABASE_URL + '/rest/v1/tenants?id=eq.' + tenantId, {
-        method: 'PATCH', headers: hdrMin,
-        body: JSON.stringify({ name: _data.nom, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
-      });
-    } catch(e) { console.warn('[Onboarding] tenant PATCH:', e); }
-  } else {
-    try {
-      var _tSlug = (_data.nom||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)
-        + '-' + Math.random().toString(36).slice(2,7);
-      var r = await fetch(SUPABASE_URL + '/rest/v1/tenants', {
-        method: 'POST', headers: hdrRep,
-        body: JSON.stringify({ name: _data.nom, slug: _tSlug, primary_color: _data.couleur, logo_url: _data.logoUrl || null })
-      });
-      if (r.ok) {
-        var tenants = await r.json();
-        if (tenants && tenants[0]) tenantId = tenants[0].id || null;
-      } else {
-        console.warn('[Onboarding] tenant POST:', r.status, await r.text());
-      }
-    } catch(e) { console.warn('[Onboarding] tenant POST:', e); }
+  /* 2. Provisionner tenant + site + profil via Netlify Function (service_role) */
+  try {
+    var fullName = ((_signupData.firstName || '') + ' ' + (_signupData.lastName || '')).trim()
+      || _signupData.company || _data.nom || null;
+
+    var provResp = await fetch('/.netlify/functions/provision-tenant', {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': 'Bearer ' + token
+      },
+      body: JSON.stringify({
+        companyName: _data.nom || _signupData.company || 'Mon établissement',
+        siteName:    validSites[0] || _data.nom || '',
+        plan:        plan,
+        color:       _data.couleur || '#0F2240',
+        type:        _data.type || _signupData.type || 'restaurant',
+        siret:       _data.siret || null,
+        fullName:    fullName
+      })
+    });
+
+    var provResult = await provResp.json();
+    if (!provResult.ok) throw new Error(provResult.error || 'Erreur lors de la configuration du compte');
+
+    tenantId = provResult.tenant_id;
+    if (provResult.site_id) {
+      siteIds.push(provResult.site_id);
+      siteCodes.push(_slug(validSites[0] || _data.nom || 'cuisine'));
+    }
+  } catch(e) {
+    console.error('[Onboarding] provision-tenant:', e);
+    _showErr('err-8', e.message || 'Erreur lors de la configuration. Réessayez.');
+    btn.disabled = false;
+    if (label) label.style.display = 'inline';
+    if (spin)  spin.style.display  = 'none';
+    if (back)  back.style.display  = '';
+    if (skip)  skip.style.display  = '';
+    return;
   }
 
-  /* 3. Créer sites */
-  if (validSites.length && token) {
+  /* 3. Créer les sites supplémentaires (plan multi — le 1er est déjà créé) */
+  var extraSites = validSites.slice(1);
+  if (extraSites.length && tenantId) {
     try {
-      var rows = validSites.map(function(nom) {
-        var row = { name: nom.trim(), code: _slug(nom) };
-        if (tenantId) row.tenant_id = tenantId;
-        return row;
+      var hdrRep = {
+        'Content-Type':  'application/json',
+        'apikey':        SUPABASE_ANON_KEY,
+        'Authorization': 'Bearer ' + token,
+        'Prefer':        'return=representation'
+      };
+      var extraRows = extraSites.map(function(nom) {
+        return { name: nom.trim(), nom: nom.trim(), code: _slug(nom), tenant_id: tenantId };
       });
       var r2 = await fetch(SUPABASE_URL + '/rest/v1/sites', {
-        method: 'POST', headers: hdrRep, body: JSON.stringify(rows)
+        method: 'POST', headers: hdrRep, body: JSON.stringify(extraRows)
       });
       if (r2.ok) {
         var created = await r2.json();
         if (created && created.length) {
-          siteIds   = created.map(function(s){ return s.id; });
-          siteCodes = created.map(function(s){ return s.code; });
+          siteIds   = siteIds.concat(created.map(function(s){ return s.id; }));
+          siteCodes = siteCodes.concat(created.map(function(s){ return s.code || _slug(s.nom || s.name || ''); }));
         }
-      } else {
-        console.warn('[Onboarding] sites:', r2.status, await r2.text());
       }
-    } catch(e) { console.warn('[Onboarding] sites:', e); }
+    } catch(e) { console.warn('[Onboarding] extra sites:', e); }
   }
 
-  /* 4. Lier profile — ne jamais écraser le rôle (déjà défini par signup-setup) */
-  if (userId && token && tenantId) {
-    try {
-      await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + userId, {
-        method: 'PATCH', headers: hdrMin,
-        body: JSON.stringify({ tenant_id: tenantId, site_id: siteIds[0] || null })
-      });
-    } catch(e) { console.warn('[Onboarding] profile:', e); }
-  }
-
-  /* 5. Écrire enceintes dans pms_config */
+  /* 4. Écrire enceintes dans pms_config */
+  var hdrMin = {
+    'Content-Type':  'application/json',
+    'apikey':        SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + token,
+    'Prefer':        'return=minimal'
+  };
   var encData = _enceintes.filter(function(e){ return e.nom.trim(); })
     .map(function(e, idx){ return _encToConfig(e, idx); });
   if (encData.length && siteIds.length && tenantId) {
