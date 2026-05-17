@@ -4853,11 +4853,13 @@ function renderNettHisto(){
   return`<div class="card">
     <div class="hh"><span class="hh-title">📜 Historique des validations</span><span class="hh-badge">${vals.length} (30 dernières)</span></div>
     ${vals.map((v,i)=>{
-      const item=ref.find(r=>r.id===v.ref_id)||{zone:'?',materiel:v.ref_id};
+      const item=ref.find(r=>r.id===v.ref_id);
+      const zone=item?.zone||v.zone||'?';
+      const materiel=item?.materiel||v.materiel||v.ref_id||'?';
       return`<div class="hr-card">
         <div class="hr-card-top" onclick="toggleHR(this)">
           <div style="flex:1;min-width:0">
-            <div class="hr-card-main">${escH(item.materiel)} <span style="font-size:.7rem;font-weight:500;color:#b89ab6">— ${escH(item.zone)}</span></div>
+            <div class="hr-card-main">${escH(materiel)} <span style="font-size:.7rem;font-weight:500;color:#b89ab6">— ${escH(zone)}</span></div>
             <div class="hr-card-meta">${(v.date?v.date.slice(8,10)+'/'+v.date.slice(5,7)+'/'+v.date.slice(0,4):'—')} ${v.heure||''} · 👨‍🍳 ${escH(v.cuisinier||'—')} · <span class="${v.conforme==='OUI'?'conf-oui':'conf-non'}">${v.conforme||'—'}</span></div>
           </div>
           <div style="display:flex;gap:4px;align-items:flex-start">
@@ -4867,8 +4869,8 @@ function renderNettHisto(){
         </div>
         <div class="hr-card-data">
           <div class="hr-data-grid">
-            <div class="hdi"><div class="hdi-label">Zone</div><div class="hdi-val">${escH(item.zone)}</div></div>
-            <div class="hdi"><div class="hdi-label">Fréquence</div><div class="hdi-val">${NETT_FREQ_LABEL[item.freq]||''}</div></div>
+            <div class="hdi"><div class="hdi-label">Zone</div><div class="hdi-val">${escH(zone)}</div></div>
+            <div class="hdi"><div class="hdi-label">Fréquence</div><div class="hdi-val">${NETT_FREQ_LABEL[item?.freq]||''}</div></div>
             <div class="hdi"><div class="hdi-label">Conforme</div><div class="hdi-val ${v.conforme==='OUI'?'conf-oui':'conf-non'}">${v.conforme||'—'}</div></div>
             ${v.commentaire?`<div class="hdi" style="grid-column:1/-1"><div class="hdi-label">Commentaire NC</div><div class="hdi-val">${escH(v.commentaire)}</div></div>`:''}
             ${v.photo_nc?(()=>{let src=v.photo_nc;try{const o=JSON.parse(v.photo_nc);src=o.thumb||src;}catch(e){}return`<div class="hdi" style="grid-column:1/-1"><div class="hdi-label">📸 Photo NC</div><div class="hdi-val"><img src="${src}" style="max-width:100%;max-height:150px;border-radius:8px;border:1.5px solid #fca5a5;margin-top:4px">${typeof v.photo_nc==='string'&&v.photo_nc.startsWith('{')?(()=>{try{const o=JSON.parse(v.photo_nc);return o.file?'<div style="font-size:.62rem;color:#6b7280;margin-top:2px">📁 '+o.file+'</div>':'';}catch(e){return'';}})():''}</div></div>`;})():''}
@@ -9724,6 +9726,7 @@ async function _loadFromSupabase() {
             // FIX v36 : ne plus vider produits/fournisseurs (le dico s'effaçait à chaque reco)
             // S.produits et S.fournisseurs sont conservés ; le cloud les écrasera s'il en a.
             S.nett_ref = []; S.nett_zones_extra = [];
+            S.customPages = [];
             S.chefPins = {}; S.chefPrefs = {}; S.chefSchedule = {};
             if (S.config) {
               S.config.chefs = [];
@@ -9748,6 +9751,11 @@ async function _loadFromSupabase() {
             if (Array.isArray(cloud[key]) && cloud[key].length > 0) {
               S.nett_ref = cloud[key];
             }
+            return;
+          }
+          // customPages : toujours écraser avec le cloud du site courant ([] si absent)
+          if (key === 'customPages') {
+            S.customPages = Array.isArray(cloud[key]) ? cloud[key] : [];
             return;
           }
           if (cloud[key] === undefined) return;
@@ -16174,6 +16182,10 @@ function wgDragMove(e){
   } else {
     _wgDrag.lastTarget = null;
   }
+  // Auto-scroll en bord d'écran
+  var _se = 80, _ss = 12;
+  if (y < _se) window.scrollBy(0, -_ss * (1 - y / _se));
+  else if (y > window.innerHeight - _se) window.scrollBy(0, _ss * (1 - (window.innerHeight - y) / _se));
 }
 
 function wgDragEnd(e){
