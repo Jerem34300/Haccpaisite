@@ -10125,9 +10125,9 @@ async function _saveConfigToSupabase() {
         cloudConfig.config = merged;
       } else if (Array.isArray(localVal)) {
         // Arrays : si local est vide ET cloud ne l'est pas → garde le cloud
-        // Évite d'écraser une liste cloud non vide par une liste locale vide
+        // Exception : customPages → toujours pousser le local (permet la suppression)
         const cloudArr = Array.isArray(cloudCurrent[key]) ? cloudCurrent[key] : [];
-        if (localVal.length === 0 && cloudArr.length > 0) {
+        if (localVal.length === 0 && cloudArr.length > 0 && key !== 'customPages') {
           cloudConfig[key] = cloudArr; // garde cloud
         } else {
           cloudConfig[key] = localVal;
@@ -14151,6 +14151,10 @@ function cpDeletePage(cpId){
     if(S.navCfg?.order) S.navCfg.order = S.navCfg.order.filter(id=>id!==cpId);
     if(S.navCfg?.hidden) delete S.navCfg.hidden[cpId];
     save();
+    // Push immédiat — sans ça la suppression est dans le debounce 10s
+    // et rechargement avant expiry = la page revient du cloud
+    if(_cloudSaveTimer){ clearTimeout(_cloudSaveTimer); _cloudSaveTimer=null; }
+    _saveConfigToSupabase();
     if(cur===cpId) goTo('accueil');
     renderCustomPageConfig();
     renderNav();
@@ -16228,7 +16232,7 @@ function _wgRenderOne(w){
     var svcs2 = getDistribServices();
     var svc = svcs2.find(function(s){ return s.id===svcId; });
     if(!svc) return '';
-    var draft2 = distribDraft();
+    var draft2 = distribSvcDraft(svcId);
     var todayStr2 = today();
     // Vérifier que le draft est bien d'AUJOURD'HUI (pas celui de la veille)
     var draftIsToday = draft2.date === todayStr2;
