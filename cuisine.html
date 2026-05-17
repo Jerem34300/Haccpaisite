@@ -361,6 +361,32 @@
   </div>
 </div>
 
+<!-- CLAVIER NUMÉRIQUE TEMPÉRATURE -->
+<div id="qtemp-ov" onclick="if(event.target===this)qtempClose()">
+  <div class="qtemp-sheet">
+    <div class="qtemp-title" id="qtemp-title">🌡️ Température</div>
+    <div class="qtemp-sub" id="qtemp-sub"></div>
+    <div class="qtemp-display" id="qtemp-disp">—</div>
+    <div class="qtemp-pad">
+      <button class="qtemp-key" onclick="qtempPress('7')">7</button>
+      <button class="qtemp-key" onclick="qtempPress('8')">8</button>
+      <button class="qtemp-key" onclick="qtempPress('9')">9</button>
+      <button class="qtemp-key" onclick="qtempPress('4')">4</button>
+      <button class="qtemp-key" onclick="qtempPress('5')">5</button>
+      <button class="qtemp-key" onclick="qtempPress('6')">6</button>
+      <button class="qtemp-key" onclick="qtempPress('1')">1</button>
+      <button class="qtemp-key" onclick="qtempPress('2')">2</button>
+      <button class="qtemp-key" onclick="qtempPress('3')">3</button>
+      <button class="qtemp-key minus" onclick="qtempToggleMinus()">+/−</button>
+      <button class="qtemp-key" onclick="qtempPress('0')">0</button>
+      <button class="qtemp-key dot" onclick="qtempPress('.')">.</button>
+      <button class="qtemp-key del" onclick="qtempDel()">⌫ Effacer</button>
+    </div>
+    <button class="qtemp-confirm" id="qtemp-confirm" onclick="qtempConfirm()" disabled>✅ Valider</button>
+    <span class="qtemp-cancel" onclick="qtempClose()">Annuler</span>
+  </div>
+</div>
+
 <!-- SYNC MODAL -->
 <div id="sync-ov" onclick="if(event.target===this)closeSyncModal()">
   <div class="sync-modal">
