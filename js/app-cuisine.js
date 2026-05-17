@@ -16248,11 +16248,27 @@ function _wgRenderOne(w){
     var scrollId3 = 'dsvc-slot-'+svcId+'-'+slot3;
     if(done){
       return '<div class="wc wc-ok" onclick="goTo(\'enr_distrib_'+svcId+'\',\''+scrollId3+'\')" style="cursor:pointer">'
-        +'<span class="wc-ico">'+(svc.ico||'🍽️')+'</span>'
-        +'<div class="wc-label">'+escH(svc.label)+'</div>'
-        +'<div style="font-size:.65rem;font-weight:800;color:'+(slot3==='midi'?'#d97706':'#4338ca')+';margin-top:-2px;margin-bottom:4px">'+slotLabel3+'</div>'
-        +'<div class="wc-val ok">✓ Validé</div>'
-        +'<span class="wc-arrow">›</span></div>';
+        +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
+        +'<span style="font-size:1.1rem">'+(svc.ico||'🍽️')+'</span>'
+        +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:.78rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(svc.label)+'</div>'
+        +'<div style="font-size:.63rem;font-weight:800;color:'+(slot3==='midi'?'#d97706':'#4338ca')+'">'+slotLabel3+'</div>'
+        +'</div>'
+        +'<span style="font-size:.7rem;font-weight:800;color:#166534">✓</span>'
+        +'</div>'
+        +'<div style="display:flex;gap:6px">'
+        +'<div style="flex:1;background:#dcfce7;border-radius:8px;padding:6px 8px;text-align:center">'
+        +'<div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.3px">❄️ Froid</div>'
+        +'<div style="font-size:.95rem;font-weight:900;color:#166534">'+tF+'</div>'
+        +(platF?'<div style="font-size:.6rem;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platF)+'</div>':'')
+        +'</div>'
+        +'<div style="flex:1;background:#dcfce7;border-radius:8px;padding:6px 8px;text-align:center">'
+        +'<div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.3px">🔥 Chaud</div>'
+        +'<div style="font-size:.95rem;font-weight:900;color:#166534">'+tC+'</div>'
+        +(platC?'<div style="font-size:.6rem;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platC)+'</div>':'')
+        +'</div>'
+        +'</div>'
+        +'</div>';
     }
     var scrollId3='dsvc-slot-'+svcId+'-'+slot3;
     return '<div class="wc '+cls+'" onclick="goTo(\'enr_distrib_'+svcId+'\',\''+scrollId3+'\')" style="cursor:pointer">'  
