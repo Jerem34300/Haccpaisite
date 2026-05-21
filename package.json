@@ -3,6 +3,7 @@
   "private": true,
   "version": "20.0.0",
   "dependencies": {
-    "@netlify/functions": "^2.0.0"
+    "@netlify/functions": "^2.0.0",
+    "stripe": "^22.1.1"
   }
 }

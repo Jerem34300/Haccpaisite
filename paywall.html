@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Abonnement requis — HACC.PRO</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0F2240">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="js/supabaseconfig.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#0F2240;--navy2:#1a3558;
+  --green:#8DC63F;--green2:#6fa832;
+  --plum:#5C1E5A;
+  --bg:#F5F6FA;--white:#fff;
+  --border:#E4DEE4;
+  --text:#1a1a2e;--muted:#7A6579;
+  --danger:#dc2626;
+  --warn:#d97706;
+  --font:'Nunito',sans-serif;
+}
+body{min-height:100vh;background:var(--bg);font-family:var(--font);color:var(--text);display:flex;flex-direction:column}
+
+/* ── Header ── */
+.hdr{background:var(--navy);padding:14px 24px;display:flex;align-items:center;gap:12px;
+  box-shadow:0 2px 12px rgba(0,0,0,.18)}
+.hdr-logo{font-size:1.25rem;font-weight:900;color:#fff;text-decoration:none}
+.hdr-logo span{color:var(--green)}
+.hdr-tag{font-size:.65rem;color:rgba(255,255,255,.45);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+
+/* ── Main ── */
+.main{flex:1;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.card{background:var(--white);border-radius:24px;padding:0;max-width:820px;width:100%;
+  box-shadow:0 8px 40px rgba(15,34,64,.12);overflow:hidden}
+
+/* ── Banner ── */
+.banner{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 100%);
+  padding:36px 40px 32px;text-align:center;position:relative;overflow:hidden}
+.banner::before{content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at 80% 0%,rgba(141,198,63,.12),transparent 60%)}
+.banner-icon{font-size:2.8rem;margin-bottom:12px;position:relative;z-index:1}
+.banner-title{font-size:1.6rem;font-weight:900;color:#fff;position:relative;z-index:1;margin-bottom:8px}
+.banner-sub{font-size:.9rem;color:rgba(255,255,255,.6);position:relative;z-index:1;line-height:1.5}
+
+/* ── Reason badge ── */
+.reason-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 16px;border-radius:20px;
+  font-size:.78rem;font-weight:800;margin-top:14px;position:relative;z-index:1}
+.reason-badge.trial{background:rgba(251,191,36,.15);color:#fbbf24}
+.reason-badge.past_due{background:rgba(239,68,68,.15);color:#fca5a5}
+.reason-badge.cancelled{background:rgba(156,163,175,.15);color:#d1d5db}
+
+/* ── Body ── */
+.body{padding:36px 40px}
+
+/* ── Plans ── */
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:28px}
+@media(max-width:560px){.plans{grid-template-columns:1fr}}
+.plan-card{border:2px solid var(--border);border-radius:18px;padding:24px 20px;cursor:pointer;
+  transition:all .2s;position:relative;background:var(--white)}
+.plan-card:hover{border-color:var(--plum);box-shadow:0 4px 20px rgba(92,30,90,.1)}
+.plan-card.selected{border-color:var(--plum);background:#fdf4ff;
+  box-shadow:0 4px 24px rgba(92,30,90,.15)}
+.plan-badge{position:absolute;top:-1px;right:16px;background:var(--green);color:#fff;
+  font-size:.65rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
+  padding:3px 10px;border-radius:0 0 8px 8px}
+.plan-name{font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:4px}
+.plan-price{font-size:1.8rem;font-weight:900;color:var(--plum);line-height:1}
+.plan-price span{font-size:.85rem;font-weight:700;color:var(--muted)}
+.plan-desc{font-size:.78rem;color:var(--muted);margin-top:8px;line-height:1.5}
+.plan-features{list-style:none;margin-top:12px;display:flex;flex-direction:column;gap:6px}
+.plan-features li{font-size:.8rem;color:var(--text);display:flex;align-items:center;gap:6px}
+.plan-features li::before{content:'✓';color:var(--green);font-weight:900;flex-shrink:0}
+
+/* ── CTA ── */
+.cta-wrap{text-align:center}
+.btn-pay{display:inline-flex;align-items:center;justify-content:center;gap:10px;
+  background:var(--plum);color:#fff;border:none;border-radius:14px;
+  padding:15px 36px;font-size:1.05rem;font-weight:900;font-family:var(--font);
+  cursor:pointer;transition:all .2s;width:100%;max-width:380px}
+.btn-pay:hover:not(:disabled){background:#4a1748;transform:translateY(-1px);
+  box-shadow:0 6px 20px rgba(92,30,90,.35)}
+.btn-pay:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.btn-pay svg{flex-shrink:0}
+.spinner{width:20px;height:20px;border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.legal{font-size:.73rem;color:var(--muted);margin-top:12px;text-align:center}
+.legal a{color:var(--plum);text-decoration:none}
+.divider{border:none;border-top:1px solid var(--border);margin:24px 0}
+.logout-link{display:block;text-align:center;font-size:.82rem;color:var(--muted);
+  text-decoration:none;margin-top:16px}
+.logout-link:hover{color:var(--navy)}
+.err-msg{background:#fef2f2;color:var(--danger);border-radius:10px;padding:12px 16px;
+  font-size:.82rem;font-weight:700;margin-bottom:16px;display:none}
+.success-msg{background:#f0fdf4;color:#166534;border-radius:10px;padding:12px 16px;
+  font-size:.82rem;font-weight:700;margin-bottom:16px;display:none}
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div>
+    <div class="hdr-logo">HACC<span>.PRO</span></div>
+    <div class="hdr-tag">Traçabilité HACCP</div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="card">
+    <div class="banner">
+      <div class="banner-icon" id="banner-icon">⏱️</div>
+      <div class="banner-title" id="banner-title">Votre essai gratuit est terminé</div>
+      <div class="banner-sub" id="banner-sub">
+        Choisissez un plan pour continuer à utiliser HACC.PRO<br>
+        et accéder à toutes vos données HACCP.
+      </div>
+      <div class="reason-badge trial" id="reason-badge">Essai 14 jours expiré</div>
+    </div>
+
+    <div class="body">
+      <div class="err-msg" id="err-msg"></div>
+      <div class="success-msg" id="success-msg"></div>
+
+      <div class="plans" id="plans-grid">
+
+        <div class="plan-card" id="plan-solo" onclick="selectPlan('solo')">
+          <div class="plan-name">Solo</div>
+          <div class="plan-price">29€ <span>/ mois</span></div>
+          <div class="plan-desc">1 cuisine — Idéal pour un restaurant indépendant</div>
+          <ul class="plan-features">
+            <li>Toutes les fiches ENR01–ENR34</li>
+            <li>Menu du jour + plats témoins</li>
+            <li>Synchronisation cloud</li>
+            <li>Export PDF mensuel</li>
+            <li>Conservation 3 ans</li>
+          </ul>
+        </div>
+
+        <div class="plan-card selected" id="plan-multi" onclick="selectPlan('multi')">
+          <div class="plan-badge">Recommandé</div>
+          <div class="plan-name">Multi</div>
+          <div class="plan-price">49€ <span>/ mois</span></div>
+          <div class="plan-desc">Jusqu'à 3 cuisines — EHPAD, collectivités</div>
+          <ul class="plan-features">
+            <li>Tout le plan Solo</li>
+            <li>Multi-sites & multi-textures</li>
+            <li>Dashboard de supervision</li>
+            <li>Alertes HACCP en temps réel</li>
+            <li>Support prioritaire</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="cta-wrap">
+        <button class="btn-pay" id="btn-pay" onclick="startCheckout()">
+          <svg id="pay-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          <span id="btn-label">Souscrire et continuer</span>
+          <div class="spinner" id="btn-spinner" style="display:none"></div>
+        </button>
+        <div class="legal">
+          Paiement sécurisé par <strong>Stripe</strong> · Résiliable à tout moment ·
+          <a href="cgu.html" target="_blank">CGV</a>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <a href="#" class="logout-link" onclick="doLogout(event)">
+        → Se déconnecter et changer de compte
+      </a>
+    </div>
+  </div>
+</main>
+
+<script>
+  var _plan = 'multi';
+  var _tenantId = null;
+  var _token = null;
+  var _email = null;
+
+  // ── Lire la session ─────────────────────────────────────────
+  (function init() {
+    var keys = ['haccp_supa_cfg_v1','haccpro_session','haccp_dash_cfg_v2'];
+    for (var k of keys) {
+      try {
+        var s = JSON.parse(localStorage.getItem(k) || '{}');
+        if (!_token && (s.token || s.userToken)) _token = s.token || s.userToken;
+        if (!_tenantId && (s.tenantId || s.tenant_id)) _tenantId = s.tenantId || s.tenant_id;
+        if (!_email && s.email) _email = s.email;
+      } catch(e) {}
+    }
+
+    // Adapter le message selon la raison
+    var params = new URLSearchParams(window.location.search);
+    var reason = params.get('reason') || 'trial_expired';
+    var icon  = document.getElementById('banner-icon');
+    var title = document.getElementById('banner-title');
+    var sub   = document.getElementById('banner-sub');
+    var badge = document.getElementById('reason-badge');
+
+    if (reason === 'past_due') {
+      icon.textContent = '⚠️';
+      title.textContent = 'Paiement en attente';
+      sub.textContent = 'Votre dernier paiement a échoué. Mettez à jour votre moyen de paiement pour continuer.';
+      badge.textContent = 'Paiement refusé';
+      badge.className = 'reason-badge past_due';
+    } else if (reason === 'cancelled') {
+      icon.textContent = '😔';
+      title.textContent = 'Abonnement résilié';
+      sub.textContent = 'Votre abonnement a été annulé. Souscrivez à nouveau pour récupérer l\'accès.';
+      badge.textContent = 'Abonnement annulé';
+      badge.className = 'reason-badge cancelled';
+    }
+
+    // Pré-sélectionner le plan de la session si disponible
+    try {
+      var cached = JSON.parse(localStorage.getItem('haccp_sub_cache_v1') || '{}');
+      if (cached.plan && ['solo','multi'].includes(cached.plan)) selectPlan(cached.plan);
+    } catch(e) {}
+  })();
+
+  // ── Sélection de plan ───────────────────────────────────────
+  function selectPlan(plan) {
+    _plan = plan;
+    document.querySelectorAll('.plan-card').forEach(function(c) { c.classList.remove('selected'); });
+    var card = document.getElementById('plan-' + plan);
+    if (card) card.classList.add('selected');
+  }
+
+  // ── Lancer le checkout Stripe ───────────────────────────────
+  async function startCheckout() {
+    var btn    = document.getElementById('btn-pay');
+    var label  = document.getElementById('btn-label');
+    var spinner= document.getElementById('btn-spinner');
+    var icon   = document.getElementById('pay-icon');
+    var errEl  = document.getElementById('err-msg');
+
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    label.style.display = 'none';
+    icon.style.display  = 'none';
+    spinner.style.display = 'block';
+
+    if (!_token || !_tenantId) {
+      showErr('Session expirée. Veuillez vous reconnecter.');
+      resetBtn();
+      return;
+    }
+
+    try {
+      var r = await fetch('/.netlify/functions/stripe-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + _token,
+        },
+        body: JSON.stringify({
+          plan: _plan,
+          tenantId: _tenantId,
+          customerEmail: _email || undefined,
+          returnUrl: window.location.origin,
+        }),
+      });
+      var data = await r.json();
+      if (!r.ok || !data.url) throw new Error(data.error || 'Erreur lors de la redirection Stripe');
+      window.location.href = data.url;
+    } catch(e) {
+      showErr(e.message || 'Une erreur est survenue. Réessayez.');
+      resetBtn();
+    }
+  }
+
+  function showErr(msg) {
+    var el = document.getElementById('err-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function resetBtn() {
+    var btn    = document.getElementById('btn-pay');
+    var label  = document.getElementById('btn-label');
+    var spinner= document.getElementById('btn-spinner');
+    var icon   = document.getElementById('pay-icon');
+    btn.disabled = false;
+    label.style.display = '';
+    icon.style.display  = '';
+    spinner.style.display = 'none';
+  }
+
+  function doLogout(e) {
+    e.preventDefault();
+    var keys = ['haccp_supa_cfg_v1','haccpro_session','haccp_dash_cfg_v2',
+                'haccpro_supa_cfg','haccp_sub_cache_v1'];
+    keys.forEach(function(k) { try { localStorage.removeItem(k); } catch(e2){} });
+    window.location.replace('login.html');
+  }
+</script>
+</body>
+</html>
