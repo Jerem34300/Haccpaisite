@@ -25,9 +25,11 @@
   <script>
   runAuthGuard({ sessionKey: 'haccpro_session', stableKey: 'haccp_dash_cfg_v2', loginUrl: './' });
   </script>
+  <!-- Garde abonnement (trial / paywall) -->
+  <script src="js/subscriptionguard.js"></script>
   <!-- Utilitaires partages -->
   <script src="js/utils.js"></script>
-  
+
   <script>
     // Enregistrement du Service Worker (PWA offline)
     if ('serviceWorker' in navigator) {

@@ -9457,7 +9457,7 @@ async function renderSubscription(){
   try {
     if(tenantId){
       const [subs, sitesRes, tenants] = await Promise.all([
-        supaGet('subscriptions', `select=plan,status,price_per_month,trial_ends_at&tenant_id=eq.${tenantId}&limit=1`).catch(()=>[]),
+        supaGet('subscriptions', `select=plan,status,price_per_month,trial_ends_at,current_period_end,cancel_at_period_end,stripe_customer_id,stripe_subscription_id&tenant_id=eq.${tenantId}&limit=1`).catch(()=>[]),
         supaGet('sites', `select=id,name,code&tenant_id=eq.${tenantId}&order=name`).catch(()=>[]),
         supaGet('tenants', `select=id,name,primary_color&id=eq.${tenantId}&limit=1`).catch(()=>[])
       ]);
@@ -9469,29 +9469,81 @@ async function renderSubscription(){
 
   const planLabels = { solo:'Solo', multi:'Multi', enterprise:'Entreprise' };
   const planColors = { solo:'#16a34a', multi:'#0F2240', enterprise:'#7c3aed' };
-  const planDesc   = { solo:'1 cuisine', multi:'Jusqu\'à 3 cuisines · +19€/cuisine supp.', enterprise:'Cuisines illimitées · API · SSO' };
+  const planDesc   = { solo:'1 cuisine', multi:'Jusqu\'à 3 cuisines', enterprise:'Cuisines illimitées · API · SSO' };
   const planPrices = { solo:'29€/mois', multi:'49€/mois', enterprise:'Sur devis' };
 
   const planKey   = sub?.plan || _profile?.plan || 'multi';
   const planLabel = planLabels[planKey] || planKey;
   const planColor = planColors[planKey] || '#64748b';
 
+  // ── Badge statut ──────────────────────────────────────────────
   let statusHtml = '';
+  let trialDaysLeft = 0;
+  let isTrialExpired = false;
+  let isActive = false;
+  let isPastDue = false;
   if(sub){
     if(sub.status === 'trial' && sub.trial_ends_at){
       const trialDate = new Date(sub.trial_ends_at);
       const today = new Date();
-      const daysLeft = Math.max(0, Math.ceil((trialDate - today) / 86400000));
+      trialDaysLeft = Math.max(0, Math.ceil((trialDate - today) / 86400000));
+      isTrialExpired = trialDaysLeft === 0;
       const trialStr = trialDate.toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
-      statusHtml = daysLeft > 0
-        ? `<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Essai gratuit — ${daysLeft} jour${daysLeft>1?'s':''} restant${daysLeft>1?'s':''} (jusqu'au ${trialStr})</span>`
-        : `<span style="background:#fee2e2;color:#991b1b;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Essai expiré le ${trialStr}</span>`;
+      statusHtml = trialDaysLeft > 0
+        ? `<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">⏱ Essai — ${trialDaysLeft}j restant${trialDaysLeft>1?'s':''}</span>`
+        : `<span style="background:#fee2e2;color:#991b1b;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">⚠️ Essai expiré le ${trialStr}</span>`;
     } else if(sub.status === 'active'){
-      statusHtml = `<span style="background:#dcfce7;color:#166534;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">Abonnement actif</span>`;
+      isActive = true;
+      const renewStr = sub.cancel_at_period_end && sub.current_period_end
+        ? ` · résiliation le ${new Date(sub.current_period_end).toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'})}`
+        : '';
+      statusHtml = sub.cancel_at_period_end
+        ? `<span style="background:#fef3c7;color:#92400e;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">Annulation en cours${renewStr}</span>`
+        : `<span style="background:#dcfce7;color:#166534;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">✓ Abonnement actif</span>`;
+    } else if(sub.status === 'past_due'){
+      isPastDue = true;
+      statusHtml = `<span style="background:#fee2e2;color:#991b1b;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">⚠️ Paiement en attente</span>`;
+    } else if(sub.status === 'cancelled'){
+      statusHtml = `<span style="background:#f1f5f9;color:#64748b;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">Résilié</span>`;
     } else {
-      statusHtml = `<span style="background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:800">${sub.status||'—'}</span>`;
+      statusHtml = `<span style="background:#f1f5f9;color:#64748b;padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:800">${sub.status||'—'}</span>`;
     }
   }
+
+  // ── Alerte paiement ───────────────────────────────────────────
+  const alertHtml = (isTrialExpired || isPastDue) ? `
+    <div style="background:#fef2f2;border:1.5px solid #fecaca;border-radius:14px;padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px">
+      <div style="font-size:1.8rem;flex-shrink:0">⚠️</div>
+      <div>
+        <div style="font-size:.88rem;font-weight:900;color:#991b1b;margin-bottom:4px">
+          ${isTrialExpired ? 'Votre essai gratuit est terminé' : 'Paiement en attente'}
+        </div>
+        <div style="font-size:.78rem;color:#b91c1c">
+          ${isTrialExpired ? 'Souscrivez un plan pour continuer à accéder à HACC.PRO.' : 'Votre dernier paiement a échoué. Mettez à jour votre moyen de paiement.'}
+        </div>
+      </div>
+    </div>` : '';
+
+  // ── Bannière trial proche expiration ──────────────────────────
+  const trialWarnHtml = (!isActive && !isTrialExpired && trialDaysLeft > 0 && trialDaysLeft <= 5) ? `
+    <div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:14px;padding:14px 16px;margin-bottom:16px">
+      <div style="font-size:.85rem;font-weight:800;color:#92400e">⏱ Plus que ${trialDaysLeft} jour${trialDaysLeft>1?'s':''} d'essai</div>
+      <div style="font-size:.75rem;color:#b45309;margin-top:2px">Souscrivez maintenant pour éviter toute interruption.</div>
+    </div>` : '';
+
+  // ── Bouton Stripe ─────────────────────────────────────────────
+  const hasStripeCustomer = !!sub?.stripe_customer_id;
+  const stripeBtn = isActive && hasStripeCustomer
+    ? `<button onclick="_openStripePortal()" id="btn-stripe-portal"
+        style="display:inline-flex;align-items:center;gap:8px;padding:9px 18px;background:#5C1E5A;color:#fff;border:none;border-radius:10px;font-size:.82rem;font-weight:800;cursor:pointer;${font}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Gérer mon abonnement (Stripe)
+      </button>`
+    : `<button onclick="_startCheckout('${escH(planKey)}')" id="btn-subscribe"
+        style="display:inline-flex;align-items:center;gap:8px;padding:9px 18px;background:#5C1E5A;color:#fff;border:none;border-radius:10px;font-size:.82rem;font-weight:800;cursor:pointer;${font}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        ${isActive ? 'Souscrire' : (isTrialExpired || isPastDue) ? 'Régulariser mon abonnement' : 'Souscrire maintenant'}
+      </button>`;
 
   const sitesHtml = sites.length
     ? sites.map(s => `
@@ -9510,7 +9562,7 @@ async function renderSubscription(){
   const addKitchenHtml = ['multi','enterprise'].includes(planKey)
     ? `<div style="margin-top:8px;padding:14px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px">
         <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:4px">Ajouter une cuisine</div>
-        <div style="font-size:.75rem;color:#166534;margin-bottom:10px">+19€/mois par cuisine supplémentaire</div>
+        <div style="font-size:.75rem;color:#166534;margin-bottom:10px">Contactez-nous pour ajouter un site à votre compte.</div>
         <a href="mailto:contact@hacc.pro?subject=Ajout%20cuisine%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
           style="display:inline-block;padding:7px 16px;background:#166534;color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
           Demander l'ajout →
@@ -9519,25 +9571,30 @@ async function renderSubscription(){
     : `<div style="margin-top:8px;padding:14px;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px">
         <div style="font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:4px">Passer en plan Multi</div>
         <div style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Gérez jusqu'à 3 cuisines pour 49€/mois</div>
-        <a href="mailto:contact@hacc.pro?subject=Upgrade%20plan%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
-          style="display:inline-block;padding:7px 16px;background:var(--navy);color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
-          Upgrader mon plan →
-        </a>
+        <button onclick="_startCheckout('multi')"
+          style="padding:7px 16px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:800;cursor:pointer;${font}">
+          Passer en Multi →
+        </button>
       </div>`;
 
   const html = `
   <div style="max-width:600px;margin:0 auto;padding:24px 16px">
     <div style="font-size:1.05rem;font-weight:900;color:var(--navy);margin-bottom:20px">Mon abonnement</div>
 
+    ${alertHtml}
+    ${trialWarnHtml}
+
     <!-- Plan actuel -->
     <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
       <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Plan actuel</div>
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
         <span style="font-size:1.3rem;font-weight:900;color:${planColor}">${escH(planLabel)}</span>
         <span style="font-size:.8rem;font-weight:700;color:var(--muted)">${escH(planPrices[planKey]||'')}</span>
         ${statusHtml}
       </div>
-      <div style="font-size:.75rem;color:var(--muted);margin-top:6px">${escH(planDesc[planKey]||'')}</div>
+      <div style="font-size:.75rem;color:var(--muted);margin-bottom:14px">${escH(planDesc[planKey]||'')}</div>
+      ${stripeBtn}
+      <div style="font-size:.7rem;color:var(--muted);margin-top:8px">Paiement sécurisé · Résiliable à tout moment · Géré par Stripe</div>
     </div>
 
     <!-- Mes cuisines -->
@@ -9548,7 +9605,7 @@ async function renderSubscription(){
     </div>
 
     <!-- Compte -->
-    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px;margin-bottom:16px">
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px">
       <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px">Mon compte</div>
       <div style="font-size:.85rem;font-weight:700;color:var(--text);margin-bottom:4px">${escH(_profile?.full_name||'—')}</div>
       <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">${escH(_profile?.email||'')}</div>
@@ -9556,19 +9613,57 @@ async function renderSubscription(){
         Changer mon mot de passe →
       </a>
     </div>
-
-    <!-- Modifier le plan -->
-    <div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;padding:18px">
-      <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:8px">Modifier mon plan</div>
-      <div style="font-size:.78rem;color:var(--muted);margin-bottom:10px">Pour modifier votre abonnement, annuler ou obtenir une facture, contactez-nous.</div>
-      <a href="mailto:contact@hacc.pro?subject=Modification%20abonnement%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
-        style="display:inline-block;padding:7px 16px;background:var(--navy);color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
-        Contacter le support →
-      </a>
-    </div>
   </div>`;
 
   setContent(html);
+}
+
+// ── Helpers Stripe dans le dashboard ─────────────────────────────
+async function _startCheckout(plan) {
+  const tenantId = _profile?.tenant_id;
+  const token    = _token || '';
+  const email    = _profile?.email || '';
+  if(!tenantId || !token){ toast('Session invalide — reconnectez-vous', 'warning'); return; }
+
+  const btn = document.getElementById('btn-subscribe');
+  if(btn){ btn.disabled = true; btn.textContent = 'Redirection…'; }
+
+  try {
+    const r = await fetch('/.netlify/functions/stripe-checkout', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ plan, tenantId, customerEmail: email, returnUrl: window.location.origin })
+    });
+    const data = await r.json();
+    if(!r.ok || !data.url) throw new Error(data.error || 'Erreur Stripe');
+    window.location.href = data.url;
+  } catch(e) {
+    toast('Erreur paiement : ' + e.message, 'error');
+    if(btn){ btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Souscrire maintenant'; }
+  }
+}
+
+async function _openStripePortal() {
+  const tenantId = _profile?.tenant_id;
+  const token    = _token || '';
+  if(!tenantId || !token){ toast('Session invalide — reconnectez-vous', 'warning'); return; }
+
+  const btn = document.getElementById('btn-stripe-portal');
+  if(btn){ btn.disabled = true; btn.textContent = 'Ouverture…'; }
+
+  try {
+    const r = await fetch('/.netlify/functions/stripe-portal', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+      body: JSON.stringify({ tenantId, returnUrl: window.location.href })
+    });
+    const data = await r.json();
+    if(!r.ok || !data.url) throw new Error(data.error || 'Erreur portail Stripe');
+    window.location.href = data.url;
+  } catch(e) {
+    toast('Erreur portail : ' + e.message, 'error');
+    if(btn){ btn.disabled = false; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg> Gérer mon abonnement (Stripe)'; }
+  }
 }
 
 

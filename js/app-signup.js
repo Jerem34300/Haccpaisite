@@ -10,7 +10,7 @@ let _step = 1;
 const _data = {
   email:'', password:'', firstName:'', lastName:'',
   company:'', type:'restaurant', sites:1, plan:'multi',
-  couleur:'#5C1E5A'
+  couleur:'#5C1E5A', period:'monthly'
 };
 
 // Résultat de la vérification Supabase Auth (obtenu à l'étape 1)
@@ -36,12 +36,14 @@ function goStep(to){
 
 function _showStep(n){
   document.querySelectorAll('.step').forEach(s=>s.classList.remove('active'));
-  const target = document.getElementById('step-'+(n==='success'?'success':n));
+  const key = n === 'success' ? 'success' : n === 'enterprise' ? 'enterprise' : n;
+  const target = document.getElementById('step-'+key);
   if(target) target.classList.add('active');
   _step = n;
   _updateStepper();
   if(n===3) _preselectPlan();
   if(n===4) _fillRecap();
+  if(n==='enterprise') _prefillEnterpriseForm();
   window.scrollTo(0,0);
 }
 
@@ -166,6 +168,33 @@ function selectColor(hex){
   _data.couleur = hex;
   document.querySelectorAll('.color-swatch-su').forEach(function(s){
     s.classList.toggle('active', s.dataset.color === hex);
+  });
+}
+
+// ── Routage depuis l'étape plan ────────────────────────────
+function continueFromPlan(){
+  if(!validateStep(3)) return;
+  if(_data.plan === 'enterprise'){
+    _showStep('enterprise');
+  } else {
+    goStep(4);
+  }
+}
+
+// ── Toggle période (mensuel/annuel) ───────────────────────
+function suSetPeriod(p){
+  _data.period = p;
+  document.getElementById('su-btn-monthly')?.classList.toggle('active', p==='monthly');
+  document.getElementById('su-btn-annual')?.classList.toggle('active', p==='annual');
+  const annualData = {
+    solo: { price:'24', label:'290€/an — 2 mois offerts' },
+    multi:{ price:'41', label:'490€/an — 2 mois offerts' }
+  };
+  ['solo','multi'].forEach(function(pl){
+    const priceEl = document.getElementById('su-price-'+pl);
+    const annualEl = document.getElementById('su-annual-'+pl);
+    if(priceEl) priceEl.innerHTML = (p==='annual' ? annualData[pl].price : (pl==='solo'?'29':'49')) + '€<span>/mois</span>';
+    if(annualEl) annualEl.textContent = p==='annual' ? annualData[pl].label : '';
   });
 }
 
@@ -410,4 +439,58 @@ function togglePwd(inputId, svgId){
   svg.innerHTML = show
     ? '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'
     : '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+}
+
+// ── Formulaire Entreprise ─────────────────────────────────
+function _prefillEnterpriseForm(){
+  const fullName = (_data.firstName+' '+_data.lastName).trim();
+  const g = id => document.getElementById(id);
+  if(g('ent-name') && fullName) g('ent-name').value = fullName;
+  if(g('ent-email') && _data.email) g('ent-email').value = _data.email;
+  if(g('ent-company') && _data.company) g('ent-company').value = _data.company;
+}
+
+async function submitEnterpriseInquiry(){
+  const btn   = document.getElementById('btn-enterprise');
+  const label = document.getElementById('btn-enterprise-label');
+  const spin  = document.getElementById('btn-enterprise-spin');
+  const errEl = document.getElementById('err-enterprise');
+  const g = id => document.getElementById(id);
+
+  const name     = g('ent-name')?.value.trim()    || '';
+  const email    = g('ent-email')?.value.trim()   || '';
+  const company  = g('ent-company')?.value.trim() || '';
+  const kitchens = g('ent-kitchens')?.value.trim()|| '';
+  const message  = g('ent-message')?.value.trim() || '';
+
+  errEl.style.display = 'none';
+  if(!name || !email || !company){ errEl.textContent='Nom, email et établissement requis.'; errEl.style.display='block'; return; }
+  if(!email.includes('@')){ errEl.textContent='Adresse email invalide.'; errEl.style.display='block'; return; }
+
+  btn.disabled = true; label.style.display='none'; spin.style.display='block';
+
+  const fullMessage = 'Demande de devis Entreprise\n\n'
+    + 'Établissement : '+company+'\n'
+    + (kitchens ? 'Nombre de cuisines estimé : '+kitchens+'\n' : '')
+    + (message ? '\nDétails :\n'+message : '');
+
+  try {
+    const r = await fetch('/.netlify/functions/contact', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, email, message: fullMessage, type:'entreprise' })
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Erreur envoi');
+    _showStep('success');
+    _set('success-msg', 'Votre demande a bien été envoyée. Nous vous contacterons à <strong>'+email+'</strong> dans les 24 heures.');
+    const ec = document.getElementById('success-email-confirm');
+    if(ec) ec.style.display = 'none';
+    const rd = document.getElementById('success-redirect');
+    if(rd) rd.style.display = 'none';
+  } catch(e){
+    errEl.textContent = e.message || 'Erreur lors de l\'envoi. Réessayez.';
+    errEl.style.display = 'block';
+    btn.disabled = false; label.style.display=''; spin.style.display='none';
+  }
 }
