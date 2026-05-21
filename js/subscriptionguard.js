@@ -143,9 +143,10 @@
     }
   }
 
-  // Invalider le cache si retour depuis Stripe (paiement réussi)
+  // Invalider le cache + sélection si retour depuis Stripe (paiement réussi)
   if (new URLSearchParams(window.location.search).get('payment') === 'success') {
     try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* ignore */ }
+    try { localStorage.removeItem('haccp_paywall_selection'); } catch (e) { /* ignore */ }
   }
 
   run();

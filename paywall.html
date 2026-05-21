@@ -259,6 +259,11 @@ body{min-height:100vh;background:var(--bg);font-family:var(--font);color:var(--t
     annual:  { solo: { display:'24€', sub:'/mois', saving:'290€/an — économisez 58€' }, multi: { display:'41€', sub:'/mois', saving:'490€/an — économisez 98€' } }
   };
 
+  // ── Reset bouton si retour depuis Stripe (bfcache) ──────
+  window.addEventListener('pageshow', function(e) {
+    if (e.persisted) resetBtn();
+  });
+
   // ── Init session ────────────────────────────────────────
   (function init() {
     ['haccp_supa_cfg_v1','haccpro_session','haccp_dash_cfg_v2'].forEach(function(k) {
@@ -288,10 +293,15 @@ body{min-height:100vh;background:var(--bg);font-family:var(--font);color:var(--t
       badge.className = 'reason-badge cancelled';
     }
 
-    // Pré-sélectionner le plan du cache
+    // Restaurer le plan/période sélectionnés (retour depuis Stripe ou rechargement)
     try {
-      var cached = JSON.parse(localStorage.getItem('haccp_sub_cache_v1') || '{}');
-      if (cached.plan && ['solo','multi'].includes(cached.plan)) selectPlan(cached.plan);
+      var saved = JSON.parse(localStorage.getItem('haccp_paywall_selection') || '{}');
+      if (saved.period && ['monthly','annual'].includes(saved.period)) setPeriod(saved.period);
+      if (saved.plan && ['solo','multi','enterprise'].includes(saved.plan)) selectPlan(saved.plan);
+      else {
+        var cached = JSON.parse(localStorage.getItem('haccp_sub_cache_v1') || '{}');
+        if (cached.plan && ['solo','multi'].includes(cached.plan)) selectPlan(cached.plan);
+      }
     } catch(e) {}
 
     // Pré-remplir le formulaire Entreprise si session disponible
@@ -355,6 +365,8 @@ body{min-height:100vh;background:var(--bg);font-family:var(--font);color:var(--t
   // ── Checkout Stripe ──────────────────────────────────────
   async function startCheckout() {
     if (!_token || !_tenantId) { showErr('Session expirée. Veuillez vous reconnecter.'); return; }
+    // Sauvegarder la sélection avant de quitter la page (restaurée au retour)
+    try { localStorage.setItem('haccp_paywall_selection', JSON.stringify({ plan: _plan, period: _period })); } catch(e) {}
     setLoading(true);
     try {
       var r = await fetch('/.netlify/functions/stripe-checkout', {
