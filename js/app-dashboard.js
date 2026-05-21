@@ -9621,7 +9621,7 @@ async function renderSubscription(){
 // ── Helpers Stripe dans le dashboard ─────────────────────────────
 async function _startCheckout(plan) {
   const tenantId = _profile?.tenant_id;
-  const token    = _session?.token || _session?.userToken || '';
+  const token    = _token || '';
   const email    = _profile?.email || '';
   if(!tenantId || !token){ toast('Session invalide — reconnectez-vous', 'warning'); return; }
 
@@ -9645,7 +9645,7 @@ async function _startCheckout(plan) {
 
 async function _openStripePortal() {
   const tenantId = _profile?.tenant_id;
-  const token    = _session?.token || _session?.userToken || '';
+  const token    = _token || '';
   if(!tenantId || !token){ toast('Session invalide — reconnectez-vous', 'warning'); return; }
 
   const btn = document.getElementById('btn-stripe-portal');
