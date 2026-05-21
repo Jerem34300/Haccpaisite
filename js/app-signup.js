@@ -254,58 +254,29 @@ async function doSignup(){
 
     const fullName = (_data.firstName + ' ' + _data.lastName).trim() || _data.company;
 
-    // 2. Créer le tenant
+    // 2. Créer tenant + profil + abonnement via proxy Netlify (service_role)
+    // Le JWT user seul ne peut pas insérer dans tenants (RLS) — le proxy contourne ça
     let tenantId = null;
     try {
-      const r2 = await fetch(`${_SU}/rest/v1/tenants`, {
+      const r2 = await fetch('/.netlify/functions/signup-setup', {
         method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_SK,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=representation'
-        },
-        body:JSON.stringify({ name:_data.company, type:_data.type, primary_color:_data.couleur })
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ userJwt:token, company:_data.company, type:_data.type, plan:_data.plan })
       });
-      if(r2.ok){
-        const tenants = await r2.json();
-        tenantId = Array.isArray(tenants) ? tenants[0]?.id : tenants?.id;
-      }
-    } catch(e){ /* tenant creation may be handled by DB trigger */ }
+      if(r2.ok){ const d = await r2.json(); tenantId = d.tenantId || null; }
+    } catch(e){ console.error('signup-setup proxy:', e); }
 
-    // 3. Créer/mettre à jour le profil
-    if(tenantId){
-      await fetch(`${_SU}/rest/v1/profiles`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_SK,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=minimal,resolution=merge-duplicates'
-        },
-        body:JSON.stringify({
-          id:userId, tenant_id:tenantId,
-          role:'directeur', full_name:fullName
-        })
-      }).catch(()=>{});
-
-      // 4. Créer l'abonnement (essai)
-      const planPrices = { solo:29, multi:49, enterprise:0 };
-      const trialEnd = new Date(Date.now() + 14*24*60*60*1000).toISOString();
-      await fetch(`${_SU}/rest/v1/subscriptions`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_SK,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=minimal'
-        },
-        body:JSON.stringify({
-          tenant_id:tenantId, plan:_data.plan,
-          price_per_month:planPrices[_data.plan] ?? 49,
-          status:'trial', trial_ends_at:trialEnd
-        })
-      }).catch(()=>{});
+    // Fallback local (proxy indisponible en dev)
+    if(!tenantId){
+      try {
+        const r2 = await fetch(`${_SU}/rest/v1/tenants`, {
+          method:'POST',
+          headers:{'Content-Type':'application/json','apikey':_SK,'Authorization':`Bearer ${token}`,'Prefer':'return=representation'},
+          body:JSON.stringify({ name:_data.company, type:_data.type })
+        });
+        if(r2.ok){ const t = await r2.json(); tenantId = Array.isArray(t) ? t[0]?.id : t?.id; }
+      } catch(e){}
     }
-
-    // 5. Sauvegarder la session
     localStorage.setItem('haccpro_session', JSON.stringify({
       token, userId, role:'directeur',
       tenantId, fullName, plan:_data.plan
