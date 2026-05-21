@@ -159,6 +159,22 @@ body{
   font-weight:900;text-transform:uppercase;letter-spacing:.3px;
   margin-left:6px;vertical-align:middle;
 }
+/* Toggle période */
+.period-toggle-su{display:flex;align-items:center;gap:0;margin-bottom:14px;
+  background:#f1f5f9;border-radius:10px;padding:3px;width:fit-content}
+.period-btn-su{padding:7px 16px;border:none;border-radius:8px;font-size:.78rem;font-weight:800;
+  cursor:pointer;font-family:var(--font);background:transparent;color:var(--muted);transition:all .2s}
+.period-btn-su.active{background:#fff;color:var(--navy);box-shadow:0 1px 6px rgba(0,0,0,.09)}
+.annual-save{background:var(--green);color:#fff;font-size:.58rem;font-weight:900;
+  padding:1px 5px;border-radius:5px;margin-left:5px;vertical-align:middle}
+.plan-price-annual{font-size:.68rem;color:var(--green);font-weight:800;margin-top:2px}
+/* Entreprise step */
+.ef-row-su{margin-bottom:12px}
+.ef-label-su{font-size:.75rem;font-weight:800;color:var(--text);display:block;margin-bottom:4px}
+.ef-input-su{width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;
+  font-size:.88rem;font-family:var(--font);color:var(--text);background:#f8fafc;outline:none;transition:border-color .15s}
+.ef-input-su:focus{border-color:var(--green);background:#fff}
+.ef-textarea-su{resize:vertical;min-height:80px}
 /* Recap */
 .recap-box{
   background:var(--bg);border-radius:14px;padding:18px;
@@ -333,35 +349,78 @@ body{
       <div class="step" id="step-3">
         <div class="step-title">Choisissez votre plan</div>
         <div class="step-sub">Étape 3 sur 4 — Essai gratuit 14 jours inclus, sans carte bancaire</div>
+
+        <!-- Toggle mensuel / annuel -->
+        <div class="period-toggle-su">
+          <button class="period-btn-su active" id="su-btn-monthly" onclick="suSetPeriod('monthly')">Mensuel</button>
+          <button class="period-btn-su" id="su-btn-annual" onclick="suSetPeriod('annual')">
+            Annuel <span class="annual-save">−2 mois</span>
+          </button>
+        </div>
+
         <div class="plan-grid">
           <div class="plan-card" id="plan-solo" onclick="selectPlan('solo')">
             <div class="plan-radio"></div>
             <div class="plan-info">
               <div class="plan-name">Solo</div>
               <div class="plan-desc">1 cuisine · Toutes les fonctionnalités HACCP incluses</div>
+              <div class="plan-price-annual" id="su-annual-solo"></div>
             </div>
-            <div class="plan-price">29€<span>/mois</span></div>
+            <div class="plan-price" id="su-price-solo">29€<span>/mois</span></div>
           </div>
           <div class="plan-card selected" id="plan-multi" onclick="selectPlan('multi')">
             <div class="plan-radio"></div>
             <div class="plan-info">
               <div class="plan-name">Multi <span class="plan-badge">Populaire</span></div>
-              <div class="plan-desc">Jusqu'à 3 cuisines · +19€/cuisine supp.</div>
+              <div class="plan-desc">Jusqu'à 3 cuisines</div>
+              <div class="plan-price-annual" id="su-annual-multi"></div>
             </div>
-            <div class="plan-price">49€<span>/mois</span></div>
+            <div class="plan-price" id="su-price-multi">49€<span>/mois</span></div>
           </div>
           <div class="plan-card" id="plan-enterprise" onclick="selectPlan('enterprise')">
             <div class="plan-radio"></div>
             <div class="plan-info">
               <div class="plan-name">Entreprise</div>
-              <div class="plan-desc">Cuisines illimitées · API · SSO · Accompagnement</div>
+              <div class="plan-desc">Cuisines illimitées · tarif sur mesure</div>
             </div>
             <div class="plan-price">Sur devis</div>
           </div>
         </div>
         <div class="err" id="err-3"></div>
-        <button class="btn-primary" onclick="goStep(4)">Continuer →</button>
+        <button class="btn-primary" onclick="continueFromPlan()">Continuer →</button>
         <button class="btn-back" onclick="goStep(2)">← Retour</button>
+      </div>
+
+      <!-- Étape Entreprise : formulaire de demande de devis -->
+      <div class="step" id="step-enterprise">
+        <div class="step-title">Demande de devis Entreprise</div>
+        <div class="step-sub">Notre équipe vous contactera dans les 24 heures</div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Votre nom complet *</label>
+          <input class="ef-input-su" id="ent-name" type="text" placeholder="Marie Dupont" maxlength="120">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Email *</label>
+          <input class="ef-input-su" id="ent-email" type="email" placeholder="marie@etablissement.fr" maxlength="200">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Nom de l'établissement ou du groupe *</label>
+          <input class="ef-input-su" id="ent-company" type="text" placeholder="Groupe Les Jardins" maxlength="120">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Nombre de cuisines estimé</label>
+          <input class="ef-input-su" id="ent-kitchens" type="number" min="4" placeholder="ex : 8">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Votre besoin (optionnel)</label>
+          <textarea class="ef-input-su ef-textarea-su" id="ent-message" placeholder="Type d'établissements, contraintes spécifiques, intégration souhaitée…" maxlength="1000"></textarea>
+        </div>
+        <div class="err" id="err-enterprise"></div>
+        <button class="btn-primary green" id="btn-enterprise" onclick="submitEnterpriseInquiry()">
+          <span id="btn-enterprise-label">Envoyer ma demande →</span>
+          <div class="spinner" id="btn-enterprise-spin"></div>
+        </button>
+        <button class="btn-back" onclick="_showStep(3)">← Retour aux plans</button>
       </div>
 
       <!-- Step 4 : Confirmation -->
