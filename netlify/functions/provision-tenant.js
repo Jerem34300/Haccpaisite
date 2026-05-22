@@ -88,12 +88,24 @@ exports.handler = async function(event) {
   // ── 3. Idempotence — profil avec tenant déjà existant ? ────────
   try {
     const existCheck = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=tenant_id,site_id&limit=1`,
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=tenant_id,site_id,role&limit=1`,
       { headers: svcHeaders }
     );
     if (existCheck.ok) {
       const existing = await existCheck.json();
       if (existing?.[0]?.tenant_id) {
+        // Récupérer le code du site existant
+        let existingSiteCode = null;
+        try {
+          const siteCheck = await fetch(
+            `${SUPABASE_URL}/rest/v1/sites?tenant_id=eq.${existing[0].tenant_id}&select=code&limit=1`,
+            { headers: svcHeaders }
+          );
+          if (siteCheck.ok) {
+            const sites = await siteCheck.json();
+            existingSiteCode = sites?.[0]?.code || null;
+          }
+        } catch(e) { /* ignore */ }
         return {
           statusCode: 200,
           headers: corsHeaders,
@@ -101,6 +113,8 @@ exports.handler = async function(event) {
             ok: true,
             tenant_id: existing[0].tenant_id,
             site_id:   existing[0].site_id || null,
+            site_code: existingSiteCode,
+            role:      existing[0].role || 'directeur',
             existing:  true
           })
         };
@@ -154,7 +168,14 @@ exports.handler = async function(event) {
 
   // ── 6. Créer le site principal ────────────────────────────────
   const finalSiteName = siteName || companyName;
-  const siteCode      = slug.slice(0, 8).toUpperCase();
+  // Code site : 3 premières lettres du nom + 2 chiffres aléatoires (ex: LAJ47)
+  const _siteLetters = (finalSiteName || companyName || 'SIT')
+    .toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 3)
+    .padEnd(3, 'X');
+  const siteCode = _siteLetters + String(Math.floor(Math.random() * 89 + 10));
 
   let siteId = null;
   try {
@@ -180,6 +201,8 @@ exports.handler = async function(event) {
   } catch(e) { console.warn('[provision-tenant] site:', e.message); }
 
   // ── 7. Créer ou mettre à jour le profil utilisateur ───────────
+  // Solo plan → cuisinier (accès direct PMS), sinon directeur (accès dashboard)
+  const profileRole = plan === 'solo' ? 'cuisinier' : 'directeur';
   try {
     const profResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method:  'POST',
@@ -188,7 +211,7 @@ exports.handler = async function(event) {
         id:        userId,
         tenant_id: tenantId,
         site_id:   siteId || null,
-        role:      'directeur',
+        role:      profileRole,
         full_name: fullName || companyName
       })
     });
@@ -201,6 +224,6 @@ exports.handler = async function(event) {
   return {
     statusCode: 200,
     headers:    corsHeaders,
-    body:       JSON.stringify({ ok: true, tenant_id: tenantId, site_id: siteId })
+    body:       JSON.stringify({ ok: true, tenant_id: tenantId, site_id: siteId, site_code: siteCode, role: profileRole })
   };
 };
