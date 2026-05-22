@@ -86,7 +86,8 @@ exports.handler = async function(event) {
     return { statusCode: 401, headers: corsHeaders, body: JSON.stringify({ error: e.message }) };
   }
 
-  // ── 3. Idempotence — profil avec tenant déjà existant ? ────────
+  // ── 3. Idempotence — vérifier l'état du profil existant ────────
+  let tenantId;
   try {
     const existCheck = await fetch(
       `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=tenant_id,site_id,role&limit=1`,
@@ -94,12 +95,12 @@ exports.handler = async function(event) {
     );
     if (existCheck.ok) {
       const existing = await existCheck.json();
-      if (existing?.[0]?.tenant_id) {
-        // Récupérer le code du site existant
+      if (existing?.[0]?.tenant_id && existing?.[0]?.site_id) {
+        // Tenant ET site déjà créés : idempotence complète
         let existingSiteCode = null;
         try {
           const siteCheck = await fetch(
-            `${SUPABASE_URL}/rest/v1/sites?tenant_id=eq.${existing[0].tenant_id}&select=code&limit=1`,
+            `${SUPABASE_URL}/rest/v1/sites?id=eq.${existing[0].site_id}&select=code&limit=1`,
             { headers: svcHeaders }
           );
           if (siteCheck.ok) {
@@ -113,41 +114,46 @@ exports.handler = async function(event) {
           body: JSON.stringify({
             ok: true,
             tenant_id: existing[0].tenant_id,
-            site_id:   existing[0].site_id || null,
+            site_id:   existing[0].site_id,
             site_code: existingSiteCode,
-            role:      existing[0].role || 'directeur',
+            role:      existing[0].role || (plan === 'solo' ? 'cuisinier' : 'directeur'),
             existing:  true
           })
         };
       }
+      // Tenant existe mais pas de site (créé par signup-setup) → réutiliser le tenant
+      if (existing?.[0]?.tenant_id) {
+        tenantId = existing[0].tenant_id;
+      }
     }
   } catch(e) { /* on continue */ }
 
-  // ── 4. Créer le tenant ─────────────────────────────────────────
-  const slug = (companyName || 'tenant')
-    .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
-    + '-' + Math.random().toString(36).slice(2, 7);
+  // ── 4. Créer le tenant (si pas encore existant) ───────────────
+  if (!tenantId) {
+    const slug = (companyName || 'tenant')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
+      + '-' + Math.random().toString(36).slice(2, 7);
 
-  let tenantId;
-  try {
-    const tenantResp = await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
-      method:  'POST',
-      headers: { ...svcHeaders, 'Prefer': 'return=representation' },
-      body:    JSON.stringify({ name: companyName, plan, slug, primary_color: color })
-    });
-    if (!tenantResp.ok) {
-      const err = await tenantResp.text();
-      console.error('[provision-tenant] tenant POST:', tenantResp.status, err);
-      throw new Error('Création tenant échouée : ' + err);
+    try {
+      const tenantResp = await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
+        method:  'POST',
+        headers: { ...svcHeaders, 'Prefer': 'return=representation' },
+        body:    JSON.stringify({ name: companyName, plan, slug, primary_color: color })
+      });
+      if (!tenantResp.ok) {
+        const err = await tenantResp.text();
+        console.error('[provision-tenant] tenant POST:', tenantResp.status, err);
+        throw new Error('Création tenant échouée : ' + err);
+      }
+      const tenants = await tenantResp.json();
+      tenantId = Array.isArray(tenants) ? tenants[0]?.id : tenants?.id;
+      if (!tenantId) throw new Error('ID tenant manquant dans la réponse');
+    } catch(e) {
+      console.error('[provision-tenant] tenant:', e.message);
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: e.message }) };
     }
-    const tenants = await tenantResp.json();
-    tenantId = Array.isArray(tenants) ? tenants[0]?.id : tenants?.id;
-    if (!tenantId) throw new Error('ID tenant manquant dans la réponse');
-  } catch(e) {
-    console.error('[provision-tenant] tenant:', e.message);
-    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: e.message }) };
   }
 
   // ── 5. Créer la subscription trial 14 jours ───────────────────

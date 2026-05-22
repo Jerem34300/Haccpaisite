@@ -289,9 +289,10 @@ async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
     } catch(e){ console.error('tenant GET:', e); }
   }
 
+  const _setupRole = plan === 'solo' ? 'cuisinier' : 'directeur';
   localStorage.setItem('haccpro_session', JSON.stringify({
     token, refreshToken, userId,
-    role:'directeur', tenantId, fullName:company, plan
+    role: _setupRole, tenantId, fullName:company, plan
   }));
   localStorage.setItem('haccpro_signup_data', JSON.stringify({
     company, type, sites:sd.sites || 1, plan
