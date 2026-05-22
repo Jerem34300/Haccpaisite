@@ -396,9 +396,11 @@ async function api(method, path, body, extraHeaders) {
 }
 
 /* ── Voir les données d'une entreprise depuis le dashboard ── */
-function viewTenantData(tenantId, tenantName) {
-  sessionStorage.setItem('sa_view_tenant', JSON.stringify({id: tenantId, name: tenantName}));
-  window.location.href = 'dashboard.html';
+function viewTenantData(tenantId, tenantName, plan) {
+  sessionStorage.setItem('sa_view_tenant', JSON.stringify({id: tenantId, name: tenantName, plan: plan || ''}));
+  // Plan solo → PMS cuisine, autres plans → dashboard supervision
+  var dest = (plan === 'solo' || plan === 'starter') ? 'cuisine.html' : 'dashboard.html';
+  window.location.href = dest;
 }
 
 /* ── Companies ── */
@@ -484,7 +486,7 @@ function renderCompanyDetail() {
       +'<div class="co-hd-right">'
         +'<span class="badge-plan '+(_planBadge(co.plan))+'">'+planLbl+'</span>'
         +'<button class="btn-edit-co" id="btn-hd-edit">✏️ Modifier</button>'
-        +'<button onclick="viewTenantData(\''+_esc(co.id)+'\',\''+_esc(co.name)+'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>'
+        +'<button onclick="viewTenantData(\''+_esc(co.id)+'\',\''+_esc(co.name)+'\',\''+_esc(co.plan||\'\')+\'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>'
       +'</div>'
     +'</div>'
     +'<div class="co-tabs">'

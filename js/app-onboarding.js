@@ -534,9 +534,10 @@ window.generatePMS = async function() {
   var tenantId   = null;
   var siteIds    = [];
   var siteCodes  = [];
-  var finalRole  = (_session && _session.role) || 'directeur';
   var validSites = _sites.filter(function(s){ return s && s.trim(); });
   var plan       = _session.plan || _signupData.plan || 'solo';
+  // Solo → cuisinier (accès direct PMS), autres plans → directeur (accès dashboard)
+  var finalRole  = plan === 'solo' ? 'cuisinier' : 'directeur';
 
   /* 1. Upload logo */
   if (_data.logoFile) {
@@ -571,10 +572,13 @@ window.generatePMS = async function() {
     if (!provResult.ok) throw new Error(provResult.error || 'Erreur lors de la configuration du compte');
 
     tenantId = provResult.tenant_id;
-    if (provResult.site_id) {
-      siteIds.push(provResult.site_id);
-      siteCodes.push(_slug(validSites[0] || _data.nom || 'cuisine'));
+    // Utiliser le code retourné par la fonction (ex: "LAJ47"), sinon fallback sur slug
+    if (provResult.site_id || provResult.site_code) {
+      if (provResult.site_id) siteIds.push(provResult.site_id);
+      siteCodes.push(provResult.site_code || _slug(validSites[0] || _data.nom || 'cuisine'));
     }
+    // Mettre à jour le rôle final si la fonction le retourne (idempotence)
+    if (provResult.role) finalRole = provResult.role;
   } catch(e) {
     console.error('[Onboarding] provision-tenant:', e);
     _showErr('err-8', e.message || 'Erreur lors de la configuration. Réessayez.');
@@ -688,6 +692,8 @@ window.generatePMS = async function() {
     sc.siteUUID  = siteIds.length ? siteIds[0] : null;
     sc.siteNom   = validSites[0] || _data.nom || '';
     sc.nom       = _data.nom || '';
+    sc.role      = finalRole;
+    sc.plan      = plan;
     if (tenantId) sc.tenantId = tenantId;
     localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
   } catch(e) { console.warn('[Onboarding] siteId:', e); }
@@ -707,8 +713,9 @@ window.generatePMS = async function() {
   var doneEl = document.getElementById('gen-done');
   if (doneEl) doneEl.style.display = 'block';
 
-  /* 10. Rediriger vers le dashboard */
-  setTimeout(function(){ window.location.href = 'dashboard.html'; }, 2000);
+  /* 10. Rediriger : solo → cuisine.html, multi/entreprise → dashboard.html */
+  var dest = plan === 'solo' ? 'cuisine.html' : 'dashboard.html';
+  setTimeout(function(){ window.location.href = dest; }, 2000);
 };
 
 /* ─── Logo upload ─── */

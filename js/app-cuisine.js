@@ -1042,6 +1042,16 @@ function renderSP(){
   if(codeEl) codeEl.value=_sc.siteId||'';
   if(moisEl)moisEl.value=new Date().toISOString().slice(0,7); // toujours le mois actuel
 
+  // Bouton abonnement Stripe (solo plan uniquement)
+  const _abEl = document.getElementById('sp-abonnement');
+  if (_abEl && (_sc.role === 'cuisinier' || _sc.plan === 'solo')) {
+    _abEl.innerHTML = `<div style="margin:4px 0 12px">
+      <button onclick="closeSP();_cuiStripePortal()" style="width:100%;padding:12px;background:linear-gradient(135deg,#5C1E5A,#7e3d7e);color:#fff;border:none;border-radius:12px;font-size:.83rem;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
+        💳 Gérer mon abonnement
+      </button>
+    </div>`;
+  }
+
   const navCfg=S.navCfg||{},hid=navCfg.hidden||{};
   let order=navCfg.order||ALL.map(s=>s.id);
   // Inclure toutes les sections (built-in + custom) non encore dans l'ordre
@@ -16493,6 +16503,28 @@ function renderHomeWidgets(){
     +'onmouseup="wgCancelLongPress()" ontouchend="wgCancelLongPress()" ontouchmove="wgCancelLongPress()">'
     + (list.length ? _wgRenderGrid(null, list) : emptyHint)
     +'</div>';
+}
+
+// ── Gestion abonnement Stripe depuis cuisine.html (plan solo) ──
+async function _cuiStripePortal() {
+  const cfg = SupaEngine.cfg();
+  const token = cfg.token || cfg.userToken || '';
+  const tenantId = cfg.tenantId || '';
+  if (!token || !tenantId) {
+    window.location.href = 'paywall.html';
+    return;
+  }
+  try {
+    const r = await fetch('/.netlify/functions/stripe-portal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ tenantId, returnUrl: window.location.href })
+    });
+    const data = await r.json();
+    if (data.url) { window.location.href = data.url; return; }
+  } catch(e) { /* ignore */ }
+  // Fallback si pas encore de client Stripe (période trial)
+  window.location.href = 'paywall.html';
 }
 
 init();
