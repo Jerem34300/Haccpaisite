@@ -20,6 +20,7 @@
  */
 
 const SUPABASE_URL  = process.env.SUPABASE_URL;
+const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY;
 const SERVICE_KEY   = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 const svcHeaders = {
@@ -75,7 +76,7 @@ exports.handler = async function(event) {
   let userId;
   try {
     const meResp = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${userToken}` }
+      headers: { 'apikey': SUPABASE_ANON || SERVICE_KEY, 'Authorization': `Bearer ${userToken}` }
     });
     if (!meResp.ok) throw new Error('Token invalide');
     const me = await meResp.json();

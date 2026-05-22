@@ -124,14 +124,21 @@ async function doLogin() {
     } else if (ROLES_PMS.includes(role)) {
       const supaCfg = {
         userToken: data.access_token,
+        token: data.access_token,
         refreshToken: data.refresh_token || '',
         userEmail: email,
+        email: email,
         siteId: siteCode,
         siteNom: siteNom,
         tenantId: profile.tenant_id || '',
         userRole: role,
+        role: role,
+        plan: profile.plan || 'solo',
+        url: url,
+        anonKey: key,
       };
       localStorage.setItem('haccpro_supa_cfg', JSON.stringify(supaCfg));
+      localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(supaCfg));
       window.location.href = 'cuisine.html';
 
     } else {
