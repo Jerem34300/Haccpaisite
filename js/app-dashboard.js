@@ -60,6 +60,8 @@ let _knowledgeRecommendations=[]; // recommandations apprises (Netlify Blobs)
 let _tabletAlertsHistory=[]; // historique alertes tablettes
 let _alertDraftImageDataUrl=''; // dataURL image retrait lot
 let _photoReqFilters={period:'all',view:'all',zone:'all'};
+let _tempChartData=[]; // ENR19 records pour le graphique températures
+let _tempChartDays=7;  // fenêtre 7j ou 30j
 let _photoReqAlertsLoaded=false;
 let _currentPage='overview';
 const CFG_STORE='haccp_dash_cfg_v2';
@@ -1849,6 +1851,12 @@ function renderOverview(){
     </div>
   </div>
 
+  <!-- Tendance conformité 14j -->
+  <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:20px">
+    <div style="font-size:.75rem;font-weight:800;color:var(--navy);margin-bottom:10px">📊 Tendance conformité — 14 derniers jours</div>
+    <div style="height:130px;position:relative"><canvas id="ov-trend-canvas"></canvas></div>
+  </div>
+
   ${ncBlock}
   ${domHtml}
 
@@ -1862,6 +1870,7 @@ function renderOverview(){
   `;
 
   setContent(html);
+  setTimeout(() => _initOverviewTrendChart(), 60);
 }
 
 // ── Panel détail d\'une visite GMO ─────────────────
@@ -7515,6 +7524,7 @@ function renderPageENR(type) {
   html += `</div>`;
 
   setContent(html);
+  if (type === 'temperatures') setTimeout(() => _initTempCharts(_tempChartDays), 60);
 }
 
 function _pgSetView(type, view) {
@@ -7536,6 +7546,254 @@ function _pgSetView(type, view) {
   const bt = document.getElementById(`pg-btn-table-${type}`);
   if(bc){bc.style.background=view==='cards'?'var(--navy)':'#fff';bc.style.color=view==='cards'?'#fff':'var(--muted)';bc.style.borderColor=view==='cards'?'var(--navy)':'var(--border)';}
   if(bt){bt.style.background=view==='table'?'var(--navy)':'#fff';bt.style.color=view==='table'?'#fff':'var(--muted)';bt.style.borderColor=view==='table'?'var(--navy)':'var(--border)';}
+  if (type === 'temperatures') setTimeout(() => _initTempCharts(_tempChartDays), 60);
+}
+
+// ════════════════════════════════════════════════════
+// GRAPHIQUES CHART.JS
+// ════════════════════════════════════════════════════
+
+function _initTempCharts(days) {
+  _tempChartDays = days;
+  const canvas = document.getElementById('temp-trend-canvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  const enr19 = _tempChartData.filter(r => r.enr_type === 'enr19');
+  if (enr19.length === 0) {
+    canvas.parentElement.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:.75rem;color:var(--muted)">Aucune donnée ENR19</div>';
+    return;
+  }
+
+  // Date range
+  const endDate = new Date();
+  const dateArr = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(endDate);
+    d.setDate(d.getDate() - i);
+    dateArr.push(d.toISOString().slice(0, 10));
+  }
+
+  // Grouper par enc_id
+  const byEnc = {};
+  enr19.forEach(r => {
+    const id = r.data?.enc_id || '?';
+    const date = r.data?.date || r.recorded_at?.slice(0, 10);
+    if (!date) return;
+    const t = parseFloat(r.data?.temp);
+    if (isNaN(t)) return;
+    if (!byEnc[id]) byEnc[id] = {};
+    if (!byEnc[id][date]) byEnc[id][date] = [];
+    byEnc[id][date].push(t);
+  });
+
+  const COLORS = ['#3b82f6','#f97316','#10b981','#8b5cf6','#ef4444','#06b6d4','#f59e0b','#84cc16'];
+
+  const datasets = Object.entries(byEnc).map(([encId, dateMap], i) => {
+    // Détect freezer (congélateur) si températures < -10°C
+    const allTemps = Object.values(dateMap).flat();
+    const isFreezer = allTemps.some(t => t < -10);
+    return {
+      label: encId,
+      data: dateArr.map(d => {
+        const temps = dateMap[d];
+        if (!temps || temps.length === 0) return null;
+        return Math.round((temps.reduce((a, b) => a + b, 0) / temps.length) * 10) / 10;
+      }),
+      borderColor: COLORS[i % COLORS.length],
+      backgroundColor: COLORS[i % COLORS.length] + '18',
+      tension: 0.3,
+      spanGaps: true,
+      pointRadius: 3,
+      borderWidth: 2,
+      _isFreezer: isFreezer,
+    };
+  });
+
+  // Seuils réglementaires (lignes de référence)
+  const hasFreezer = datasets.some(d => d._isFreezer);
+  const hasFroid   = datasets.some(d => !d._isFreezer);
+  if (hasFroid) datasets.push({
+    label: 'Seuil froid +4°C',
+    data: dateArr.map(() => 4),
+    borderColor: '#dc2626',
+    borderDash: [5, 4],
+    borderWidth: 1.5,
+    pointRadius: 0,
+    fill: false,
+    tension: 0,
+  });
+  if (hasFreezer) datasets.push({
+    label: 'Seuil congél -18°C',
+    data: dateArr.map(() => -18),
+    borderColor: '#2563eb',
+    borderDash: [5, 4],
+    borderWidth: 1.5,
+    pointRadius: 0,
+    fill: false,
+    tension: 0,
+  });
+
+  const labels = dateArr.map(d => {
+    const [, m, day] = d.split('-');
+    return `${day}/${m}`;
+  });
+
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 10 }, padding: 8, boxWidth: 12 } },
+        tooltip: { callbacks: { label: ctx => ctx.raw !== null ? `${ctx.dataset.label}: ${ctx.raw}°C` : '—' } },
+      },
+      scales: {
+        y: {
+          title: { display: true, text: '°C', font: { size: 10 } },
+          grid: { color: 'rgba(0,0,0,.06)' },
+          ticks: { font: { size: 10 } },
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 0 } },
+      },
+    },
+  });
+
+  // Mettre à jour les boutons toggle
+  const b7  = document.getElementById('tmp-t-7');
+  const b30 = document.getElementById('tmp-t-30');
+  if (b7)  { b7.style.background  = days===7  ? 'var(--navy)' : '#fff'; b7.style.color  = days===7  ? '#fff' : 'var(--muted)'; b7.style.borderColor  = days===7  ? 'var(--navy)' : 'var(--border)'; }
+  if (b30) { b30.style.background = days===30 ? 'var(--navy)' : '#fff'; b30.style.color = days===30 ? '#fff' : 'var(--muted)'; b30.style.borderColor = days===30 ? 'var(--navy)' : 'var(--border)'; }
+}
+
+function _toggleTempDays(days) {
+  _initTempCharts(days);
+}
+
+function _initOverviewTrendChart() {
+  const canvas = document.getElementById('ov-trend-canvas');
+  if (!canvas || typeof Chart === 'undefined') return;
+
+  const existing = Chart.getChart(canvas);
+  if (existing) existing.destroy();
+
+  const today = new Date();
+  const dateArr = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    dateArr.push(d.toISOString().slice(0, 10));
+  }
+
+  const byDay = {};
+  dateArr.forEach(d => { byDay[d] = { total: 0, nc: 0 }; });
+
+  _records.forEach(r => {
+    const day = r.recorded_at?.slice(0, 10);
+    if (day && byDay[day] !== undefined) {
+      byDay[day].total++;
+      if (isNC(r)) byDay[day].nc++;
+    }
+  });
+
+  const scores = dateArr.map(d => {
+    const { total, nc } = byDay[d];
+    return total === 0 ? null : Math.round((1 - nc / total) * 100);
+  });
+
+  new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: dateArr.map(d => { const [, m, day] = d.split('-'); return `${day}/${m}`; }),
+      datasets: [{
+        label: 'Conformité',
+        data: scores,
+        backgroundColor: scores.map(v => v === null ? 'transparent' : v >= 90 ? '#bbf7d0' : v >= 75 ? '#fde68a' : '#fecaca'),
+        borderColor:      scores.map(v => v === null ? 'transparent' : v >= 90 ? '#16a34a' : v >= 75 ? '#d97706' : '#dc2626'),
+        borderWidth: 1.5,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ctx.raw !== null ? `Conformité: ${ctx.raw}%` : 'Aucune saisie' } },
+      },
+      scales: {
+        y: {
+          min: 0, max: 100,
+          ticks: { callback: v => v + '%', font: { size: 9 }, stepSize: 25 },
+          grid: { color: 'rgba(0,0,0,.06)' },
+        },
+        x: { grid: { display: false }, ticks: { font: { size: 9 }, maxRotation: 0 } },
+      },
+    },
+  });
+}
+
+function _quickExportPDF() {
+  const curM = new Date().toISOString().slice(0, 7);
+  const recs = _records.filter(r => r.recorded_at?.startsWith(curM));
+  if (recs.length === 0) { showToast('Aucune saisie ce mois', 'warn'); return; }
+
+  const moisLabel = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  const nc = recs.filter(r => isNC(r)).length;
+  const pct = Math.round((1 - nc / recs.length) * 100);
+
+  const sitesList = [...new Set(recs.map(r => r.site_id))].map(sid => {
+    const site = _sites.find(s => s.code === sid);
+    const sr = recs.filter(r => r.site_id === sid);
+    const snc = sr.filter(r => isNC(r)).length;
+    const spct = Math.round((1 - snc / sr.length) * 100);
+    const col = spct >= 90 ? '#16a34a' : spct >= 75 ? '#d97706' : '#dc2626';
+    return `<tr>
+      <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;font-size:12px">${escH(site?.name || sid)}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:12px">${sr.length}</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:12px;color:${col};font-weight:700">${spct}%</td>
+      <td style="padding:6px 10px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:12px;color:${snc > 0 ? '#dc2626' : '#16a34a'}">${snc}</td>
+    </tr>`;
+  }).join('');
+
+  const colGlob = pct >= 90 ? '#16a34a' : pct >= 75 ? '#d97706' : '#dc2626';
+  const printWin = window.open('', '_blank');
+  printWin.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Rapport HACCP — ${moisLabel}</title>
+  <style>
+    body{font-family:Arial,sans-serif;margin:0;padding:20px;color:#1e293b}
+    h1{font-size:18px;margin:0 0 4px}
+    .sub{font-size:12px;color:#64748b;margin-bottom:20px}
+    .kpi-row{display:flex;gap:16px;margin-bottom:20px}
+    .kpi{background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:10px;padding:12px 16px;flex:1;text-align:center}
+    .kpi-val{font-size:24px;font-weight:900;line-height:1}
+    .kpi-lbl{font-size:11px;color:#64748b;margin-top:3px}
+    table{width:100%;border-collapse:collapse;font-size:12px}
+    th{background:#0F2240;color:#fff;padding:8px 10px;text-align:left;font-size:11px}
+    @media print{button{display:none!important}}
+  </style></head><body>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+    <div><h1>Rapport HACCP — ${moisLabel}</h1><div class="sub">Généré le ${new Date().toLocaleDateString('fr-FR')} · ${recs.length} saisies · ${[...new Set(recs.map(r=>r.site_id))].length} site(s)</div></div>
+    <button onclick="window.print()" style="padding:8px 18px;background:#0F2240;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Imprimer</button>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val" style="color:${colGlob}">${pct}%</div><div class="kpi-lbl">Conformité globale</div></div>
+    <div class="kpi"><div class="kpi-val">${recs.length}</div><div class="kpi-lbl">Saisies totales</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:${nc>0?'#dc2626':'#16a34a'}">${nc}</div><div class="kpi-lbl">Non-conformités</div></div>
+    <div class="kpi"><div class="kpi-val">${[...new Set(recs.map(r=>r.site_id))].length}</div><div class="kpi-lbl">Sites actifs</div></div>
+  </div>
+  <h2 style="font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#64748b;margin-bottom:8px">Récapitulatif par site</h2>
+  <table><thead><tr>
+    <th>Site</th><th style="text-align:center">Saisies</th><th style="text-align:center">Conformité</th><th style="text-align:center">NC</th>
+  </tr></thead><tbody>${sitesList}</tbody></table>
+  </body></html>`);
+  printWin.document.close();
+  setTimeout(() => printWin.print(), 400);
 }
 
 function _renderCardsForType(type, cfg, recs) {
@@ -7603,6 +7861,22 @@ function _renderCardsForType(type, cfg, recs) {
         </div>
       </div>`;
     }
+
+    // ── Graphique tendance T°C ──────────────────────────────
+    _tempChartData = enr19;
+    html += `
+    <div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:.75rem;font-weight:800;color:var(--navy)">📈 Tendance des températures</span>
+        <div style="display:flex;gap:4px">
+          <button onclick="_toggleTempDays(7)" id="tmp-t-7"
+            style="padding:4px 10px;border-radius:8px;font-size:.7rem;font-weight:700;cursor:pointer;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-family:var(--font)">7j</button>
+          <button onclick="_toggleTempDays(30)" id="tmp-t-30"
+            style="padding:4px 10px;border-radius:8px;font-size:.7rem;font-weight:700;cursor:pointer;border:1.5px solid var(--border);background:#fff;color:var(--muted);font-family:var(--font)">30j</button>
+        </div>
+      </div>
+      <div style="height:200px;position:relative"><canvas id="temp-trend-canvas"></canvas></div>
+    </div>`;
 
     if (enr19.length > 0) {
       // Grouper par date puis par enc_id
@@ -7889,7 +8163,19 @@ function renderRapports() {
   const moisSet = [...new Set(_records.map(r=>r.recorded_at?.slice(0,7)).filter(Boolean))].sort().reverse();
   const curM = new Date().toISOString().slice(0,7);
 
+  const curMLabel = new Date().toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
   let html = `
+  <!-- Export rapide -->
+  <div style="background:linear-gradient(135deg,var(--navy),#1e3a6e);border-radius:16px;padding:18px 20px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:.9rem;font-weight:900;color:#fff;margin-bottom:4px">⚡ Export rapide — ${escH(curMLabel)}</div>
+      <div style="font-size:.72rem;color:rgba(255,255,255,.65)">Rapport PDF du mois en cours pour tous les sites</div>
+    </div>
+    <button onclick="_quickExportPDF()" style="padding:11px 20px;background:#fff;color:var(--navy);border:none;border-radius:12px;font-size:.82rem;font-weight:900;cursor:pointer;font-family:var(--font);white-space:nowrap;flex-shrink:0">
+      📥 Télécharger
+    </button>
+  </div>
+
   <div class="rapport-card">
     <div class="rapport-card-title">📄 Générer un rapport PDF</div>
     <div class="rapport-card-sub">Rapport complet des saisies PMS avec températures, conformités et non-conformités</div>
