@@ -1045,11 +1045,41 @@ function renderSP(){
   // Bouton abonnement Stripe (solo plan uniquement)
   const _abEl = document.getElementById('sp-abonnement');
   if (_abEl && (_sc.role === 'cuisinier' || _sc.plan === 'solo')) {
-    _abEl.innerHTML = `<div style="margin:4px 0 12px">
-      <button onclick="closeSP();_cuiStripePortal()" style="width:100%;padding:12px;background:linear-gradient(135deg,#5C1E5A,#7e3d7e);color:#fff;border:none;border-radius:12px;font-size:.83rem;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
-        💳 Gérer mon abonnement
-      </button>
-    </div>`;
+    function _renderSubBtn(status, trialEndsAt) {
+      let _trialBanner = '';
+      let _btnLabel = '💳 Gérer mon abonnement';
+      if (status === 'trial' && trialEndsAt) {
+        const _daysLeft = Math.ceil((new Date(trialEndsAt) - new Date()) / 86400000);
+        if (_daysLeft > 0) {
+          _trialBanner = `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:7px 10px;font-size:.76rem;font-weight:800;color:#166534;margin-bottom:8px;text-align:center">
+            Essai gratuit : ${_daysLeft} jour${_daysLeft > 1 ? 's' : ''} restant${_daysLeft > 1 ? 's' : ''}
+          </div>`;
+          _btnLabel = '⭐ Souscrire un abonnement';
+        }
+      }
+      _abEl.innerHTML = `<div style="margin:4px 0 12px">
+        ${_trialBanner}
+        <button onclick="closeSP();_cuiStripePortal()" style="width:100%;padding:12px;background:linear-gradient(135deg,#5C1E5A,#7e3d7e);color:#fff;border:none;border-radius:12px;font-size:.83rem;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px">
+          ${_btnLabel}
+        </button>
+      </div>`;
+    }
+    // Rendu initial depuis le cache (peut être vide au 1er chargement)
+    try {
+      const _c = JSON.parse(localStorage.getItem('haccp_sub_cache_v1') || '{}');
+      _renderSubBtn(_c.status, _c.trialEndsAt);
+    } catch(_e) { _renderSubBtn('trial', null); }
+    // Mise à jour async depuis Supabase si le cache est absent
+    const _cTenantId = _sc.tenantId || '';
+    const _cToken = _sc.token || _sc.userToken || '';
+    if (_cTenantId && _cToken && !localStorage.getItem('haccp_sub_cache_v1')) {
+      fetch(`${SUPABASE_URL}/rest/v1/subscriptions?tenant_id=eq.${_cTenantId}&select=status,trial_ends_at&limit=1`, {
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + _cToken }
+      }).then(r => r.json()).then(rows => {
+        const sub = rows?.[0];
+        if (sub) _renderSubBtn(sub.status, sub.trial_ends_at);
+      }).catch(() => {});
+    }
   }
 
   const navCfg=S.navCfg||{},hid=navCfg.hidden||{};
@@ -16510,8 +16540,18 @@ async function _cuiStripePortal() {
   const cfg = SupaEngine.cfg();
   const token = cfg.token || cfg.userToken || '';
   const tenantId = cfg.tenantId || '';
+
+  // En période d'essai (pas encore de client Stripe) → page souscription
+  try {
+    const _c = JSON.parse(localStorage.getItem('haccp_sub_cache_v1') || '{}');
+    if (_c.status === 'trial') {
+      window.location.href = 'paywall.html?reason=upgrade';
+      return;
+    }
+  } catch(_e) {}
+
   if (!token || !tenantId) {
-    window.location.href = 'paywall.html';
+    window.location.href = 'paywall.html?reason=upgrade';
     return;
   }
   try {
@@ -16523,8 +16563,7 @@ async function _cuiStripePortal() {
     const data = await r.json();
     if (data.url) { window.location.href = data.url; return; }
   } catch(e) { /* ignore */ }
-  // Fallback si pas encore de client Stripe (période trial)
-  window.location.href = 'paywall.html';
+  window.location.href = 'paywall.html?reason=upgrade';
 }
 
 init();

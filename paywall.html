@@ -278,17 +278,22 @@ body{min-height:100vh;background:var(--bg);font-family:var(--font);color:var(--t
     // Adapter le message selon la raison
     var params = new URLSearchParams(window.location.search);
     var reason = params.get('reason') || 'trial_expired';
-    if (reason === 'past_due') {
+    var badge = document.getElementById('reason-badge');
+    if (reason === 'upgrade') {
+      document.getElementById('banner-icon').textContent = '⭐';
+      document.getElementById('banner-title').textContent = 'Choisissez votre abonnement';
+      document.getElementById('banner-sub').textContent = 'Votre essai gratuit est en cours. Souscrivez maintenant pour continuer à utiliser HACC.PRO sans interruption.';
+      badge.textContent = 'Essai en cours';
+      badge.className = 'reason-badge trial';
+    } else if (reason === 'past_due') {
       document.getElementById('banner-icon').textContent = '⚠️';
       document.getElementById('banner-title').textContent = 'Paiement en attente';
       document.getElementById('banner-sub').textContent = 'Votre dernier paiement a échoué. Mettez à jour votre moyen de paiement.';
-      var badge = document.getElementById('reason-badge');
       badge.textContent = 'Paiement refusé';
       badge.className = 'reason-badge past_due';
     } else if (reason === 'cancelled') {
       document.getElementById('banner-icon').textContent = '😔';
       document.getElementById('banner-title').textContent = 'Abonnement résilié';
-      badge = document.getElementById('reason-badge');
       badge.textContent = 'Abonnement annulé';
       badge.className = 'reason-badge cancelled';
     }
