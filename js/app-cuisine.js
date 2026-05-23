@@ -1045,7 +1045,7 @@ function renderSP(){
   // Bouton abonnement Stripe (solo plan uniquement)
   const _abEl = document.getElementById('sp-abonnement');
   if (_abEl && (_sc.role === 'cuisinier' || _sc.plan === 'solo')) {
-    function _renderSubBtn(status, trialEndsAt) {
+    const _renderSubBtn = (status, trialEndsAt) => {
       let _trialBanner = '';
       let _btnLabel = '💳 Gérer mon abonnement';
       if (status === 'trial' && trialEndsAt) {
@@ -1063,7 +1063,7 @@ function renderSP(){
           ${_btnLabel}
         </button>
       </div>`;
-    }
+    };
     // Rendu initial depuis le cache (peut être vide au 1er chargement)
     try {
       const _c = JSON.parse(localStorage.getItem('haccp_sub_cache_v1') || '{}');
