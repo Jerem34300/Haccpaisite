@@ -316,10 +316,15 @@ async function saLogin() {
   if (!email || !pass) { showLoginErr('Email et mot de passe requis'); return; }
 
   btn.disabled = true; lbl.style.display = 'none'; spin.style.display = 'block';
+
+  var _ctrl = new AbortController();
+  var _timer = setTimeout(function(){ _ctrl.abort(); }, 20000);
+
   try {
     var r = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
       method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_ANON},
-      body: JSON.stringify({email, password:pass})
+      body: JSON.stringify({email, password:pass}),
+      signal: _ctrl.signal
     });
     var d = await r.json();
     if (!d.access_token) throw new Error(_frErr(d.error_description || d.msg || ''));
@@ -328,18 +333,22 @@ async function saLogin() {
     var pr = await fetch('/.netlify/functions/admin-proxy', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+d.access_token},
-      body: JSON.stringify({method:'GET', path:'/rest/v1/profiles?id=eq.'+d.user.id+'&select=role&limit=1'})
+      body: JSON.stringify({method:'GET', path:'/rest/v1/profiles?id=eq.'+d.user.id+'&select=role&limit=1'}),
+      signal: _ctrl.signal
     });
     var profiles = pr.ok ? await pr.json() : [];
     var role = Array.isArray(profiles) ? (profiles[0]?.role || '') : '';
     if (role !== 'super_admin') throw new Error('Accès refusé — rôle insuffisant (' + (role||'inconnu') + ')');
 
+    clearTimeout(_timer);
     _token = d.access_token;
     _adminEmail = email;
     localStorage.setItem('haccpro_sa_session', JSON.stringify({token:_token, role:'super_admin', email}));
     showAdmin();
   } catch(e) {
-    showLoginErr(e.message);
+    clearTimeout(_timer);
+    var _msg = (e.name === 'AbortError') ? 'Délai dépassé — vérifiez votre connexion et réessayez' : (e.message || 'Erreur de connexion');
+    showLoginErr(_msg);
     btn.disabled = false; lbl.style.display = 'inline'; spin.style.display = 'none';
   }
 }
