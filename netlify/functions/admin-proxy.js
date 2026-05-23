@@ -84,10 +84,12 @@ exports.handler = async function(event) {
   }
 
   // ── 4. Vérifier le rôle admin dans profiles ───────────────
+  // Utilise la service_role key pour bypasser les politiques RLS
+  // (nécessaire pour les super_admin qui n'ont pas de tenant_id dans leur JWT)
   try {
     const profileRes = await fetch(
       `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role&limit=1`,
-      { headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${userJwt}` } }
+      { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
     );
     if (!profileRes.ok) throw new Error('Profil inaccessible');
     const profiles = await profileRes.json();

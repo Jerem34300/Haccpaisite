@@ -324,12 +324,14 @@ async function saLogin() {
     var d = await r.json();
     if (!d.access_token) throw new Error(_frErr(d.error_description || d.msg || ''));
 
-    // Verify super_admin role
-    var pr = await fetch(SUPA_URL + '/rest/v1/profiles?id=eq.' + d.user.id + '&select=role&limit=1', {
-      headers:{'apikey':SUPA_ANON,'Authorization':'Bearer '+d.access_token}
+    // Verify super_admin role via admin-proxy (service_role key — bypasse les politiques RLS)
+    var pr = await fetch('/.netlify/functions/admin-proxy', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+d.access_token},
+      body: JSON.stringify({method:'GET', path:'/rest/v1/profiles?id=eq.'+d.user.id+'&select=role&limit=1'})
     });
-    var profiles = await pr.json();
-    var role = profiles[0]?.role || '';
+    var profiles = pr.ok ? await pr.json() : [];
+    var role = Array.isArray(profiles) ? (profiles[0]?.role || '') : '';
     if (role !== 'super_admin') throw new Error('Accès refusé — rôle insuffisant (' + (role||'inconnu') + ')');
 
     _token = d.access_token;
