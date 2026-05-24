@@ -307,62 +307,53 @@ var _activeTab  = 'users';
 
 /* ── Auth ── */
 async function saLogin() {
-  var email = document.getElementById('sa-email').value.trim();
-  var pass  = document.getElementById('sa-pass').value;
-  var err   = document.getElementById('sa-err');
-  var btn   = document.getElementById('sa-btn');
-  var lbl   = document.getElementById('sa-btn-label');
-  var spin  = document.getElementById('sa-spin');
-  var status= document.getElementById('sa-status');
+  var emailEl  = document.getElementById('sa-email');
+  var passEl   = document.getElementById('sa-pass');
+  var btn      = document.getElementById('sa-btn');
+  var lbl      = document.getElementById('sa-btn-label');
+  var spin     = document.getElementById('sa-spin');
+  var statusEl = document.getElementById('sa-status');
 
-  err.style.display = 'none';
-  status.style.display = 'none';
+  // Lire les valeurs (parfois l'autofill mobile nécessite un léger délai)
+  var email = (emailEl ? emailEl.value : '').trim();
+  var pass  = passEl ? passEl.value : '';
+
+  hideLoginErr();
   if (!email || !pass) { showLoginErr('Renseignez l\'email et le mot de passe.'); return; }
 
-  btn.disabled = true;
-  lbl.style.display = 'none';
-  spin.style.display = 'block';
-  status.textContent = 'Connexion en cours…';
-  status.style.display = 'block';
+  if (btn) { btn.disabled = true; }
+  if (lbl) { lbl.textContent = 'Connexion…'; }
+  if (spin) { spin.style.display = 'block'; }
+  if (statusEl) { statusEl.textContent = 'Vérification en cours…'; statusEl.style.display = 'block'; }
 
-  var _ctrl = new AbortController();
-  var _timer = setTimeout(function(){ _ctrl.abort(); }, 20000);
+  var _ctrl  = new AbortController();
+  var _timer = setTimeout(function(){ _ctrl.abort(); }, 25000);
 
   try {
-    var r = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
-      method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_ANON},
-      body: JSON.stringify({email, password:pass}),
+    var r = await fetch('/.netlify/functions/superadmin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: pass }),
       signal: _ctrl.signal
     });
-    var d = await r.json();
-    if (!d.access_token) throw new Error(_frErr(d.error_description || d.msg || ''));
-
-    status.textContent = 'Vérification du rôle…';
-
-    // Verify super_admin role via admin-proxy (service_role key — bypasse les politiques RLS)
-    var pr = await fetch('/.netlify/functions/admin-proxy', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+d.access_token},
-      body: JSON.stringify({method:'GET', path:'/rest/v1/profiles?id=eq.'+d.user.id+'&select=role&limit=1'}),
-      signal: _ctrl.signal
-    });
-    var profiles = pr.ok ? await pr.json() : [];
-    var role = Array.isArray(profiles) ? (profiles[0]?.role || '') : '';
-    if (role !== 'super_admin') throw new Error('Accès refusé — rôle insuffisant (' + (role||'inconnu') + ')');
-
     clearTimeout(_timer);
-    _token = d.access_token;
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Erreur ' + r.status);
+
+    _token      = d.access_token;
     _adminEmail = email;
-    localStorage.setItem('haccpro_sa_session', JSON.stringify({token:_token, role:'super_admin', email}));
+    localStorage.setItem('haccpro_sa_session', JSON.stringify({ token: _token, role: 'super_admin', email: email }));
     showAdmin();
   } catch(e) {
     clearTimeout(_timer);
-    var _msg = (e.name === 'AbortError') ? 'Délai dépassé (20s) — connexion trop lente, réessayez' : (e.message || 'Erreur de connexion');
-    showLoginErr(_msg);
-    btn.disabled = false;
-    lbl.style.display = '';
-    spin.style.display = 'none';
-    status.style.display = 'none';
+    var msg = (e.name === 'AbortError')
+      ? 'Délai dépassé (25s) — connexion trop lente, réessayez'
+      : (e.message || 'Erreur de connexion');
+    showLoginErr(msg);
+    if (btn)      { btn.disabled = false; }
+    if (lbl)      { lbl.textContent = 'Accéder →'; }
+    if (spin)     { spin.style.display = 'none'; }
+    if (statusEl) { statusEl.style.display = 'none'; }
   }
 }
 
@@ -374,8 +365,15 @@ function saLogout() {
 }
 
 function showLoginErr(msg) {
+  // Inline error
   var el = document.getElementById('sa-err');
-  el.textContent = msg; el.style.display = 'block';
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+  // Toast fixe en bas d'écran — toujours visible quoi qu'il arrive
+  toast(msg, 'danger');
+}
+function hideLoginErr() {
+  var el = document.getElementById('sa-err');
+  if (el) { el.style.display = 'none'; }
 }
 
 function _frErr(msg) {
