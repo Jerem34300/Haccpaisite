@@ -39,11 +39,12 @@ button{font-family:var(--font)}
 .lf label{display:block;font-size:.67rem;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
 .lf input{width:100%;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
 .lf input:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
-.btn-connect{width:100%;padding:14px;margin-top:6px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-connect{width:100%;padding:14px;margin-top:6px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px}
 .btn-connect:hover{background:var(--navy2)}
-.btn-connect:disabled{opacity:.6;pointer-events:none}
-.login-err{font-size:.78rem;font-weight:700;color:var(--danger);background:var(--danger-bg);border-radius:8px;padding:9px 12px;margin-top:12px;display:none;text-align:center}
-.spin{width:15px;height:15px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+.btn-connect:disabled{opacity:.55;pointer-events:none}
+.login-err{font-size:.85rem;font-weight:800;color:var(--danger);background:var(--danger-bg);border:2px solid var(--danger);border-radius:10px;padding:12px 14px;margin-top:14px;display:none;text-align:center}
+.login-status{font-size:.8rem;font-weight:700;color:var(--muted);text-align:center;margin-top:10px;display:none;min-height:20px}
+.spin{width:22px;height:22px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── Main Layout ── */
@@ -226,9 +227,10 @@ button{font-family:var(--font)}
         <input type="password" id="sa-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')saLogin()">
       </div>
       <button class="btn-connect" id="sa-btn" onclick="saLogin()">
-        <span id="sa-btn-label">Accéder →</span>
         <div class="spin" id="sa-spin"></div>
+        <span id="sa-btn-label">Accéder →</span>
       </button>
+      <div class="login-status" id="sa-status"></div>
       <div class="login-err" id="sa-err"></div>
     </div>
   </div>
@@ -305,51 +307,53 @@ var _activeTab  = 'users';
 
 /* ── Auth ── */
 async function saLogin() {
-  var email = document.getElementById('sa-email').value.trim();
-  var pass  = document.getElementById('sa-pass').value;
-  var err   = document.getElementById('sa-err');
-  var btn   = document.getElementById('sa-btn');
-  var lbl   = document.getElementById('sa-btn-label');
-  var spin  = document.getElementById('sa-spin');
+  var emailEl  = document.getElementById('sa-email');
+  var passEl   = document.getElementById('sa-pass');
+  var btn      = document.getElementById('sa-btn');
+  var lbl      = document.getElementById('sa-btn-label');
+  var spin     = document.getElementById('sa-spin');
+  var statusEl = document.getElementById('sa-status');
 
-  err.style.display = 'none';
-  if (!email || !pass) { showLoginErr('Email et mot de passe requis'); return; }
+  // Lire les valeurs (parfois l'autofill mobile nécessite un léger délai)
+  var email = (emailEl ? emailEl.value : '').trim();
+  var pass  = passEl ? passEl.value : '';
 
-  btn.disabled = true; lbl.style.display = 'none'; spin.style.display = 'block';
+  hideLoginErr();
+  if (!email || !pass) { showLoginErr('Renseignez l\'email et le mot de passe.'); return; }
 
-  var _ctrl = new AbortController();
-  var _timer = setTimeout(function(){ _ctrl.abort(); }, 20000);
+  if (btn) { btn.disabled = true; }
+  if (lbl) { lbl.textContent = 'Connexion…'; }
+  if (spin) { spin.style.display = 'block'; }
+  if (statusEl) { statusEl.textContent = 'Vérification en cours…'; statusEl.style.display = 'block'; }
+
+  var _ctrl  = new AbortController();
+  var _timer = setTimeout(function(){ _ctrl.abort(); }, 25000);
 
   try {
-    var r = await fetch(SUPA_URL + '/auth/v1/token?grant_type=password', {
-      method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_ANON},
-      body: JSON.stringify({email, password:pass}),
+    var r = await fetch('/.netlify/functions/superadmin-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: pass }),
       signal: _ctrl.signal
     });
-    var d = await r.json();
-    if (!d.access_token) throw new Error(_frErr(d.error_description || d.msg || ''));
-
-    // Verify super_admin role via admin-proxy (service_role key — bypasse les politiques RLS)
-    var pr = await fetch('/.netlify/functions/admin-proxy', {
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+d.access_token},
-      body: JSON.stringify({method:'GET', path:'/rest/v1/profiles?id=eq.'+d.user.id+'&select=role&limit=1'}),
-      signal: _ctrl.signal
-    });
-    var profiles = pr.ok ? await pr.json() : [];
-    var role = Array.isArray(profiles) ? (profiles[0]?.role || '') : '';
-    if (role !== 'super_admin') throw new Error('Accès refusé — rôle insuffisant (' + (role||'inconnu') + ')');
-
     clearTimeout(_timer);
-    _token = d.access_token;
+    var d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Erreur ' + r.status);
+
+    _token      = d.access_token;
     _adminEmail = email;
-    localStorage.setItem('haccpro_sa_session', JSON.stringify({token:_token, role:'super_admin', email}));
+    localStorage.setItem('haccpro_sa_session', JSON.stringify({ token: _token, role: 'super_admin', email: email }));
     showAdmin();
   } catch(e) {
     clearTimeout(_timer);
-    var _msg = (e.name === 'AbortError') ? 'Délai dépassé — vérifiez votre connexion et réessayez' : (e.message || 'Erreur de connexion');
-    showLoginErr(_msg);
-    btn.disabled = false; lbl.style.display = 'inline'; spin.style.display = 'none';
+    var msg = (e.name === 'AbortError')
+      ? 'Délai dépassé (25s) — connexion trop lente, réessayez'
+      : (e.message || 'Erreur de connexion');
+    showLoginErr(msg);
+    if (btn)      { btn.disabled = false; }
+    if (lbl)      { lbl.textContent = 'Accéder →'; }
+    if (spin)     { spin.style.display = 'none'; }
+    if (statusEl) { statusEl.style.display = 'none'; }
   }
 }
 
@@ -361,8 +365,15 @@ function saLogout() {
 }
 
 function showLoginErr(msg) {
+  // Inline error
   var el = document.getElementById('sa-err');
-  el.textContent = msg; el.style.display = 'block';
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+  // Toast fixe en bas d'écran — toujours visible quoi qu'il arrive
+  toast(msg, 'danger');
+}
+function hideLoginErr() {
+  var el = document.getElementById('sa-err');
+  if (el) { el.style.display = 'none'; }
 }
 
 function _frErr(msg) {
