@@ -8,8 +8,8 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v386';
-const CDN_CACHE_NAME = 'haccpro-cdn-v386';
+const CACHE_NAME = 'haccpro-v387';
+const CDN_CACHE_NAME = 'haccpro-cdn-v387';
 
 // Assets à mettre en cache dès l'installation
 // ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
@@ -49,6 +49,7 @@ const NETWORK_ONLY_PATTERNS = [
   /auth\/v1\//,
   /rest\/v1\//,
   /storage\/v1\//,
+  /superadmin\.html/,  // Page admin : jamais servie depuis le cache (sécurité + fraîcheur)
 ];
 
 function isNetworkOnly(url) {

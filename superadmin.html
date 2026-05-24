@@ -39,11 +39,12 @@ button{font-family:var(--font)}
 .lf label{display:block;font-size:.67rem;font-weight:800;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
 .lf input{width:100%;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px;padding:12px 14px;font-size:.9rem;color:var(--text);font-family:var(--font);outline:none;transition:all .2s}
 .lf input:focus{border-color:var(--green);background:#fff;box-shadow:0 0 0 3px rgba(141,198,63,.12)}
-.btn-connect{width:100%;padding:14px;margin-top:6px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-connect{width:100%;padding:14px;margin-top:6px;background:var(--navy);color:#fff;border:none;border-radius:14px;font-size:.95rem;font-weight:900;cursor:pointer;font-family:var(--font);transition:all .2s;display:flex;align-items:center;justify-content:center;gap:10px}
 .btn-connect:hover{background:var(--navy2)}
-.btn-connect:disabled{opacity:.6;pointer-events:none}
-.login-err{font-size:.78rem;font-weight:700;color:var(--danger);background:var(--danger-bg);border-radius:8px;padding:9px 12px;margin-top:12px;display:none;text-align:center}
-.spin{width:15px;height:15px;border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;display:none}
+.btn-connect:disabled{opacity:.55;pointer-events:none}
+.login-err{font-size:.85rem;font-weight:800;color:var(--danger);background:var(--danger-bg);border:2px solid var(--danger);border-radius:10px;padding:12px 14px;margin-top:14px;display:none;text-align:center}
+.login-status{font-size:.8rem;font-weight:700;color:var(--muted);text-align:center;margin-top:10px;display:none;min-height:20px}
+.spin{width:22px;height:22px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:none;flex-shrink:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* ── Main Layout ── */
@@ -226,9 +227,10 @@ button{font-family:var(--font)}
         <input type="password" id="sa-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')saLogin()">
       </div>
       <button class="btn-connect" id="sa-btn" onclick="saLogin()">
-        <span id="sa-btn-label">Accéder →</span>
         <div class="spin" id="sa-spin"></div>
+        <span id="sa-btn-label">Accéder →</span>
       </button>
+      <div class="login-status" id="sa-status"></div>
       <div class="login-err" id="sa-err"></div>
     </div>
   </div>
@@ -311,11 +313,17 @@ async function saLogin() {
   var btn   = document.getElementById('sa-btn');
   var lbl   = document.getElementById('sa-btn-label');
   var spin  = document.getElementById('sa-spin');
+  var status= document.getElementById('sa-status');
 
   err.style.display = 'none';
-  if (!email || !pass) { showLoginErr('Email et mot de passe requis'); return; }
+  status.style.display = 'none';
+  if (!email || !pass) { showLoginErr('Renseignez l\'email et le mot de passe.'); return; }
 
-  btn.disabled = true; lbl.style.display = 'none'; spin.style.display = 'block';
+  btn.disabled = true;
+  lbl.style.display = 'none';
+  spin.style.display = 'block';
+  status.textContent = 'Connexion en cours…';
+  status.style.display = 'block';
 
   var _ctrl = new AbortController();
   var _timer = setTimeout(function(){ _ctrl.abort(); }, 20000);
@@ -328,6 +336,8 @@ async function saLogin() {
     });
     var d = await r.json();
     if (!d.access_token) throw new Error(_frErr(d.error_description || d.msg || ''));
+
+    status.textContent = 'Vérification du rôle…';
 
     // Verify super_admin role via admin-proxy (service_role key — bypasse les politiques RLS)
     var pr = await fetch('/.netlify/functions/admin-proxy', {
@@ -347,9 +357,12 @@ async function saLogin() {
     showAdmin();
   } catch(e) {
     clearTimeout(_timer);
-    var _msg = (e.name === 'AbortError') ? 'Délai dépassé — vérifiez votre connexion et réessayez' : (e.message || 'Erreur de connexion');
+    var _msg = (e.name === 'AbortError') ? 'Délai dépassé (20s) — connexion trop lente, réessayez' : (e.message || 'Erreur de connexion');
     showLoginErr(_msg);
-    btn.disabled = false; lbl.style.display = 'inline'; spin.style.display = 'none';
+    btn.disabled = false;
+    lbl.style.display = '';
+    spin.style.display = 'none';
+    status.style.display = 'none';
   }
 }
 
