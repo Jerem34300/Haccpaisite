@@ -508,7 +508,7 @@ function renderCompanyDetail() {
       +'<div class="co-hd-right">'
         +'<span class="badge-plan '+(_planBadge(co.plan))+'">'+planLbl+'</span>'
         +'<button class="btn-edit-co" id="btn-hd-edit">✏️ Modifier</button>'
-        +'<button onclick="viewTenantData(\''+_esc(co.id)+'\',\''+_esc(co.name)+'\',\''+_esc(co.plan||\'\')+\'\')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>'
+        +`<button onclick="viewTenantData('${_esc(co.id)}','${_esc(co.name)}','${_esc(co.plan||'')}')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>`
       +'</div>'
     +'</div>'
     +'<div class="co-tabs">'
