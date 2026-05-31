@@ -65,7 +65,7 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 - **Icônes PWA manquantes** — `manifest.json`/`sw.js` référencent `favicon-32/icon-192/icon-512/apple-touch-icon.png` : aucune n'existe (seul `favicon.svg`) → PWA non installable sur tablette. *(vérifié)*
 
 ### Conformité température (passe dédiée)
-- **`app-cuisine.js:1862` (ENR23 réception)** — seuil fixe `≤ 4°C` quel que soit le produit → un surgelé livré à −5°C passe « conforme ». *(vérifié)*
+- **`app-cuisine.js:1862` (ENR23 réception)** — seuil fixe `≤ 4°C` quel que soit le produit → un surgelé livré à −5°C passe « conforme ». *(vérifié)* **DÉCISION : ≤3°C (frais) / ≤−18°C (surgelés), via le sélecteur de type déjà présent sur les fiches réception (ENR08/ENR23) à câbler.**
 - **`app-cuisine.js:1802` (`gtv`)** — `parseFloat(x)` brut → « 8,5 » saisi au clavier devient `8` → **conformité calculée sur température fausse**. Le `replace(',','.')` n'existe qu'à `:3879`. *(vérifié)*
 
 ### Modules cassés
@@ -100,8 +100,8 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 
 ### Conformité cuisine (température + logique)
 - **Dépassement de durée = « non évalué » au lieu de « non-conforme »** : `tdiff(...,maxH)` retourne `null` si dépassé (`:1794`) → `cv()` → `null` → le cas le plus à risque n'est pas signalé (ENR07/08).
-- **Incohérence cuisson** : ENR04 `≥65°C` vs ENR07 `≥75°C` (`:1819,1832`) — à trancher (expert).
-- **Distribution froide incohérente** : `≤3` (SAM/ENR15) vs `≤6` (livraison) vs `≤10` (plateaux/self/départ ENR13/14/16) — les `≤10` sont permissifs, à valider (expert).
+- **Incohérence cuisson** : ENR04 `≥65°C` vs ENR07 `≥75°C` (`:1819,1832`). **DÉCISION : ENR07 (BF cuit) = ≥75°C ; tout le reste (dont ENR04) = ≥63°C.**
+- **Distribution froide incohérente** : `≤3` (SAM/ENR15) vs `≤10` (ENR13/14/16). **DÉCISION : distribution uniquement → ≤3°C (ENR13/14/16 passent de ≤10 à ≤3). Livraison (17/18), conditionnement/chaîne (10/11) et pique-nique (39) restent inchangés (≤6).**
 - Alerte CCP refroidissement (90/120 min) ratée si tablette en veille (`:14573`).
 - Températures silencieusement clampées (`qtempConfirm:15871`) ; `validateTemperature` code mort jamais appelé ; `encConforme` ne gère pas « ≥ » (enceintes chaudes).
 - Profil de plat mal détecté : « saumon fumé »/« filet de » → BF_CUIT, « salade de poulet » → BF_CUIT (`app-menu-cuisine.js:29-44`).
@@ -155,4 +155,7 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 | **6 — Paywall / provisioning** | dédup tenant/abo (`on conflict`) · `order` sur fetch abo · période de grâce post-paiement | Facturation cohérente |
 | **7 — Nettoyage** | supprimer `app-pms.js`/`pms-setup.html`, licence, `index.js`/`haccp.js` · vider les `catch {}` muets (logs) | Réduire la surface de bugs |
 
-> Décisions d'expert requises (lot 5) : seuils légaux retenus par ENR (cuisson 63/65/75 ; distribution froide 3/6/10 ; réception par type de produit ; surgelé −18°C).
+> **Décisions d'expert (lot 5) — VALIDÉES :**
+> - Cuisson : **ENR07 (BF cuit) ≥75°C** · tout le reste (dont ENR04 steaks hachés) **≥63°C**.
+> - Distribution froide : **≤3°C — distribution uniquement** (ENR13/14/16 ; ENR15 déjà ≤3). Livraison/conditionnement/pique-nique inchangés.
+> - Réception : **≤3°C (frais) / ≤−18°C (surgelés)** via le sélecteur de type déjà présent sur les fiches réception.
