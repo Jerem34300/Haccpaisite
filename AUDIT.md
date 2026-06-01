@@ -103,10 +103,10 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ — Dépassement de durée = non-conforme** : `tdiff` ne renvoie plus `null` quand `maxH` est dépassé → une durée trop longue (chaîne du froid/chaud rompue) est calculée et évaluée NON conforme par `cv()` au lieu d'être masquée en « non évalué » (ENR07/08).
 - ✅ **CORRIGÉ — Cuisson** : ENR07 (BF cuit) déjà à ≥75°C ; ENR04 passé de ≥65°C à ≥63°C → cohérent avec la décision (tout sauf ENR07 = ≥63°C).
 - ✅ **CORRIGÉ — Distribution froide** : ENR13/14/16 passés de ≤10°C à ≤3°C (cohérents avec ENR15) ET la constante `DISTRIB_FROID_MAX` du tab « distribution service » passée de 10 à 3 (décision validée). Livraison/conditionnement/pique-nique inchangés.
-- Alerte CCP refroidissement (90/120 min) ratée si tablette en veille (`:14573`).
+- ✅ **CORRIGÉ — Alerte CCP en veille** : recalcul des minuteries CCP au réveil de la tablette (`visibilitychange` → `ccpTimerRefreshAll` + réarmement de l'interval). L'état est déjà persisté ; l'alerte de seuil ratée pendant le sommeil s'affiche dès le retour à l'écran.
 - ✅ **CORRIGÉ — clamp T° / enceintes chaudes** : `qtempConfirm` enregistre la valeur réellement saisie (plus de clamp silencieux qui masquait une T° hors plage) ; `encConforme` gère désormais les consignes « ≥ X » (enceintes chaudes) en plus de « ≤ X » et « X à Y ». *(`validateTemperature` reste non câblé — mineur.)*
 - ✅ **CORRIGÉ — Profil de plat** : exceptions froides prioritaires ajoutées en tête de liste → « saumon/truite fumé(e) » et « salade de poulet/thon/composée… » détectés BF_CRU (et non plus BF_CUIT). Correction aussi du `\b` final après lettre accentuée qui cassait le match. 10 tests OK. *(le badge reste cliquable pour corriger une détection)*
-- Variante cochée après le 1er enregistrement → plat témoin jamais créé ; `_e33batch` ré-empilé à chaque save.
+- ✅ **CORRIGÉ — Variante / plat témoin** : génération désormais INCRÉMENTALE (par plat + variante) → cocher une variante après une 1re génération crée juste son témoin, sans dupliquer les autres ni l'oublier (fini le « tout ou rien » destructif). Les témoins soft-deletés restent régénérables.
 - `delRow:2949` — `_deleted_by` toujours « Cuisinier » (cherche `c.pin` sur un tableau de chaînes).
 - Parser dictée vocale non déterministe (regex globale `/gi` + `lastIndex` dans `.test()`) ; limite 80 car rejette tout le texte.
 

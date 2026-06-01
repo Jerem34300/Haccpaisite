@@ -15734,6 +15734,18 @@ function init(){
   if (Object.keys(_ccpTimers).length > 0 && !_ccpTimerInterval) {
     _ccpTimerInterval = setInterval(ccpTimerRefreshAll, 10000);
   }
+  // Réveil de la tablette : setInterval est gelé en veille → l'alerte CCP au seuil
+  // (refroidissement 120 min, etc.) était ratée. On recalcule dès que la page
+  // redevient visible et on réarme l'interval au besoin.
+  if (!window.__ccpVisHooked) {
+    window.__ccpVisHooked = true;
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && Object.keys(_ccpTimers).length > 0) {
+        if (!_ccpTimerInterval) _ccpTimerInterval = setInterval(ccpTimerRefreshAll, 10000);
+        ccpTimerRefreshAll();
+      }
+    });
+  }
   setInterval(autoBackup, 30*60*1000); // sauvegarde auto toutes les 30 min
   // NE PAS appeler autoBackup() ici — on attend _loadFromSupabase() pour éviter
   // de ré-enqueuer l'ancien localStorage avant que le cloud soit chargé
