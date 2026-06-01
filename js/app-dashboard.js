@@ -7554,7 +7554,18 @@ function renderPageENR(type) {
 function _pgSetView(type, view) {
   const cfg = PAGE_ENR_CFG[type];
   const f = getFilters();
-  let recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
+  // Même logique que renderPageENR : la cuisson inclut les services de
+  // distribution dynamiques (enr_distrib_*), sinon ils disparaissaient au
+  // basculement Cartes↔Tableau.
+  let recs;
+  if (type === 'cuisson') {
+    recs = _records.filter(r =>
+      cfg.enrTypes.includes(r.enr_type) ||
+      (r.enr_type && r.enr_type.startsWith('enr_distrib_'))
+    );
+  } else {
+    recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
+  }
   if (f.mois) recs = recs.filter(r => r.recorded_at?.startsWith(f.mois));
   if (f.site) recs = recs.filter(r => r.site_id === f.site);
   recs.sort((a,b) => b.recorded_at?.localeCompare(a.recorded_at||'')||0);

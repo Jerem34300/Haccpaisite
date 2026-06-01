@@ -84,7 +84,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - Timezone UTC vs local FR dans regroupements/filtres (`:966,7696` ; `app-menu-dashboard.js:207`).
 - ✅ **CORRIGÉ — Score 100 % sans saisie** : la conformité vaut désormais 0 % (et non 100 %) quand aucun relevé n'est fait → un site non documenté n'apparaît plus « conforme ».
 - Conformité calculée 2 façons (brut vs pondéré) qui se contredisent ; assiduité ENR19 surévaluée et fausse en multi-sites (`:1322-1326`).
-- Vue Tableau↔Cartes fait disparaître les fiches de distribution (`_pgSetView:7530`).
+- ✅ **CORRIGÉ — Vue Tableau↔Cartes** : `_pgSetView` inclut désormais les services de distribution dynamiques (`enr_distrib_*`) comme `renderPageENR` → les fiches de distribution ne disparaissent plus au basculement de vue.
 - ✅ **CORRIGÉ — hint `service_role`** retiré (il invitait à coller la clé service_role dans le navigateur → bypass total de la RLS). La création de comptes passe par `admin-proxy` côté serveur. *(Le plomberie client `SUPA_SERVICE_KEY` résiduelle, défaut vide, pourra être nettoyée au lot 7.)*
 
 ### Sync / session
