@@ -94,9 +94,9 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - subscriptionguard : cache 1h `allowed=false` bloque après paiement ; `fetchSubscription limit=1` sans `order` + double abonnement trial → paywall non déterministe ; boucle paywall post-paiement.
 
 ### RLS / SQL
-- **`schema.sql:352`** — chef_secteur lit tout le tenant (pas de filtre secteur). *(vérifié)*
-- **`schema.sql:370-382,402-414`** — UPDATE `pms_records`/`pms_config` par `site_code` sans `tenant_id` → cross-tenant sur collision de code.
-- **`schema.sql:393-400,417-423`** — config/GMO lisibles par tout le tenant (cuisinier inclus).
+- ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — chef_secteur borné à son secteur en lecture pms_records (filtre sur les sites de son `sector_id`).
+- ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — l'UPDATE `pms_records` par code site exige désormais aussi le bon `tenant_id` (défense en profondeur ; les codes sont déjà globalement uniques).
+- ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — `pms_config` : lecture tenant-wide réservée aux admins, le cuisinier ne lit que la config de son propre site ; `gmo` : lecture réservée aux directeur/siège/super_admin.
 - ENR modifiables par le cuisinier sans limite de date → intégrité de la preuve.
 - ✅ **CORRIGÉ — Générateur de code site** (`provision-tenant.js`) : 3 lettres + 4 base36 (~1,7M combinaisons) + retry sur collision 409.
 
