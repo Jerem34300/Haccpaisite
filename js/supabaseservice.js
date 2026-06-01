@@ -107,25 +107,24 @@ const SupaEngine = (() => {
       }
     } catch(e) { _supaLog('[TOKEN] getSession erreur : ' + e.message); }
 
-    // 2. Refresh manuel via refresh_token
-    if (c.refreshToken && c.url && c.anonKey) {
+    // 2. Refresh via le helper PARTAGÉ single-flight (évite les courses de rotation
+    //    entre authguard/supabaseservice qui réutilisaient un refresh_token périmé).
+    //    On relit d'abord le dernier refresh_token connu (une autre garde a pu le tourner).
+    try {
+      var canon = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || 'null');
+      if (canon && canon.refreshToken) c.refreshToken = canon.refreshToken;
+    } catch(e) { /* ignore */ }
+    if (c.refreshToken && c.url && c.anonKey && typeof window !== 'undefined' && window.__haccpSharedRefresh) {
       try {
-        var r = await fetch(c.url + '/auth/v1/token?grant_type=refresh_token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': c.anonKey },
-          body: JSON.stringify({ refresh_token: c.refreshToken })
-        });
-        if (r.ok) {
-          var d2 = await r.json();
-          if (d2.access_token) {
-            c.userToken = d2.access_token;
-            if (d2.refresh_token) c.refreshToken = d2.refresh_token;
-            saveCfgLocal(c);
-            _supaLog('[TOKEN] Rafraichi via refresh_token');
-            return d2.access_token;
-          }
+        var refreshed = await window.__haccpSharedRefresh(c.url, c.anonKey, c.refreshToken);
+        if (refreshed && refreshed.access_token) {
+          c.userToken = refreshed.access_token;
+          c.refreshToken = refreshed.refresh_token || c.refreshToken;
+          saveCfgLocal(c);
+          _supaLog('[TOKEN] Rafraichi via refresh partagé');
+          return refreshed.access_token;
         }
-      } catch(e) { _supaLog('[TOKEN] refresh_token erreur : ' + e.message); }
+      } catch(e) { _supaLog('[TOKEN] refresh partagé erreur : ' + e.message); }
     }
 
     // 3. Fallback : token stocke ou anon key

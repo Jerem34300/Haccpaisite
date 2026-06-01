@@ -85,7 +85,8 @@
 
   async function fetchSubscription(tenantId, token) {
     const url = (typeof SUPABASE_URL !== 'undefined' ? SUPABASE_URL : '')
-      + `/rest/v1/subscriptions?tenant_id=eq.${tenantId}&limit=1`
+      + `/rest/v1/subscriptions?tenant_id=eq.${tenantId}`
+      + `&order=created_at.desc&limit=1`  // déterministe : le plus récent (évite un vieux trial)
       + `&select=status,trial_ends_at,current_period_end,cancel_at_period_end,plan`;
     const anonKey = typeof SUPABASE_ANON_KEY !== 'undefined' ? SUPABASE_ANON_KEY : '';
     const r = await fetch(url, {
@@ -106,12 +107,11 @@
     // Pas de tenantId → laisser passer (l'onboarding gère ce cas)
     if (!tenantId || !token) return;
 
-    // Vérifier le cache d'abord
+    // On ne fait confiance qu'au cache POSITIF (accès autorisé). Un cache négatif
+    // n'est PAS court-circuité : on re-vérifie en live, sinon un paiement récent
+    // resterait bloqué jusqu'à 1 h (le webhook a activé l'abo mais le cache disait non).
     const cached = getCache();
-    if (cached && cached.tenantId === tenantId) {
-      if (!cached.allowed) {
-        goPaywall(cached.reason || 'expired');
-      }
+    if (cached && cached.tenantId === tenantId && cached.allowed) {
       return;
     }
 

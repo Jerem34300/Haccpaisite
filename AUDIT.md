@@ -88,9 +88,9 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ — hint `service_role`** retiré (il invitait à coller la clé service_role dans le navigateur → bypass total de la RLS). La création de comptes passe par `admin-proxy` côté serveur. *(Le plomberie client `SUPA_SERVICE_KEY` résiduelle, défaut vide, pourra être nettoyée au lot 7.)*
 
 ### Sync / session
-- 4 conventions de clés de session lues différemment par chaque garde ; `branding.js:7` lit la clé legacy en premier.
-- 3 mécanismes de refresh token concurrents + rotation refresh_token → déconnexions intempestives.
-- subscriptionguard : cache 1h `allowed=false` bloque après paiement ; `fetchSubscription limit=1` sans `order` + double abonnement trial → paywall non déterministe ; boucle paywall post-paiement.
+- ✅ **CORRIGÉ (partiel) — clés de session** : `branding.js` lit désormais la clé canonique `haccp_supa_cfg_v1` en PREMIER (legacy en repli) ; le refresh partagé propage le token à toutes les clés connues, ce qui réduit les divergences entre gardes.
+- ✅ **CORRIGÉ — refresh token concurrent** : helper partagé `window.__haccpSharedRefresh` (single-flight : 1 requête à la fois, résultat réutilisé) propageant le nouveau `refresh_token` à toutes les clés de session. authguard et supabaseservice y délèguent → plus de réutilisation d'un refresh_token déjà tourné → fin des déconnexions intempestives. 5 tests.
+- ✅ **CORRIGÉ — subscriptionguard** : on ne fait plus confiance au cache NÉGATIF (re-vérification live → un paiement récent débloque immédiatement, plus d'attente 1 h) ; `fetchSubscription` ajoute `order=created_at.desc` → choix déterministe du dernier abonnement (fini le faux paywall sur un vieux trial).
 
 ### RLS / SQL
 - ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — chef_secteur borné à son secteur en lecture pms_records (filtre sur les sites de son `sector_id`).

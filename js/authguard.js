@@ -19,6 +19,50 @@
    * @param {string} [options.loginUrl]     - URL de redirection si session invalide (défaut: '/')
    * @param {Function} [options.onSuccess]  - Callback appelé si la session est valide
    */
+  // Rafraîchissement de token PARTAGÉ et « single-flight » : une seule requête de
+  // refresh à la fois, dont le résultat est réutilisé par tous les appelants
+  // (authguard, supabaseservice, dashboard…). Les refresh_token Supabase tournent
+  // (usage unique) : sans coordination, un 2e mécanisme réutilisait l'ancien token
+  // déjà invalidé → échec → déconnexion intempestive. On propage aussi le nouveau
+  // token à TOUTES les clés de session connues pour qu'aucun lecteur ne reste périmé.
+  if (!window.__haccpSharedRefresh) {
+    window.__haccpSharedRefresh = function(url, anonKey, refreshToken) {
+      if (window.__haccpRefreshPromise) return window.__haccpRefreshPromise;
+      if (!refreshToken) return Promise.resolve(null);
+      window.__haccpRefreshPromise = (async function() {
+        try {
+          var r = await fetch(url + '/auth/v1/token?grant_type=refresh_token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'apikey': anonKey },
+            body: JSON.stringify({ refresh_token: refreshToken })
+          });
+          if (!r.ok) return null;
+          var d = await r.json();
+          if (!d.access_token) return null;
+          var out = { access_token: d.access_token, refresh_token: d.refresh_token || refreshToken };
+          ['haccp_supa_cfg_v1', 'haccpro_supa_cfg', 'haccpro_session', 'haccp_dash_cfg_v2'].forEach(function(k) {
+            try {
+              var s = JSON.parse(localStorage.getItem(k) || 'null');
+              if (s && (s.token || s.userToken)) {
+                if (s.token) s.token = out.access_token;
+                if (s.userToken) s.userToken = out.access_token;
+                s.refreshToken = out.refresh_token;
+                localStorage.setItem(k, JSON.stringify(s));
+              }
+            } catch (e) { /* ignore */ }
+          });
+          return out;
+        } catch (e) { return null; }
+        finally {
+          // Libère le verrou un peu après résolution : les refresh quasi-simultanés
+          // partagent le résultat, les suivants (bien plus tard) repartent à neuf.
+          setTimeout(function() { window.__haccpRefreshPromise = null; }, 3000);
+        }
+      })();
+      return window.__haccpRefreshPromise;
+    };
+  }
+
   async function runAuthGuard(options) {
     const sessionKey = options.sessionKey;
     const stableKey  = options.stableKey || null;
@@ -45,18 +89,9 @@
       } catch(e) { return 0; }
     }
 
+    // Délègue au refresh partagé single-flight (évite les courses de rotation).
     async function tryRefresh(url, anonKey, refreshToken) {
-      try {
-        var r = await fetch(url + '/auth/v1/token?grant_type=refresh_token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': anonKey },
-          body: JSON.stringify({ refresh_token: refreshToken })
-        });
-        if (!r.ok) return null;
-        var data = await r.json();
-        if (!data.access_token) return null;
-        return { access_token: data.access_token, refresh_token: data.refresh_token || refreshToken };
-      } catch(e) { return null; }
+      return window.__haccpSharedRefresh(url, anonKey, refreshToken);
     }
 
     try {
