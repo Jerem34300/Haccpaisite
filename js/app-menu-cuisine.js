@@ -906,13 +906,18 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
 </body></html>`;
 
   try {
-    const w = window.open('', '_blank', 'width=900,height=700');
-    if(!w){
-      if(typeof toast==='function') toast('Impression bloquée — autorisez les popups dans Chrome','danger');
-      return;
+    // Blob URL (compatible iOS Safari) si le helper est dispo, sinon ancien chemin.
+    if (typeof openPrintWindow === 'function') {
+      openPrintWindow(html);
+    } else {
+      const w = window.open('', '_blank', 'width=900,height=700');
+      if(!w){
+        if(typeof toast==='function') toast('Impression bloquée — autorisez les popups dans Chrome','danger');
+        return;
+      }
+      w.document.write(html);
+      w.document.close();
     }
-    w.document.write(html);
-    w.document.close();
     if(typeof toast==='function') toast('🖨️ '+realCount+' étiquettes prêtes à imprimer','success');
   } catch(e){
     console.warn('[menu print]', e);
