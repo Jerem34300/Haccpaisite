@@ -71,7 +71,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ — virgule décimale** (`app-cuisine.js`) — helper `_num()` (gère `,`→`.`) appliqué à la saisie (`onTS`, `onTM`, `onEncTS`, `distribDirect`, `validateTemperature`) ET à l'accesseur de conformité `gtv` → « 8,5 » n'est plus tronqué en 8. (8 tests OK.)
 
 ### Modules cassés
-- **`app-pms.js` + `pms-setup.html`** — écrit dans tables/colonnes inexistantes (`/enceintes`, `/points_controle`, colonnes `pms_config` fantômes), token dans une clé jamais écrite, redirige vers dashboard en simulant un succès, pas d'authguard.
+- ✅ **SUPPRIMÉ — `app-pms.js` + `pms-setup.html`** — page cassée (tables `enceintes`/`points_controle` inexistantes, token dans une mauvaise clé, faux succès, pas d'authguard) et redondante avec l'onboarding (`provision-tenant`). Retirée + référence de précache `sw.js` nettoyée (décision : suppression).
 - ✅ **CORRIGÉ — `tenants.plan` CHECK** — `provision-tenant.js` mappe désormais le plan commercial (solo/multi/enterprise) vers la valeur attendue par le CHECK (starter/pro/enterprise) avant l'INSERT tenant.
 - ✅ **CORRIGÉ — `schema.sql` subscriptions** — les colonnes `status/trial_ends_at/stripe_*/current_period_end/cancel_at_period_end` sont désormais incluses dans le `create table` canonique (+ index) → une installation neuve fonctionne sans dépendre de `stripe-migration.sql`.
 
