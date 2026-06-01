@@ -114,12 +114,12 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - 🟠 **PARTIEL — Étiquettes** : nom de produit désormais échappé (`escH`) dans le sélecteur d'étiquettes (`Pâté d'Auvergne` ne casse plus le HTML). *(reste : garde DLC si auto-calcul échoue, marges/parité A4, impression menu iOS via Blob URL.)*
 
 ### Provisioning
-- Double création tenant (signup-setup échoue sur le profil → tenant orphelin → re-création au login).
+- ✅ **CORRIGÉ — Double création tenant** : si la création du profil échoue après celle du tenant, `signup-setup` supprime le tenant orphelin (`rollbackTenant`) → un retry/re-login repart proprement au lieu d'accumuler des tenants.
 - Enceintes jamais persistées si le site a échoué (perdues au changement d'appareil).
 
 ### superadmin.html
 - Pas d'expiration/refresh token → UI figée après ~1h. Impersonation collante (sessionStorage sans TTL) ; cassée pour les plans solo (`cuisine.html` ne lit pas `sa_view_tenant`).
-- KPI faux : limites 1000/500, MRR sous-évalué si `price_per_month` non peuplé.
+- 🟠 **PARTIEL — KPI/MRR** : le MRR retombe désormais sur le tarif du plan (solo 29 / multi 49) quand `price_per_month` n'est pas peuplé → plus de sous-évaluation. *(les limites 1000/500 restent — non bloquant tant que < quelques centaines de tenants.)*
 - ✅ **CORRIGÉ (partiel) — Suppression utilisateur** : garde anti auto-suppression ajoutée (un admin ne peut plus supprimer son propre compte → plus de verrouillage). *(l'ordre profil/auth en cas d'échec partiel reste à durcir — mineur.)*
 
 ---

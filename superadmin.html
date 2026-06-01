@@ -1096,7 +1096,13 @@ async function showGlobalOverview() {
       if (trialExpired) { status = 'expired'; }
       if (stats[status] !== undefined) stats[status]++;
       else stats.expired++;
-      if (status === 'active') stats.mrr += parseFloat(sub.price_per_month || 0);
+      if (status === 'active') {
+        // MRR : si price_per_month n'est pas peuplé, on retombe sur le tarif du plan
+        // (solo 29 / multi 49) au lieu de compter 0 → MRR sous-évalué.
+        var ppm = parseFloat(sub.price_per_month || 0);
+        if (!ppm) ppm = ({ solo: 29, starter: 29, multi: 49, pro: 49 })[t.plan] || 0;
+        stats.mrr += ppm;
+      }
     });
 
     // ── Profils par tenant ────────────────────────────────────
