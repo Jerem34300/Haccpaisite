@@ -2957,6 +2957,9 @@ function saveRow(id){
   toast('✅ Saisie enregistrée !','success');
 }
 function clearRow(id){showConfirm('Effacer la saisie ?','Toutes les données saisies seront perdues.','🔄 Effacer',()=>{S[id]=S[id]||{};S[id].draft={};save();goTo(id);});}
+// Intégrité de la preuve : un cuisinier ne peut plus supprimer/modifier une fiche
+// au-delà de ce délai (jours). Ajustable selon la politique de l'établissement.
+const ENR_EDIT_LOCK_DAYS = 3;
 function delRow(id,idx){
   if(roCheck())return;
   const chef = (S.config?.chefs||[]).find(c=>c.pin===_adminPin)||{nom:'Cuisinier'};
@@ -2973,6 +2976,15 @@ function delRow(id,idx){
     }
     if(realIdx<0||realIdx>=lignes.length) return;
     row = lignes[realIdx];
+    // Verrou d'intégrité : fiche trop ancienne → non supprimable par le cuisinier.
+    const _rowDate = row._ts || row.date || row._created;
+    if(_rowDate){
+      const _ageDays = (Date.now() - new Date(_rowDate).getTime()) / 86400000;
+      if(_ageDays > ENR_EDIT_LOCK_DAYS){
+        toast(`🔒 Fiche verrouillée (plus de ${ENR_EDIT_LOCK_DAYS} j) — intégrité de la preuve. Voyez un responsable.`,'warning');
+        return;
+      }
+    }
     // Soft delete : marquer au lieu de supprimer
     row._deleted = true;
     row._deleted_by = chef.nom || 'Cuisinier';

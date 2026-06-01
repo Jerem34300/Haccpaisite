@@ -96,7 +96,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — chef_secteur borné à son secteur en lecture pms_records (filtre sur les sites de son `sector_id`).
 - ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — l'UPDATE `pms_records` par code site exige désormais aussi le bon `tenant_id` (défense en profondeur ; les codes sont déjà globalement uniques).
 - ✅ **CORRIGÉ (migration `rls_roles_fix.sql`)** — `pms_config` : lecture tenant-wide réservée aux admins, le cuisinier ne lit que la config de son propre site ; `gmo` : lecture réservée aux directeur/siège/super_admin.
-- ENR modifiables par le cuisinier sans limite de date → intégrité de la preuve.
+- ✅ **CORRIGÉ — ENR figées après N jours** : `delRow` refuse la suppression (soft-delete) par le cuisinier d'une fiche de plus de `ENR_EDIT_LOCK_DAYS` (3 j, ajustable) → intégrité de la preuve. *(Les responsables corrigent côté dashboard.)*
 - ✅ **CORRIGÉ — Générateur de code site** (`provision-tenant.js`) : 3 lettres + 4 base36 (~1,7M combinaisons) + retry sur collision 409.
 
 ### Conformité cuisine (température + logique)
