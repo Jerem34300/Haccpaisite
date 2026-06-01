@@ -66,7 +66,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - **Icônes PWA manquantes** — `manifest.json`/`sw.js` référencent `favicon-32/icon-192/icon-512/apple-touch-icon.png` : aucune n'existe (seul `favicon.svg`) → PWA non installable sur tablette. *(vérifié)*
 
 ### Conformité température (passe dédiée)
-- **`app-cuisine.js:1862` (ENR23 réception)** — seuil fixe `≤ 4°C` quel que soit le produit → un surgelé livré à −5°C passe « conforme ». *(vérifié)* **DÉCISION : ≤3°C (frais) / ≤−18°C (surgelés), via le sélecteur de type déjà présent sur les fiches réception (ENR08/ENR23) à câbler.**
+- ✅ **CORRIGÉ — ENR23 réception par type** — seuils câblés au sélecteur frais/surgelé : **frais ≤ +3°C / surgelé ≤ −18°C** (constantes `RECEP_FRAIS_MAX`/`RECEP_SURGEL_MAX` + helper `recepTcConf`, virgule décimale gérée). Alignés sur les 5 emplacements (conformité active `r23ConfGlobal`, legacy `AR.enr23`, widget de saisie, et 3 affichages d'historique/export). Un surgelé à −5°C est désormais **NON conforme** (12 tests OK). Cuisson (≥63/65°C) et distribution (chaud ≥63°C / froid ≤10°C service) déjà conformes au standard FR → inchangés.
 - ✅ **CORRIGÉ — virgule décimale** (`app-cuisine.js`) — helper `_num()` (gère `,`→`.`) appliqué à la saisie (`onTS`, `onTM`, `onEncTS`, `distribDirect`, `validateTemperature`) ET à l'accesseur de conformité `gtv` → « 8,5 » n'est plus tronqué en 8. (8 tests OK.)
 
 ### Modules cassés

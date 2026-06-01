@@ -1859,10 +1859,12 @@ const AR={
     const d=(S[sec]||{}).draft||{};
     const visuelOk=d.vehicule==='OUI'&&d.emballage==='OUI'&&d.etiquetage==='OUI'&&d.qualite==='OUI';
     const visuelHas=!!(d.vehicule&&d.emballage&&d.etiquetage&&d.qualite);
-    // Vérification T°C produits (seuil ≤+4°C pour produits frais par défaut)
-    const tc1=d.p1_tc!==undefined&&d.p1_tc!==''?parseFloat(d.p1_tc):null;
-    const tc2=d.p2_tc!==undefined&&d.p2_tc!==''?parseFloat(d.p2_tc):null;
-    const tcOk=(tc1===null||tc1<=4)&&(tc2===null||tc2<=4);
+    // Vérification T°C produits selon le type (frais ≤ +3°C / surgelé ≤ −18°C)
+    const tc1=d.p1_tc!==undefined&&d.p1_tc!==''?_num(d.p1_tc):null;
+    const tc2=d.p2_tc!==undefined&&d.p2_tc!==''?_num(d.p2_tc):null;
+    const tc1Ok=tc1===null||(d.p1_surge==='1'?tc1<=RECEP_SURGEL_MAX:tc1<=RECEP_FRAIS_MAX);
+    const tc2Ok=tc2===null||(d.p2_surge==='1'?tc2<=RECEP_SURGEL_MAX:tc2<=RECEP_FRAIS_MAX);
+    const tcOk=tc1Ok&&tc2Ok;
     const allOk=visuelOk&&tcOk;
     return{conforme:cv(allOk,visuelHas)};
   },
@@ -6734,8 +6736,16 @@ function getDistribServices(){
   ];
 }
 function saveDistribServices(svcs){ S.config=S.config||{}; S.config.distribServices=svcs; save(); registerDistribSvcPages(); _saveConfigToSupabase(); }
-const DISTRIB_FROID_MAX = 10;  // ≤ +10°C conforme
+const DISTRIB_FROID_MAX = 10;  // ≤ +10°C conforme (distribution/service)
 const DISTRIB_CHAUD_MIN = 63;  // ≥ +63°C conforme
+// Seuils de conformité à la réception, selon le type de produit (décision métier) :
+const RECEP_FRAIS_MAX  = 3;    // produit frais (réfrigéré) : conforme si ≤ +3°C
+const RECEP_SURGEL_MAX = -18;  // produit surgelé : conforme si ≤ −18°C
+// Conformité T°C d'un produit reçu : true/false, ou null si pas de mesure.
+function recepTcConf(tc, surge){
+  if(tc===undefined||tc===null||tc===''||isNaN(_num(tc))) return null;
+  return surge ? _num(tc)<=RECEP_SURGEL_MAX : _num(tc)<=RECEP_FRAIS_MAX;
+}
 
 // Structure draft: { date, midi_froid_plat, midi_froid_temp, midi_chaud_plat, midi_chaud_temp,
 //   midi_valide, midi_cuisinier, midi_heure,
@@ -7757,9 +7767,9 @@ function r23s(id,val){ S[ENR23_SEC]=S[ENR23_SEC]||{}; S[ENR23_SEC].draft=S[ENR23
 function r23ConfGlobal(){
   const d=(S[ENR23_SEC]||{}).draft||{};
   const vehiculeOk=d.vehicule==='OUI';
-  // Vérif T°C selon type (frais/surgelé)
-  const p1TcOk=!d.p1_tc||(d.p1_surge==='1'?parseFloat(d.p1_tc)<=-15:parseFloat(d.p1_tc)<=6);
-  const p2TcOk=!d.p2_tc||(d.p2_surge==='1'?parseFloat(d.p2_tc)<=-15:parseFloat(d.p2_tc)<=6);
+  // Vérif T°C selon type (frais ≤ +3°C / surgelé ≤ −18°C), virgule décimale tolérée
+  const p1TcOk=!d.p1_tc||(d.p1_surge==='1'?_num(d.p1_tc)<=RECEP_SURGEL_MAX:_num(d.p1_tc)<=RECEP_FRAIS_MAX);
+  const p2TcOk=!d.p2_tc||(d.p2_surge==='1'?_num(d.p2_tc)<=RECEP_SURGEL_MAX:_num(d.p2_tc)<=RECEP_FRAIS_MAX);
   const p1Ok=d.p1_emballage==='OUI'&&d.p1_etiquetage==='OUI'&&d.p1_qualite==='OUI'&&p1TcOk;
   const p2Ok=!d.p2_produit||(d.p2_emballage==='OUI'&&d.p2_etiquetage==='OUI'&&d.p2_qualite==='OUI'&&p2TcOk);
   return vehiculeOk&&p1Ok&&p2Ok;
@@ -7964,12 +7974,12 @@ function r23TempWidget(pfx){
   const id=pfx+'_tc';
   const surge=r23d(pfx+'_surge')==='1';
   const val=r23d(id);
-  const numV=(val!==undefined&&val!==''&&!isNaN(parseFloat(val)))?parseFloat(val):null;
+  const numV=(val!==undefined&&val!==''&&!isNaN(_num(val)))?_num(val):null;
   const slMin=surge?-40:-10, slMax=surge?5:20;
-  const slV=numV!==null?Math.max(slMin,Math.min(slMax,numV)):(surge?-18:3);
-  const confStr=numV!==null?(surge?(numV<=-15?'ok':'nc'):(numV<=6?'ok':'nc')):null;
+  const slV=numV!==null?Math.max(slMin,Math.min(slMax,numV)):(surge?RECEP_SURGEL_MAX:RECEP_FRAIS_MAX);
+  const confStr=numV!==null?(surge?(numV<=RECEP_SURGEL_MAX?'ok':'nc'):(numV<=RECEP_FRAIS_MAX?'ok':'nc')):null;
   const disp=numV!==null?numV.toFixed(1):'';
-  const consigne=surge?'Consigne ≤ -18°C (surgélation)':'Consigne ≤ +3°C (tol. +6°C)';
+  const consigne=surge?'Consigne ≤ −18°C (surgélation)':'Consigne ≤ +3°C';
   const badgeCls='distrib-temp-badge '+(confStr||'nd');
   const badgeTxt=(confStr==='ok'?'✅ ':confStr==='nc'?'❌ ':''  )+(disp?disp+'°C':'—');
   const sliderCls='distrib-temp-slider'+(surge?'':' froid');
@@ -7993,11 +8003,11 @@ function r23TempWidget(pfx){
 }
 
 function r23UpdateTemp(pfx, val){
-  const v=parseFloat(val); if(isNaN(v)) return;
+  const v=_num(val); if(isNaN(v)) return;
   const di=document.getElementById('r23di-'+pfx);
   if(di) di.textContent=v.toFixed(1);
   const surge=r23d(pfx+'_surge')==='1';
-  const conf=surge?(v<=-15?'ok':'nc'):(v<=6?'ok':'nc');
+  const conf=recepTcConf(v,surge)?'ok':'nc';
   const badge=document.getElementById('r23badge-'+pfx);
   if(badge){
     badge.className='distrib-temp-badge '+conf;
@@ -8138,13 +8148,13 @@ function r23HistoCard(){
       <div class="hr-card-data">
         <div class="hr-data-grid">
           <div class="hdi"><div class="hdi-label">Produit 1</div><div class="hdi-val">${escH(r.p1_produit||'—')}</div></div>
-          <div class="hdi"><div class="hdi-label">T°C prod. 1</div><div class="hdi-val ${r.p1_tc&&(r.p1_surge==='1'?parseFloat(r.p1_tc)<=-15:parseFloat(r.p1_tc)<=6)?'conf-oui':'conf-non'}">${r.p1_surge==='1'?'❄️ ':''}${p1T}</div></div>
+          <div class="hdi"><div class="hdi-label">T°C prod. 1</div><div class="hdi-val ${recepTcConf(r.p1_tc,r.p1_surge==='1')?'conf-oui':'conf-non'}">${r.p1_surge==='1'?'❄️ ':''}${p1T}</div></div>
           <div class="hdi"><div class="hdi-label">DLC prod. 1</div><div class="hdi-val">${r.p1_dlc||'—'}</div></div>
           <div class="hdi"><div class="hdi-label">Lot prod. 1</div><div class="hdi-val">${r.p1_lot||'—'}</div></div>
           ${r.p1_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p1_photo,'📷 Étiquette produit 1')}</div>`:''}
           ${r.p2_produit?`
           <div class="hdi"><div class="hdi-label">Produit 2</div><div class="hdi-val">${escH(r.p2_produit)}</div></div>
-          <div class="hdi"><div class="hdi-label">T°C prod. 2</div><div class="hdi-val ${r.p2_tc&&parseFloat(r.p2_tc)<=6?'conf-oui':'conf-non'}">${p2T}</div></div>
+          <div class="hdi"><div class="hdi-label">T°C prod. 2</div><div class="hdi-val ${recepTcConf(r.p2_tc,r.p2_surge==='1')?'conf-oui':'conf-non'}">${p2T}</div></div>
           <div class="hdi"><div class="hdi-label">DLC prod. 2</div><div class="hdi-val">${r.p2_dlc||'—'}</div></div>
           <div class="hdi"><div class="hdi-label">Lot prod. 2</div><div class="hdi-val">${r.p2_lot||'—'}</div></div>
           ${r.p2_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p2_photo,'📷 Étiquette produit 2')}</div>`:''}`:''}
@@ -8702,8 +8712,8 @@ function generatePDF(type){
     <table><thead><tr><th>Date</th><th>Fournisseur</th><th>Produit 1</th><th>T°C</th><th>Produit 2</th><th>T°C</th><th>Conf.</th></tr></thead>
     <tbody>${recep.map(r=>`<tr>
       <td>${fmtDate(r.date)}</td><td>${r.fournisseur||'—'}</td>
-      <td>${r.p1_produit||'—'}</td><td class="${r.p1_tc&&parseFloat(r.p1_tc)<=6?'ok':'nc'}">${fmtT(r.p1_tc)}</td>
-      <td>${r.p2_produit||'—'}</td><td class="${r.p2_tc&&parseFloat(r.p2_tc)<=6?'ok':'nc'}">${fmtT(r.p2_tc)}</td>
+      <td>${r.p1_produit||'—'}</td><td class="${recepTcConf(r.p1_tc,r.p1_surge==='1')?'ok':'nc'}">${fmtT(r.p1_tc)}</td>
+      <td>${r.p2_produit||'—'}</td><td class="${recepTcConf(r.p2_tc,r.p2_surge==='1')?'ok':'nc'}">${fmtT(r.p2_tc)}</td>
       <td class="${r.conforme==='NON'?'nc':'ok'}">${conf(r.conforme)}</td>
     </tr>`).join('')}</tbody></table>` : '<p class="empty">Aucune donnée</p>';
 
