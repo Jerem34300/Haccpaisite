@@ -111,7 +111,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ (partiel) — Parser dictée vocale** : suppression de l'usage de `.test()` sur la regex globale `/gi` (lastIndex stateful → résultats erratiques) ; filtrage des items « mot-clé seul » via `.replace().trim()` déterministe. *(limite 80 car : comportement conservé)*
 
 ### Impression
-- 🟠 **PARTIEL — Étiquettes** : nom de produit désormais échappé (`escH`) dans le sélecteur d'étiquettes (`Pâté d'Auvergne` ne casse plus le HTML). *(reste : garde DLC si auto-calcul échoue, marges/parité A4, impression menu iOS via Blob URL.)*
+- 🟠 **PARTIEL — Étiquettes** : nom de produit échappé (`escH`) ; **garde DLC** ajoutée (confirmation explicite avant d'imprimer/ajouter une étiquette sans date limite). *(reste : marges/parité A4 et impression menu iOS via Blob URL — nécessitent un test imprimante/tablette.)*
 
 ### Provisioning
 - ✅ **CORRIGÉ — Double création tenant** : si la création du profil échoue après celle du tenant, `signup-setup` supprime le tenant orphelin (`rollbackTenant`) → un retry/re-login repart proprement au lieu d'accumuler des tenants.

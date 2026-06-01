@@ -262,13 +262,27 @@ function e34qty(delta){
   if(el)el.textContent=_e34qty;
 }
 
+// Garde DLC : une étiquette sans date limite est une non-conformité.
+// Si la DLC est absente (auto-calcul impossible / produit DDM), on demande
+// confirmation explicite avant d'imprimer ou d'ajouter au lot.
+function _e34RequireDlc(d, proceed){
+  if(d && d.dlc){ proceed(); return; }
+  if(typeof showConfirm==='function'){
+    showConfirm('⚠️ Aucune DLC / DDM',
+      "Aucune date limite n'est renseignée pour cette étiquette. Continuer sans date ?",
+      '🖨️ Continuer sans DLC', proceed);
+  } else if(confirm("Aucune DLC renseignée. Continuer ?")) { proceed(); }
+}
+
 function e34AddBatch(){
   const d=e34d();
   if(!d.produit){toast('⚠️ Saisissez le nom du produit','warning');return;}
-  _e34batch.push({...d, nb:_e34qty, _sel:_e34sel});
-  toast(`✅ Ajouté au lot — ${_e34batch.length} type${_e34batch.length>1?'s':''}`, 'success');
-  // Reset pour nouvelle saisie, garder le format
-  S['enr34'].draft34={};_e34sel=null;_e34qty=1;save();autoBackup();renderNav();renderMain();
+  _e34RequireDlc(d, function(){
+    _e34batch.push({...d, nb:_e34qty, _sel:_e34sel});
+    toast(`✅ Ajouté au lot — ${_e34batch.length} type${_e34batch.length>1?'s':''}`, 'success');
+    // Reset pour nouvelle saisie, garder le format
+    S['enr34'].draft34={};_e34sel=null;_e34qty=1;save();autoBackup();renderNav();renderMain();
+  });
 }
 
 function e34RemoveBatch(i){ _e34batch.splice(i,1); renderNav(); renderMain(); }
@@ -295,11 +309,13 @@ function e34Save(){
         function(){ etiqAfterPrint(nb); renderMain(); toast('📄 Compteur mis à jour','success'); });
     },1500);
   }
-  if(sim&&!sim.rentreTotal&&sim.gaspillees>=Math.floor(etiqPerPage()/2)){
-    showConfirm('⚠️ Gaspillage détecté',
-      sim.gaspillees+' case'+(sim.gaspillees>1?'s':'')+' seront gaspillée'+(sim.gaspillees>1?'s':'')+'. 💡 Utilise le lot (➕) pour grouper avec d\'autres étiquettes.',
-      '🖨️ Imprimer quand même', doSave);
-  } else { doSave(); }
+  _e34RequireDlc(d, function(){
+    if(sim&&!sim.rentreTotal&&sim.gaspillees>=Math.floor(etiqPerPage()/2)){
+      showConfirm('⚠️ Gaspillage détecté',
+        sim.gaspillees+' case'+(sim.gaspillees>1?'s':'')+' seront gaspillée'+(sim.gaspillees>1?'s':'')+'. 💡 Utilise le lot (➕) pour grouper avec d\'autres étiquettes.',
+        '🖨️ Imprimer quand même', doSave);
+    } else { doSave(); }
+  });
 }
 
 function e34PrintBatch(){
