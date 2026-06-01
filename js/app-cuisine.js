@@ -6739,7 +6739,7 @@ function getDistribServices(){
   ];
 }
 function saveDistribServices(svcs){ S.config=S.config||{}; S.config.distribServices=svcs; save(); registerDistribSvcPages(); _saveConfigToSupabase(); }
-const DISTRIB_FROID_MAX = 10;  // ≤ +10°C conforme (distribution/service)
+const DISTRIB_FROID_MAX = 3;   // ≤ +3°C conforme (distribution — décision métier)
 const DISTRIB_CHAUD_MIN = 63;  // ≥ +63°C conforme
 // Seuils de conformité à la réception, selon le type de produit (décision métier) :
 const RECEP_FRAIS_MAX  = 3;    // produit frais (réfrigéré) : conforme si ≤ +3°C

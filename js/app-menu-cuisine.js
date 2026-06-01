@@ -25,6 +25,10 @@ const PROFILS = {
 
 // Ordre IMPORTANT : patterns spécifiques (cuits) AVANT patterns bare (crus)
 const KW = [
+  // --- Exceptions FROIDES prioritaires (avant les protéines cuites) ---
+  // « saumon fumé », « truite fumée »… = cru ; « salade de poulet/thon… » = cru.
+  { re:/\b(saumon|truite|maquereau|hareng|haddock|fl[ée]tan)\s+fum[ée]e?s?/i, p:'BF_CRU' },
+  { re:/\bsalade\s+(de\b|compos[ée]e?|pi[ée]montaise|c[ée]sar|niçoise|nicoise|verte)/i, p:'BF_CRU' },
   // --- BF_CUIT spécifiques (cuissons) ---
   { re:/\b(boeuf bourguignon|sauté de|blanquette|bourguignon|navarin|tajine|chili|gratin|hachis|lasagne|moussaka|paella|risotto|cassoulet|pot[- ]au[- ]feu|pot au feu|ragout|ragoût|carbonade|osso buco)\b/i, p:'BF_CUIT' },
   { re:/\b(rôti|roti|escalope|filet de|steak|cuisses?|saumon|poisson|cabillaud|colin|merlu|truite|côtes?|côtelettes?|epaule|épaule|poulet|dinde|veau|porc|bœuf|boeuf|agneau)\b/i, p:'BF_CUIT' },
