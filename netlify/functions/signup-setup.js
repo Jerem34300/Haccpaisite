@@ -157,6 +157,6 @@ exports.handler = async function(event) {
   return {
     statusCode: 200,
     headers: corsHeaders,
-    body: JSON.stringify({ tenantId, role: 'directeur' })
+    body: JSON.stringify({ tenantId, role: plan === 'solo' ? 'cuisinier' : 'directeur' })
   };
 };

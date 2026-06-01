@@ -19,15 +19,15 @@
 Une fiche peut être saisie, afficher « ✅ enregistré », et ne jamais remonter, sans signal :
 
 ```
-provision-tenant.js:191-201  → INSERT sites avec colonnes inexistantes (nom/type/siret/primary_color) → 400 avalé → site jamais créé
-signup-setup.js:99-141       → profil cuisinier créé sans site_id (et parfois tenant_id NULL)
-app-login.js:98-133          → écrit siteId:'' dans la session
-supabaseservice.js:267       → if(!c.siteId) → enqueue SKIP (fiche jamais mise en file)
-supabaseservice.js:335,388   → ou tenant_id NULL → POST sans tenant_id → RLS REJETTE (schema.sql:361-368)
-supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF, jamais réarmé
+provision-tenant.js:191-201  → ✅ CORRIGÉ : INSERT sites n'utilise plus que les colonnes réelles (name/code/tenant_id/address/config) ; extras (type/siret/couleur) dans config ; anti-collision (3 lettres + 4 base36, retry sur 409) ; échec désormais BLOQUANT
+signup-setup.js:99-141       → ✅ CORRIGÉ : rôle retourné cohérent (solo→cuisinier) ; le site est créé à l'onboarding via provision-tenant
+app-onboarding.js:603        → ✅ CORRIGÉ : sites supplémentaires sans colonne fantôme `nom`
+app-login.js:98-133          → siteId désormais peuplé (profile.site_id lié par provision-tenant)
+supabaseservice.js:267       → enqueue SKIP : déjà signalé par toast ; non bloquant une fois site_id présent
+supabaseservice.js:356       → ⏳ à traiter en Lot 5 : status='error' définitif à réarmer (dédup par _uuid)
 ```
 
-**Tant que cette chaîne n'est pas réparée, un client solo nouvellement onboardé ne peut rien faire remonter.**
+**Maillon racine réparé : un client nouvellement onboardé obtient bien un site (code unique) lié à son profil, donc les fiches peuvent remonter. Reste la résilience de la file (Lot 5).**
 
 ---
 
@@ -70,7 +70,7 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 
 ### Modules cassés
 - **`app-pms.js` + `pms-setup.html`** — écrit dans tables/colonnes inexistantes (`/enceintes`, `/points_controle`, colonnes `pms_config` fantômes), token dans une clé jamais écrite, redirige vers dashboard en simulant un succès, pas d'authguard.
-- **`schema.sql:32`** — `tenants.plan CHECK (starter/pro/enterprise)` vs code `solo/multi` → INSERT tenant rejeté → onboarding cassé (`provision-tenant.js:143`).
+- ✅ **CORRIGÉ — `tenants.plan` CHECK** — `provision-tenant.js` mappe désormais le plan commercial (solo/multi/enterprise) vers la valeur attendue par le CHECK (starter/pro/enterprise) avant l'INSERT tenant.
 - **`schema.sql:100-106`** — colonnes `status/trial_ends_at/stripe_*` créées uniquement par `stripe-migration.sql` (si non jouée → auth/paywall plante).
 
 ---
@@ -96,7 +96,7 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 - **`schema.sql:370-382,402-414`** — UPDATE `pms_records`/`pms_config` par `site_code` sans `tenant_id` → cross-tenant sur collision de code.
 - **`schema.sql:393-400,417-423`** — config/GMO lisibles par tout le tenant (cuisinier inclus).
 - ENR modifiables par le cuisinier sans limite de date → intégrité de la preuve.
-- Générateur de code site (`provision-tenant.js:185`) à fort risque de collision → site non créé (409).
+- ✅ **CORRIGÉ — Générateur de code site** (`provision-tenant.js`) : 3 lettres + 4 base36 (~1,7M combinaisons) + retry sur collision 409.
 
 ### Conformité cuisine (température + logique)
 - **Dépassement de durée = « non évalué » au lieu de « non-conforme »** : `tdiff(...,maxH)` retourne `null` si dépassé (`:1794`) → `cv()` → `null` → le cas le plus à risque n'est pas signalé (ENR07/08).
