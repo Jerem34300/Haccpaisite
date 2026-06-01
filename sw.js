@@ -8,8 +8,8 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v387';
-const CDN_CACHE_NAME = 'haccpro-cdn-v387';
+const CACHE_NAME = 'haccpro-v388';
+const CDN_CACHE_NAME = 'haccpro-cdn-v388';
 
 // Assets à mettre en cache dès l'installation
 // ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
@@ -150,16 +150,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // JS et CSS : Network-First avec fallback cache (garantit la version à jour)
+  // JS et CSS : Cache-First, lié à CACHE_NAME. Tous les assets d'une même version
+  // proviennent ainsi de la MÊME génération de cache → fini le mélange "app neuf +
+  // utils périmé" qui crashait le JS. Le rafraîchissement est atomique : il survient
+  // quand CACHE_NAME est bumpé (l'activate purge l'ancien cache, tout est re-fetché).
   if (url.includes('/js/') || url.includes('/css/') || url.match(/\.(js|css)(\?|$)/)) {
     event.respondWith(
-      fetch(request).then((response) => {
-        if (response && response.status === 200 && response.type === 'basic') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-        }
-        return response;
-      }).catch(() => caches.match(request))
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        });
+      })
     );
     return;
   }

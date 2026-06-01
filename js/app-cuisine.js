@@ -39,22 +39,24 @@ function save(){
     if(e.name==='QuotaExceededError'||e.code===22){
       try {
         const s2=JSON.parse(JSON.stringify(S));
-        const _photoKeys=['p1_photo','p2_photo','photo'];
         const _tasks=[];
-        ['enr23','enr31'].forEach(sec=>{
-          const d=(s2[sec]||{}).draft||{};
-          _photoKeys.forEach(k=>{
-            if(d[k]&&d[k].length>50000){
-              _tasks.push(new Promise(res=>_compressB64Async(d[k],0.4,c=>{d[k]=c;res();})));
+        // Compresse TOUTE image base64 volumineuse, quelle que soit la section ou le
+        // champ (avant : limité à enr23/enr31 → quota toujours dépassé ailleurs).
+        const _bigImg=v=>typeof v==='string'&&v.length>50000&&v.startsWith('data:image/');
+        const _scan=obj=>{
+          if(!obj||typeof obj!=='object') return;
+          Object.keys(obj).forEach(k=>{
+            const v=obj[k];
+            if(_bigImg(v)){
+              _tasks.push(new Promise(res=>_compressB64Async(v,0.4,c=>{obj[k]=c;res();})));
             }
           });
-          (s2[sec]?.lignes||[]).forEach(r=>{
-            _photoKeys.forEach(k=>{
-              if(r[k]&&r[k].length>50000){
-                _tasks.push(new Promise(res=>_compressB64Async(r[k],0.4,c=>{r[k]=c;res();})));
-              }
-            });
-          });
+        };
+        Object.keys(s2).forEach(sec=>{
+          const node=s2[sec];
+          if(!node||typeof node!=='object') return;
+          _scan(node.draft);
+          (node.lignes||[]).forEach(_scan);
         });
         Promise.all(_tasks).then(()=>{
           try{

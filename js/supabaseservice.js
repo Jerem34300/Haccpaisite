@@ -139,10 +139,20 @@ const SupaEngine = (() => {
 
   // ── Queue ─────────────────────────────────────────
   function getQueue() {
-    try { return JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY)||'[]'); } catch{ return []; }
+    const raw = localStorage.getItem(SUPA_QUEUE_KEY);
+    if (!raw) return [];
+    try { return JSON.parse(raw); }
+    catch(e){
+      // Ne PAS perdre silencieusement une queue corrompue : on en garde une copie
+      // (pour diagnostic/récupération) avant de repartir d'une queue vide.
+      try { localStorage.setItem(SUPA_QUEUE_KEY+'_corrupt_'+Date.now(), raw); } catch(_){}
+      console.error('[SupaEngine] queue corrompue — copie sauvegardée, reset à []');
+      return [];
+    }
   }
   function setQueue(q) {
-    try { localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q)); } catch(e){}
+    try { localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q)); }
+    catch(e){ console.error('[SupaEngine] échec persistance de la queue (quota ?) :', e && e.message); }
   }
   function qStats() {
     const q = getQueue();
@@ -256,7 +266,9 @@ const SupaEngine = (() => {
       }
     }
 
-    delete entry._fullPhotos;
+    // Ne libérer la pleine résolution que si TOUTES les photos sont passées.
+    // Sinon on la conserve pour ne pas perdre la preuve (réessai/récupération).
+    if (failed === 0) delete entry._fullPhotos;
     return { uploaded, failed };
   }
 
