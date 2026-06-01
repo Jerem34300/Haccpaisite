@@ -1639,8 +1639,11 @@ function tpSet(id,sec,vn){
   // 6. Auto-calc
   doAutoCalc(sec);
 }
-function onTS(id,sec,val){tpSet(id,sec,parseFloat(val));}
-function onTM(id,sec,val){const v=parseFloat(val);if(!isNaN(v))tpSet(id,sec,v);}
+// Parse numérique tolérant à la virgule décimale (clavier FR) : « 8,5 » → 8.5
+// (parseFloat brut s'arrête à la virgule → 8 → conformité calculée sur T° fausse).
+const _num = v => parseFloat(String(v==null?'':v).replace(',','.'));
+function onTS(id,sec,val){tpSet(id,sec,_num(val));}
+function onTM(id,sec,val){const v=_num(val);if(!isNaN(v))tpSet(id,sec,v);}
 function onTP(id,sec,vn){tpSet(id,sec,vn);}
 
 // ════════════════════════════════════════════════════
@@ -1799,7 +1802,7 @@ const fmtD=m=>{
   const h=Math.floor(m/60),mn=m%60;
   return h===0?`${mn}min`:mn===0?`${h}h`:`${h}h${String(mn).padStart(2,'0')}`;
 };
-const gtv=(fid,sec)=>{const x=(S[sec]||{}).draft?.[fid];return(x!==undefined&&x!==''&&!isNaN(parseFloat(x)))?parseFloat(x):null;};
+const gtv=(fid,sec)=>{const x=(S[sec]||{}).draft?.[fid];return(x!==undefined&&x!==''&&!isNaN(_num(x)))?_num(x):null;};
 const gts=(fid,sec)=>(S[sec]||{}).draft?.[fid]||'';
 const cv=(ok,has)=>has?(ok?'OUI':'NON'):null;
 
@@ -3862,7 +3865,7 @@ function tpHtmlEnc(id, sec, label, tMin, tMax, presets){
   </div>`;
 }
 function onEncTS(id,sec,v,mn,mx){
-  const vn=Math.max(mn,Math.min(mx,parseFloat(v)));
+  const vn=Math.max(mn,Math.min(mx,_num(v)));
   sd(id,String(vn),sec);
   const disp=document.getElementById('td-'+id+'-'+sec);
   if(disp)disp.innerHTML=(vn>=0?'+':'')+(vn%1===0?vn.toFixed(0):vn.toFixed(1))+'<sub>°C</sub>';
@@ -6794,7 +6797,7 @@ function distribSlider(svc, type, val){
 }
 
 function distribDirect(svc, type, val){
-  const v=parseFloat(val);
+  const v=_num(val);
   if(isNaN(v)) return;
   const id=`${svc}_${type}_temp`;
   distribSD(id,String(v));
@@ -15100,7 +15103,7 @@ function getActiveSession(){ return S.activeSession||null; }
 
 // Validation valeurs aberrantes
 function validateTemperature(val, context) {
-  const n = parseFloat(val);
+  const n = _num(val);
   if (isNaN(n)) return true; // pas une temp, on laisse passer
   if (context === 'froid' && (n < -30 || n > 15)) {
     showConfirm(`Température suspecte : ${n}°C`, 'Cette valeur semble aberrante pour un stockage froid. Confirmez-vous ?', '✅ Confirmer', () => {});

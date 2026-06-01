@@ -67,7 +67,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 
 ### Conformité température (passe dédiée)
 - **`app-cuisine.js:1862` (ENR23 réception)** — seuil fixe `≤ 4°C` quel que soit le produit → un surgelé livré à −5°C passe « conforme ». *(vérifié)* **DÉCISION : ≤3°C (frais) / ≤−18°C (surgelés), via le sélecteur de type déjà présent sur les fiches réception (ENR08/ENR23) à câbler.**
-- **`app-cuisine.js:1802` (`gtv`)** — `parseFloat(x)` brut → « 8,5 » saisi au clavier devient `8` → **conformité calculée sur température fausse**. Le `replace(',','.')` n'existe qu'à `:3879`. *(vérifié)*
+- ✅ **CORRIGÉ — virgule décimale** (`app-cuisine.js`) — helper `_num()` (gère `,`→`.`) appliqué à la saisie (`onTS`, `onTM`, `onEncTS`, `distribDirect`, `validateTemperature`) ET à l'accesseur de conformité `gtv` → « 8,5 » n'est plus tronqué en 8. (8 tests OK.)
 
 ### Modules cassés
 - **`app-pms.js` + `pms-setup.html`** — écrit dans tables/colonnes inexistantes (`/enceintes`, `/points_controle`, colonnes `pms_config` fantômes), token dans une clé jamais écrite, redirige vers dashboard en simulant un succès, pas d'authguard.
