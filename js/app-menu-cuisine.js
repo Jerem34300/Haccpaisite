@@ -1107,8 +1107,10 @@ function parseDicteeFullMenu(txt){
     const items = content.split(/\s+(?:et|ou|puis|ensuite)\s+|\s*,\s*/)
       .map(s => s.trim())
       .filter(s => s.length > 1 && s.length <= 80)
-      // Filtrer items qui sont juste un mot-clé de catégorie
-      .filter(it => !KW_PATTERN.test(it.replace(KW_PATTERN, '').length === 0 ? '' : it));
+      // Filtrer les items qui ne sont QU'un mot-clé de catégorie (ex: "plats").
+      // On n'utilise que .replace (déterministe) : .test() sur une regex /g est
+      // stateful (lastIndex) → résultats erratiques d'un item à l'autre.
+      .filter(it => it.replace(KW_PATTERN, '').trim().length > 0);
 
     items.forEach(it => {
       // Pas de doublons exacts dans la même catégorie

@@ -2962,7 +2962,10 @@ function clearRow(id){showConfirm('Effacer la saisie ?','Toutes les données sai
 const ENR_EDIT_LOCK_DAYS = 3;
 function delRow(id,idx){
   if(roCheck())return;
-  const chef = (S.config?.chefs||[]).find(c=>c.pin===_adminPin)||{nom:'Cuisinier'};
+  // S.config.chefs est un tableau de NOMS (chaînes) : l'ancien find(c=>c.pin===...)
+  // ne matchait jamais → attribution toujours « Cuisinier ». On prend la session active.
+  const _sess = (typeof getActiveSession === 'function') ? getActiveSession() : null;
+  const chefNom = (typeof _sess === 'string' ? _sess : (_sess && _sess.nom)) || (S.config?.chefs && S.config.chefs[0]) || 'Cuisinier';
   const doSoftDelete = () => {
     const lignes = S[id]?.lignes;
     if(!lignes) return;
@@ -2987,7 +2990,7 @@ function delRow(id,idx){
     }
     // Soft delete : marquer au lieu de supprimer
     row._deleted = true;
-    row._deleted_by = chef.nom || 'Cuisinier';
+    row._deleted_by = chefNom;
     row._deleted_at = new Date().toISOString();
     save();
     // Notifier Supabase si client_id connu

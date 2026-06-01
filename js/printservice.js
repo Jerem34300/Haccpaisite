@@ -98,7 +98,7 @@ function renderENR34(){
           style="padding:6px 10px;border-radius:10px;border:2px solid ${_e34sel===i?'var(--plum)':'var(--brd)'};
           background:${_e34sel===i?'var(--plum)':'var(--fond)'};color:${_e34sel===i?'#fff':'var(--gris2)'};
           font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit;text-align:left">
-          ${p.produit}</button>`;}).join('')}
+          ${escH(p.produit)}</button>`;}).join('')}
       </div>
     </div>`;
   }).join('');

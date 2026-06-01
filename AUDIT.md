@@ -107,11 +107,11 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ — clamp T° / enceintes chaudes** : `qtempConfirm` enregistre la valeur réellement saisie (plus de clamp silencieux qui masquait une T° hors plage) ; `encConforme` gère désormais les consignes « ≥ X » (enceintes chaudes) en plus de « ≤ X » et « X à Y ». *(`validateTemperature` reste non câblé — mineur.)*
 - ✅ **CORRIGÉ — Profil de plat** : exceptions froides prioritaires ajoutées en tête de liste → « saumon/truite fumé(e) » et « salade de poulet/thon/composée… » détectés BF_CRU (et non plus BF_CUIT). Correction aussi du `\b` final après lettre accentuée qui cassait le match. 10 tests OK. *(le badge reste cliquable pour corriger une détection)*
 - ✅ **CORRIGÉ — Variante / plat témoin** : génération désormais INCRÉMENTALE (par plat + variante) → cocher une variante après une 1re génération crée juste son témoin, sans dupliquer les autres ni l'oublier (fini le « tout ou rien » destructif). Les témoins soft-deletés restent régénérables.
-- `delRow:2949` — `_deleted_by` toujours « Cuisinier » (cherche `c.pin` sur un tableau de chaînes).
-- Parser dictée vocale non déterministe (regex globale `/gi` + `lastIndex` dans `.test()`) ; limite 80 car rejette tout le texte.
+- ✅ **CORRIGÉ — `_deleted_by`** : `S.config.chefs` étant un tableau de noms (chaînes), l'attribution prend désormais la session active (`getActiveSession`) au lieu d'un `find(c=>c.pin===…)` qui ne matchait jamais.
+- ✅ **CORRIGÉ (partiel) — Parser dictée vocale** : suppression de l'usage de `.test()` sur la regex globale `/gi` (lastIndex stateful → résultats erratiques) ; filtrage des items « mot-clé seul » via `.replace().trim()` déterministe. *(limite 80 car : comportement conservé)*
 
 ### Impression
-- Étiquette sans DLC si auto-calcul échoue (aucune garde) ; produit non échappé (`Pâté d'Auvergne`) ; planches A4 rognées/décalées (marges 0 mm, parité `nth-child`) ; impression menu non compatible iOS (pas de Blob URL).
+- 🟠 **PARTIEL — Étiquettes** : nom de produit désormais échappé (`escH`) dans le sélecteur d'étiquettes (`Pâté d'Auvergne` ne casse plus le HTML). *(reste : garde DLC si auto-calcul échoue, marges/parité A4, impression menu iOS via Blob URL.)*
 
 ### Provisioning
 - Double création tenant (signup-setup échoue sur le profil → tenant orphelin → re-création au login).
@@ -120,7 +120,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 ### superadmin.html
 - Pas d'expiration/refresh token → UI figée après ~1h. Impersonation collante (sessionStorage sans TTL) ; cassée pour les plans solo (`cuisine.html` ne lit pas `sa_view_tenant`).
 - KPI faux : limites 1000/500, MRR sous-évalué si `price_per_month` non peuplé.
-- Suppression utilisateur : erreur profil avalée → orphelins ; pas de garde anti auto-suppression.
+- ✅ **CORRIGÉ (partiel) — Suppression utilisateur** : garde anti auto-suppression ajoutée (un admin ne peut plus supprimer son propre compte → plus de verrouillage). *(l'ordre profil/auth en cas d'échec partiel reste à durcir — mineur.)*
 
 ---
 

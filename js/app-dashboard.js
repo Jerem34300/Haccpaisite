@@ -4938,6 +4938,9 @@ function confirmDeleteUser(uid){
 async function execDeleteUser(){
   if(!_adminModal?.uid) return;
   const uid=_adminModal.uid;
+  // Garde anti auto-suppression : un admin ne doit pas pouvoir supprimer son
+  // propre compte (sinon verrouillage immédiat).
+  if(uid===_userId){ showToast('Vous ne pouvez pas supprimer votre propre compte','error'); closeAdminModal(); return; }
   try{
     // Supprimer profil
     await supa('DELETE',`/rest/v1/profiles?id=eq.${uid}`,null);
