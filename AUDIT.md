@@ -119,7 +119,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 
 ### superadmin.html
 - Pas d'expiration/refresh token → UI figée après ~1h. Impersonation collante (sessionStorage sans TTL) ; cassée pour les plans solo (`cuisine.html` ne lit pas `sa_view_tenant`).
-- 🟠 **PARTIEL — KPI/MRR** : le MRR retombe désormais sur le tarif du plan (solo 29 / multi 49) quand `price_per_month` n'est pas peuplé → plus de sous-évaluation. *(les limites 1000/500 restent — non bloquant tant que < quelques centaines de tenants.)*
+- ✅ **CORRIGÉ — KPI/MRR** : MRR retombe sur le tarif du plan si `price_per_month` absent ; les KPI globaux (tenants + profils) sont désormais **paginés** (`apiAll`, pages de 1000) → comptages justes au-delà de 1000. *(les compteurs de détail par tenant restent plafonnés — affichage non critique.)*
 - ✅ **CORRIGÉ (partiel) — Suppression utilisateur** : garde anti auto-suppression ajoutée (un admin ne peut plus supprimer son propre compte → plus de verrouillage). *(l'ordre profil/auth en cas d'échec partiel reste à durcir — mineur.)*
 
 ---
