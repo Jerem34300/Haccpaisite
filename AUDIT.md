@@ -101,9 +101,9 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ — Générateur de code site** (`provision-tenant.js`) : 3 lettres + 4 base36 (~1,7M combinaisons) + retry sur collision 409.
 
 ### Conformité cuisine (température + logique)
-- **Dépassement de durée = « non évalué » au lieu de « non-conforme »** : `tdiff(...,maxH)` retourne `null` si dépassé (`:1794`) → `cv()` → `null` → le cas le plus à risque n'est pas signalé (ENR07/08).
-- **Incohérence cuisson** : ENR04 `≥65°C` vs ENR07 `≥75°C` (`:1819,1832`). **DÉCISION : ENR07 (BF cuit) = ≥75°C ; tout le reste (dont ENR04) = ≥63°C.**
-- **Distribution froide incohérente** : `≤3` (SAM/ENR15) vs `≤10` (ENR13/14/16). **DÉCISION : distribution uniquement → ≤3°C (ENR13/14/16 passent de ≤10 à ≤3). Livraison (17/18), conditionnement/chaîne (10/11) et pique-nique (39) restent inchangés (≤6).**
+- ✅ **CORRIGÉ — Dépassement de durée = non-conforme** : `tdiff` ne renvoie plus `null` quand `maxH` est dépassé → une durée trop longue (chaîne du froid/chaud rompue) est calculée et évaluée NON conforme par `cv()` au lieu d'être masquée en « non évalué » (ENR07/08).
+- ✅ **CORRIGÉ — Cuisson** : ENR07 (BF cuit) déjà à ≥75°C ; ENR04 passé de ≥65°C à ≥63°C → cohérent avec la décision (tout sauf ENR07 = ≥63°C).
+- ✅ **CORRIGÉ — Distribution froide** : ENR13/14/16 passés de ≤10°C à ≤3°C (cohérents avec ENR15). Livraison/conditionnement/pique-nique inchangés. *(⚠️ à confirmer : la constante `DISTRIB_FROID_MAX=10` du tab « distribution service » n'était pas nommée dans la décision → laissée à 10 ; me dire s'il faut aussi la passer à 3.)*
 - Alerte CCP refroidissement (90/120 min) ratée si tablette en veille (`:14573`).
 - Températures silencieusement clampées (`qtempConfirm:15871`) ; `validateTemperature` code mort jamais appelé ; `encConforme` ne gère pas « ≥ » (enceintes chaudes).
 - Profil de plat mal détecté : « saumon fumé »/« filet de » → BF_CUIT, « salade de poulet » → BF_CUIT (`app-menu-cuisine.js:29-44`).

@@ -1795,8 +1795,9 @@ const tdiff=(t1,t2,maxH)=>{
   const[h2,m2]=t2.split(':').map(Number);
   let d=(h2*60+m2)-(h1*60+m1);
   if(d<0)d+=1440;
-  // Si un max est précisé (en heures) et dépassé → saisie incohérente, retourner null
-  if(maxH&&d>maxH*60)return null;
+  // NB : on ne renvoie plus null si maxH est dépassé. Une durée trop longue est le
+  // cas le PLUS à risque (chaîne du froid/chaud rompue) : elle doit être calculée et
+  // évaluée NON conforme par l'appelant, jamais masquée en « non évalué ».
   return d;
 };
 const fmtD=m=>{
@@ -1821,7 +1822,7 @@ const AR={
   },
   enr02:sec=>{const d=(S[sec]||{}).draft||{},dur=tdiff(d.h_deb,d.h_fin),td=gtv('t_deb',sec),tf=gtv('t_fin',sec);return{duree:fmtD(dur),conf_deb:cv(td!==null&&td<=10,td!==null),conforme:cv(dur!==null&&dur<=60&&tf!==null&&tf>=63&&td!==null&&td<=10,dur!==null&&tf!==null&&td!==null)};},
   enr03:sec=>{const d=(S[sec]||{}).draft||{},dR=tdiff(d.h1,d.h2),t2=gtv('t2',sec),dRT=tdiff(d.h3,d.h4),t3=gtv('t3',sec),t4=gtv('t4',sec);return{duree_r:fmtD(dR),conf_r:cv(dR!==null&&dR<=120&&t2!==null&&t2<=10,dR!==null&&t2!==null),duree_rt:fmtD(dRT),conf_t3:cv(t3!==null&&t3<=10,t3!==null),conf_rt:cv(dRT!==null&&dRT<=60&&t4!==null&&t4>=63&&t3!==null&&t3<=10,dRT!==null&&t4!==null&&t3!==null)};},
-  enr04:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t>=65,t!==null)};},
+  enr04:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t>=63,t!==null)};},
   enr07:sec=>{
     const d=(S[sec]||{}).draft||{};
     const mode=d.mode_mixage||'froid';
@@ -1851,10 +1852,10 @@ const AR={
   enr10:sec=>{const d=(S[sec]||{}).draft||{},td=gtv('t_debut',sec),tf=gtv('t_fin',sec),dur=tdiff(d.h_ref_deb,d.h_ref_fin);return{conf_debut:cv(td!==null&&td<=3,td!==null),conf_couple:cv(dur!==null&&dur<=120,dur!==null),conf_fin:cv(tf!==null&&tf<=6,tf!==null)};},
   enr11:sec=>{const d=(S[sec]||{}).draft||{},t1=gtv('t_premier',sec),dur=tdiff(d.h_ref_deb,d.h_ref_fin);return{conf_premier:cv(t1!==null&&t1<=3,t1!==null),conf_couple:cv(dur!==null&&dur<=120,dur!==null)};},
   enr12:sec=>{const t1=gtv('t_premier',sec),td=gtv('t_ref_deb',sec);return{conf_premier:cv(t1!==null&&t1>=63,t1!==null),conf_couple:cv(td!==null&&td>=63,td!==null)};},
-  enr13:sec=>{const t=gtv('tc',sec),tp=gts('type',sec);if(t===null||!tp)return{};return{conforme:cv(tp==='Froid'?t<=10:t>=63,true)};},
-  enr14:sec=>{const tp=gtv('t_prem',sec),td=gtv('t_dern',sec),type=gts('type',sec);if(!type)return{};const r={};if(tp!==null)r.conf_prem=cv(type==='Froid'?tp<=10:tp>=63,true);if(td!==null)r.conf_dern=cv(type==='Froid'?td<=10:td>=63,true);return r;},
+  enr13:sec=>{const t=gtv('tc',sec),tp=gts('type',sec);if(t===null||!tp)return{};return{conforme:cv(tp==='Froid'?t<=3:t>=63,true)};},
+  enr14:sec=>{const tp=gtv('t_prem',sec),td=gtv('t_dern',sec),type=gts('type',sec);if(!type)return{};const r={};if(tp!==null)r.conf_prem=cv(type==='Froid'?tp<=3:tp>=63,true);if(td!==null)r.conf_dern=cv(type==='Froid'?td<=3:td>=63,true);return r;},
   enr15:sec=>{const td=gtv('t_deb',sec),tf=gtv('t_fin',sec),type=gts('type',sec);if(!type)return{};const r={};if(td!==null)r.conf_deb=cv(type==='Froid'?td<=3:td>=63,true);if(tf!==null)r.conf_fin=cv(type==='Froid'?tf<=3:tf>=63,true);return r;},
-  enr16:sec=>{const td=gtv('t_deb',sec),tf=gtv('t_fin',sec),type=gts('type',sec);if(!type)return{};const r={};if(td!==null)r.conf_deb=cv(type==='Froid'?td<=10:td>=63,true);if(tf!==null)r.conf_fin=cv(type==='Froid'?tf<=10:tf>=63,true);return r;},
+  enr16:sec=>{const td=gtv('t_deb',sec),tf=gtv('t_fin',sec),type=gts('type',sec);if(!type)return{};const r={};if(td!==null)r.conf_deb=cv(type==='Froid'?td<=3:td>=63,true);if(tf!==null)r.conf_fin=cv(type==='Froid'?tf<=3:tf>=63,true);return r;},
   enr17:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t<=6,t!==null)};},
   enr18:sec=>{const t=gtv('tc',sec),tp=gts('type',sec);if(t===null||!tp)return{};return{conforme:cv(tp==='Froid'?t<=6:t>=63,true)};},
   enr23:sec=>{
