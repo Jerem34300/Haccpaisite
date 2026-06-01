@@ -962,6 +962,22 @@ function cascadeFilters(unknownCodes){
   });
 }
 
+// Jour LOCAL (fuseau navigateur = FR) d'un timestamp ISO UTC. Évite qu'une saisie
+// faite après minuit heure FR (= veille en UTC) soit rattachée au mauvais jour.
+function _localDay(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return String(iso).slice(0,10);
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), j=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${j}`;
+}
+// Jour d'une fiche : la date saisie (data.date, déjà locale) si présente, sinon
+// le jour local dérivé de recorded_at. Sert au regroupement ET au filtre mois,
+// pour une cohérence totale.
+function _recDay(r){
+  return (r && r.data && r.data.date) || _localDay(r && r.recorded_at);
+}
+
 function getFilters(){
   return{
     mois:document.getElementById('filter-mois')?.value||'',
@@ -973,7 +989,7 @@ function getFilters(){
 function filteredRecords(){
   const f=getFilters();
   return _records.filter(r=>{
-    if(f.mois&&!r.recorded_at?.startsWith(f.mois))return false;
+    if(f.mois&&!_recDay(r).startsWith(f.mois))return false;
     if(f.site&&r.site_id!==f.site)return false;
     // Chef de secteur : toujours restreint à son secteur (déjà filtré dans _records)
     if(f.secteur){const site=_sites.find(s=>s.code===r.site_id);if(!site||site.sector_id!==f.secteur)return false;}
@@ -4363,7 +4379,7 @@ function generateComparePDF() {
   // ── Construire les données par site ──────────────────────
   const sitesData = sitesFiltered.map(site => {
     const siteRecs = _records.filter(r =>
-      r.site_id === site.code && r.recorded_at?.startsWith(moisFilter)
+      r.site_id === site.code && _recDay(r).startsWith(moisFilter)
     );
     const siteGMO = _gmos.find(g =>
       g.site_id === site.id && g.visit_date?.startsWith(moisFilter)
@@ -6784,7 +6800,7 @@ function renderCompare() {
 
   const sitesData = sitesFiltered.map(site => {
     const siteRecs = _records.filter(r =>
-      r.site_id === site.code && r.recorded_at?.startsWith(moisFilter)
+      r.site_id === site.code && _recDay(r).startsWith(moisFilter)
     );
     const siteGMO = _gmos.find(g =>
       g.site_id === site.id && g.visit_date?.startsWith(moisFilter)
@@ -6817,7 +6833,7 @@ function renderCompare() {
   const allRecsCompare = _records.filter(r => {
     if (siteFilter && r.site_id !== siteFilter) return false;
     if (secteurFilter) { const s=_sites.find(x=>x.code===r.site_id); if(!s||s.sector_id!==secteurFilter) return false; }
-    return r.recorded_at?.startsWith(moisFilter);
+    return _recDay(r).startsWith(moisFilter);
   });
   const avgPMS  = pmsWeightedScore(allRecsCompare);
   const avgGMO  = withBoth.length ? Math.round(withBoth.reduce((s,x)=>s+x.gmoAvg,0)/withBoth.length) : null;
@@ -7490,7 +7506,7 @@ function renderPageENR(type) {
   } else {
     recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
   }
-  if (f.mois) recs = recs.filter(r => r.recorded_at?.startsWith(f.mois));
+  if (f.mois) recs = recs.filter(r => _recDay(r).startsWith(f.mois));
   if (f.site) recs = recs.filter(r => r.site_id === f.site);
   recs.sort((a,b) => b.recorded_at?.localeCompare(a.recorded_at||'')||0);
 
@@ -7569,7 +7585,7 @@ function _pgSetView(type, view) {
   } else {
     recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
   }
-  if (f.mois) recs = recs.filter(r => r.recorded_at?.startsWith(f.mois));
+  if (f.mois) recs = recs.filter(r => _recDay(r).startsWith(f.mois));
   if (f.site) recs = recs.filter(r => r.site_id === f.site);
   recs.sort((a,b) => b.recorded_at?.localeCompare(a.recorded_at||'')||0);
 
@@ -7618,7 +7634,7 @@ function _initTempCharts(days) {
   const byEnc = {};
   enr19.forEach(r => {
     const id = r.data?.enc_id || '?';
-    const date = r.data?.date || r.recorded_at?.slice(0, 10);
+    const date = _recDay(r);
     if (!date) return;
     const t = parseFloat(r.data?.temp);
     if (isNaN(t)) return;
@@ -7731,7 +7747,7 @@ function _initOverviewTrendChart() {
   dateArr.forEach(d => { byDay[d] = { total: 0, nc: 0 }; });
 
   _records.forEach(r => {
-    const day = r.recorded_at?.slice(0, 10);
+    const day = _recDay(r);
     if (day && byDay[day] !== undefined) {
       byDay[day].total++;
       if (isNC(r)) byDay[day].nc++;
@@ -7778,7 +7794,7 @@ function _initOverviewTrendChart() {
 
 function _quickExportPDF() {
   const curM = new Date().toISOString().slice(0, 7);
-  const recs = _records.filter(r => r.recorded_at?.startsWith(curM));
+  const recs = _records.filter(r => _recDay(r).startsWith(curM));
   if (recs.length === 0) { showToast('Aucune saisie ce mois', 'warn'); return; }
 
   const moisLabel = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -7921,7 +7937,7 @@ function _renderCardsForType(type, cfg, recs) {
       const byDate = {};
       enr19.forEach(r => {
         const d=r.data||{};
-        const dateKey = d.date || r.recorded_at?.slice(0,10) || '—';
+        const dateKey = _recDay(r) || "—";
         if(!byDate[dateKey]) byDate[dateKey]=[];
         byDate[dateKey].push(r);
       });
@@ -7999,7 +8015,7 @@ function _renderCardsForType(type, cfg, recs) {
     const byDate = {};
     recs.forEach(r=>{
       const d=r.data||{};
-      const dk=d.date||r.recorded_at?.slice(0,10)||'—';
+      const dk=_recDay(r)||'—';
       if(!byDate[dk]) byDate[dk]=[];
       byDate[dk].push(r);
     });
@@ -8280,7 +8296,7 @@ function updateRptPreview(mois, site) {
   const dateFrom = document.getElementById('rpt-date-from')?.value;
   const dateTo = document.getElementById('rpt-date-to')?.value;
   if (dateFrom) recs = recs.filter(r => r.recorded_at >= dateFrom);
-  else if (mois && mois !== 'all') recs = recs.filter(r => r.recorded_at?.startsWith(mois));
+  else if (mois && mois !== 'all') recs = recs.filter(r => _recDay(r).startsWith(mois));
   if (dateTo) recs = recs.filter(r => r.recorded_at <= dateTo + 'T23:59:59');
   if (site) recs = recs.filter(r => r.site_id === site);
   const nc = recs.filter(r => isNC(r)).length;
@@ -8317,7 +8333,7 @@ async function generatePDF() {
       recs = recs.filter(r => r.recorded_at >= dateFrom);
       if (dateTo) recs = recs.filter(r => r.recorded_at <= dateTo + 'T23:59:59');
     } else if (mois && mois !== 'all') {
-      recs = recs.filter(r => r.recorded_at?.startsWith(mois));
+      recs = recs.filter(r => _recDay(r).startsWith(mois));
     }
     if (site) recs = recs.filter(r => r.site_id === site);
 

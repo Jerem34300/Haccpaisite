@@ -81,7 +81,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 ### Dashboard / remontée
 - ✅ **CORRIGÉ — Troncature 1000 lignes** : chargement des `pms_records` paginé par offset (pages de 1000 jusqu'à épuisement) → conformité/compteurs justes. Le plafond d'affichage 300 de `renderSaisies` est désormais signalé à l'utilisateur (« 300 affichées »).
 - ✅ **CORRIGÉ — Timeout** : passé de 5 s à 20 s (`supa` GET + `supaAdmin`), conforme au commentaire et aux cold starts Supabase → plus d'`AbortError` prématuré.
-- Timezone UTC vs local FR dans regroupements/filtres (`:966,7696` ; `app-menu-dashboard.js:207`).
+- ✅ **CORRIGÉ — Timezone FR** : helper `_recDay(r)` (= `data.date` saisie sinon jour LOCAL dérivé de `recorded_at`) appliqué à TOUS les regroupements par jour ET aux filtres mois du dashboard (14 emplacements) + équivalent `_mdRecDay` côté menu-dashboard. Une saisie après minuit FR (= veille en UTC) est rattachée au bon jour. 4 tests (TZ Europe/Paris).
 - ✅ **CORRIGÉ — Score 100 % sans saisie** : la conformité vaut désormais 0 % (et non 100 %) quand aucun relevé n'est fait → un site non documenté n'apparaît plus « conforme ».
 - Conformité calculée 2 façons (brut vs pondéré) qui se contredisent ; assiduité ENR19 surévaluée et fausse en multi-sites (`:1322-1326`).
 - ✅ **CORRIGÉ — Vue Tableau↔Cartes** : `_pgSetView` inclut désormais les services de distribution dynamiques (`enr_distrib_*`) comme `renderPageENR` → les fiches de distribution ne disparaissent plus au basculement de vue.
