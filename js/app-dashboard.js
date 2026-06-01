@@ -2271,9 +2271,10 @@ async function renderAdmin(){
         ➕ Inviter un utilisateur
       </button>
     </div>
-    ${!hasAdmin?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.75rem;color:#92400e">
-      <strong>💡 Pour inviter des utilisateurs :</strong> renseignez la clé <strong>service_role</strong> dans l\'écran de connexion (Supabase → Settings → API → service_role). Elle ne sert qu\'à la création de comptes.
-    </div>`:''}`;
+    `;
+    // (Ancien hint « collez votre clé service_role » retiré : conseil dangereux —
+    //  la clé bypasse toute la RLS. La création de comptes passe désormais par
+    //  la fonction Netlify admin-proxy, qui détient la clé service côté serveur.)
 
     // Grouper par rôle
     const roleOrder=['siege','directeur','chef_secteur','cuisinier'];
