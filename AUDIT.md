@@ -73,7 +73,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 ### Modules cassés
 - **`app-pms.js` + `pms-setup.html`** — écrit dans tables/colonnes inexistantes (`/enceintes`, `/points_controle`, colonnes `pms_config` fantômes), token dans une clé jamais écrite, redirige vers dashboard en simulant un succès, pas d'authguard.
 - ✅ **CORRIGÉ — `tenants.plan` CHECK** — `provision-tenant.js` mappe désormais le plan commercial (solo/multi/enterprise) vers la valeur attendue par le CHECK (starter/pro/enterprise) avant l'INSERT tenant.
-- **`schema.sql:100-106`** — colonnes `status/trial_ends_at/stripe_*` créées uniquement par `stripe-migration.sql` (si non jouée → auth/paywall plante).
+- ✅ **CORRIGÉ — `schema.sql` subscriptions** — les colonnes `status/trial_ends_at/stripe_*/current_period_end/cancel_at_period_end` sont désormais incluses dans le `create table` canonique (+ index) → une installation neuve fonctionne sans dépendre de `stripe-migration.sql`.
 
 ---
 

@@ -102,9 +102,21 @@ create table if not exists public.subscriptions (
   tenant_id       uuid not null references public.tenants(id) on delete cascade,
   plan            text,
   price_per_month numeric(10,2),
+  -- Colonnes statut / Stripe (cf. stripe-migration.sql pour les bases existantes).
+  -- Incluses ici pour qu'une installation NEUVE fonctionne sans migration séparée
+  -- (sinon auth/paywall plantent à la première écriture d'abonnement).
+  status                 text default 'trial'
+    check (status in ('trial','active','past_due','cancelled','expired')),
+  trial_ends_at          timestamptz,
+  stripe_customer_id     text,
+  stripe_subscription_id text,
+  stripe_price_id        text,
+  current_period_end     timestamptz,
+  cancel_at_period_end   boolean default false,
   created_at      timestamptz not null default now()
 );
 create index if not exists subscriptions_tenant_idx on public.subscriptions(tenant_id);
+create index if not exists subscriptions_stripe_sub_idx on public.subscriptions(stripe_subscription_id);
 
 -- =============================================================
 -- 5) PMS_RECORDS (table de faits : toutes les saisies ENR)
