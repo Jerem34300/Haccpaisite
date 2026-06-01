@@ -384,7 +384,7 @@ async function supa(method,path,body,anon=false,extraHeaders={}){
   if(body&&method!=='GET')opts.body=JSON.stringify(body);
   // Timeout 20s pour éviter le blocage infini (Supabase cold start)
   const _ctrl = new AbortController();
-  const _tid = setTimeout(() => _ctrl.abort(), 5000);
+  const _tid = setTimeout(() => _ctrl.abort(), 20000);
   let r;
   try {
     r = await fetch(SUPA_URL+path, {...opts, signal: _ctrl.signal});
@@ -431,7 +431,7 @@ async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${qu
 async function supaAdmin(method,path,body,extraHeaders={}){
   // Proxy sécurisé — la clé service_role ne quitte jamais le serveur Netlify
   const _ac = new AbortController();
-  const _at = setTimeout(() => _ac.abort(), 5000);
+  const _at = setTimeout(() => _ac.abort(), 20000);
   let r;
   try {
     r = await fetch('/.netlify/functions/admin-proxy', {
@@ -815,7 +815,17 @@ async function loadData(){
     const _loadPeriodSel = document.getElementById('filter-load-period');
     const _loadMonths = _loadPeriodSel ? parseInt(_loadPeriodSel.value)||6 : 6;
     const _loadSince = new Date(Date.now() - _loadMonths*30*24*3600*1000).toISOString().slice(0,10);
-    _records=await _get('pms_records',`select=*&order=recorded_at.desc&limit=5000&recorded_at=gte.${_loadSince}${tenantFilter}`);
+    // Pagination : PostgREST plafonne le nombre de lignes (db-max-rows, ~1000)
+    // quelle que soit la valeur de `limit`. On parcourt par pages de 1000 (offset)
+    // jusqu'à épuisement, sinon les fiches au-delà de 1000 manquaient → conformité faussée.
+    _records = [];
+    const _PAGE = 1000;
+    for (let _off = 0; _off <= 200000; _off += _PAGE) {
+      const _page = await _get('pms_records', `select=*&order=recorded_at.desc&limit=${_PAGE}&offset=${_off}&recorded_at=gte.${_loadSince}${tenantFilter}`);
+      if (!Array.isArray(_page) || !_page.length) break;
+      _records = _records.concat(_page);
+      if (_page.length < _PAGE) break;
+    }
     // Charger la config des enceintes par site
     try {
       const configs = await _get('pms_config', `select=*&type=eq.enceintes${tenantFilter}`);
@@ -874,7 +884,7 @@ async function loadData(){
     const btn2 = document.getElementById('btn-refresh-main');
     if (ico2) ico2.style.animation = '';
     if (btn2) { btn2.disabled = false; btn2.style.opacity = ''; }
-    setContent(`<div class="empty"><div class="empty-ico">⚠️</div><strong>Erreur de chargement</strong><br><small style="color:var(--muted)">${e.message}</small><br><button onclick="loadData()" style="margin-top:12px;padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">↻ Réessayer</button></div>`);
+    setContent(`<div class="empty"><div class="empty-ico">⚠️</div><strong>Erreur de chargement</strong><br><small style="color:var(--muted)">${escH(e.message)}</small><br><button onclick="loadData()" style="margin-top:12px;padding:8px 16px;background:var(--green);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700">↻ Réessayer</button></div>`);
     startAutoRefresh();
   }
 }
@@ -898,12 +908,12 @@ function populateFilters(){
     const terrSel=document.getElementById('filter-territoire');
     if(terrSel){
       terrSel.innerHTML='<option value="">Tous les territoires</option>';
-      _territories.forEach(t=>terrSel.innerHTML+=`<option value="${t.id}">${t.name}</option>`);
+      _territories.forEach(t=>terrSel.innerHTML+=`<option value="${t.id}">${escH(t.name)}</option>`);
     }
     const sectSel=document.getElementById('filter-secteur');
     if(sectSel){
       sectSel.innerHTML='<option value="">Tous les secteurs</option>';
-      _sectors.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+      _sectors.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${escH(s.name)}</option>`);
     }
   } else {
     // Masquer territoire et secteur pour chef_secteur
@@ -933,7 +943,7 @@ function cascadeFilters(unknownCodes){
   if(sectSel&&terrId){
     const visibleSects=_sectors.filter(s=>s.territory_id===terrId);
     sectSel.innerHTML='<option value="">Tous les secteurs</option>';
-    visibleSects.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+    visibleSects.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${escH(s.name)}</option>`);
   }
   // Filtrer les sites selon secteur (ou territoire)
   let visibleSites=_sites;
@@ -946,10 +956,26 @@ function cascadeFilters(unknownCodes){
   [document.getElementById('filter-site'),document.getElementById('filter-site-m')].forEach(el=>{
     if(!el)return;
     el.innerHTML='<option value="">Tous les sites</option>';
-    visibleSites.forEach(s=>el.innerHTML+=`<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s=>el.innerHTML+=`<option value="${escAttr(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     // Ajouter sites inconnus (code seul, pas encore dans la table sites)
     extra.forEach(code=>el.innerHTML+=`<option value="${code}">⚠️ ${code} (non enregistré)</option>`);
   });
+}
+
+// Jour LOCAL (fuseau navigateur = FR) d'un timestamp ISO UTC. Évite qu'une saisie
+// faite après minuit heure FR (= veille en UTC) soit rattachée au mauvais jour.
+function _localDay(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return String(iso).slice(0,10);
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), j=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${j}`;
+}
+// Jour d'une fiche : la date saisie (data.date, déjà locale) si présente, sinon
+// le jour local dérivé de recorded_at. Sert au regroupement ET au filtre mois,
+// pour une cohérence totale.
+function _recDay(r){
+  return (r && r.data && r.data.date) || _localDay(r && r.recorded_at);
 }
 
 function getFilters(){
@@ -963,7 +989,7 @@ function getFilters(){
 function filteredRecords(){
   const f=getFilters();
   return _records.filter(r=>{
-    if(f.mois&&!r.recorded_at?.startsWith(f.mois))return false;
+    if(f.mois&&!_recDay(r).startsWith(f.mois))return false;
     if(f.site&&r.site_id!==f.site)return false;
     // Chef de secteur : toujours restreint à son secteur (déjà filtré dans _records)
     if(f.secteur){const site=_sites.find(s=>s.code===r.site_id);if(!site||site.sector_id!==f.secteur)return false;}
@@ -1031,7 +1057,7 @@ function onComboTerrChange() {
   if (sectSel) {
     const visibleSects = terrId ? _sectors.filter(s=>s.territory_id===terrId) : _sectors;
     sectSel.innerHTML = '<option value="">Tous les secteurs</option>';
-    visibleSects.forEach(s => sectSel.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+    visibleSects.forEach(s => sectSel.innerHTML += `<option value="${s.id}">${escH(s.name)}</option>`);
     sectSel.value = '';
   }
   if (siteSel) {
@@ -1039,7 +1065,7 @@ function onComboTerrChange() {
       ? _sites.filter(s => { const sec=_sectors.find(x=>x.id===s.sector_id); return sec?.territory_id===terrId; })
       : _sites;
     siteSel.innerHTML = '<option value="">Tous les sites</option>';
-    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${escAttr(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     siteSel.value = '';
   }
   updateComboLabel();
@@ -1051,7 +1077,7 @@ function onComboSectChange() {
   if (siteSel) {
     const visibleSites = sectId ? _sites.filter(s=>s.sector_id===sectId) : _sites;
     siteSel.innerHTML = '<option value="">Tous les sites</option>';
-    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${escAttr(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     siteSel.value = '';
   }
   updateComboLabel();
@@ -1347,7 +1373,9 @@ function calcEnr19Assiduite(recs, mois) {
 
   // Assiduité = slots faits / slots attendus, jamais > 100%
   const assiduite  = Math.min(1, attendus > 0 ? faits / attendus : 0);
-  const conformite = faits > 0 ? (1 - ncTemp / faits) : 1;
+  // Aucune saisie ⇒ conformité 0 % (et non 100 %) : un site qui ne relève rien
+  // n'est pas « conforme », il est non documenté.
+  const conformite = faits > 0 ? (1 - ncTemp / faits) : 0;
 
   // Score combiné : 60 % assiduité + 40 % conformité
   const combined = Math.round((assiduite * 0.6 + conformite * 0.4) * 100);
@@ -1590,7 +1618,7 @@ function renderOverview(){
       style="background:${bg};border:1.5px solid ${brd};border-radius:16px;padding:14px 16px;cursor:pointer;transition:box-shadow .15s,transform .15s"
       onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)';this.style.transform='translateY(-2px)'"
       onmouseout="this.style.boxShadow='';this.style.transform=''"
-      onclick="(function(){const el=document.getElementById('filter-site');if(el){el.value='${s.code}';applyFilters();}navTo('saisies');})()">
+      data-nav-code="${escAttr(s.code)}" onclick="ovSiteCardNav(this)">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">
         <div style="flex:1;min-width:0">
           <div style="font-size:.85rem;font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(s.name)}</div>
@@ -1608,7 +1636,7 @@ function renderOverview(){
       </div>
       ${catBadges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px">${catBadges}</div>`:''}
       <div style="margin-top:10px;text-align:right">
-        <button onclick="event.stopPropagation();openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+        <button onclick="event.stopPropagation();openCuisine('${jsArg(s.id)}','${jsArg(s.code)}','${jsArg(s.name)}')"
           style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:background .15s"
           onmouseover="this.style.background='var(--navy2)'" onmouseout="this.style.background='var(--navy)'">
           Ouvrir PMS →
@@ -2118,12 +2146,12 @@ async function renderAdmin(){
           <span style="font-size:1.1rem">🗺️</span>
           <div style="flex:1">
             <div style="font-size:.9rem;font-weight:800">${escH(t.name)}</div>
-            <div style="font-size:.65rem;color:rgba(255,255,255,.5)">${t.code} · ${tSectors.length} secteur(s) · ${tSites.length} site(s)</div>
+            <div style="font-size:.65rem;color:rgba(255,255,255,.5)">${escH(t.code)} · ${tSectors.length} secteur(s) · ${tSites.length} site(s)</div>
           </div>
           ${tPct!==null?`<span style="font-size:.85rem;font-weight:800;color:${tPct>=90?'#86efac':tPct>=75?'#fcd34d':'#fca5a5'}">${tPct}%</span>`:''}
           <div style="display:flex;gap:6px">
             <button onclick="openAdminModal('territory','${t.id}')" style="padding:4px 10px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:var(--font)">✏️</button>
-            <button onclick="confirmDelete('territories','${t.id}','${escH(t.name)}')" style="padding:4px 10px;background:rgba(255,255,255,.1);color:#fca5a5;border:none;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:var(--font)">🗑</button>
+            <button onclick="confirmDelete('territories','${t.id}','${jsArg(t.name)}')" style="padding:4px 10px;background:rgba(255,255,255,.1);color:#fca5a5;border:none;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:var(--font)">🗑</button>
           </div>
         </div>
         <!-- Secteurs -->
@@ -2140,12 +2168,12 @@ async function renderAdmin(){
               <span style="font-size:.85rem">🏢</span>
               <div style="flex:1">
                 <div style="font-size:.82rem;font-weight:700">${escH(sc.name)}</div>
-                <div style="font-size:.65rem;color:var(--muted)">${sc.code} · ${scSites.length} site(s)</div>
+                <div style="font-size:.65rem;color:var(--muted)">${escH(sc.code)} · ${scSites.length} site(s)</div>
               </div>
               ${scPct!==null?`<span style="font-size:.78rem;font-weight:800;color:${scCol}">${scPct}%</span>`:''}
               <div style="display:flex;gap:4px">
                 <button onclick="openAdminModal('sector','${sc.id}')" style="padding:3px 8px;background:#e2e8f0;color:var(--navy);border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">✏️</button>
-                <button onclick="confirmDelete('sectors','${sc.id}','${escH(sc.name)}')" style="padding:3px 8px;background:#fff5f5;color:#dc2626;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">🗑</button>
+                <button onclick="confirmDelete('sectors','${sc.id}','${jsArg(sc.name)}')" style="padding:3px 8px;background:#fff5f5;color:#dc2626;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">🗑</button>
                 <button onclick="openAdminModal('site',null,{sector_id:'${sc.id}'})" style="padding:3px 8px;background:var(--navy);color:#fff;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">+ Site</button>
               </div>
             </div>
@@ -2160,13 +2188,13 @@ async function renderAdmin(){
                 <span style="width:6px;height:6px;border-radius:50%;background:${sPct!==null?sCol:'#cbd5e0'};flex-shrink:0"></span>
                 <div style="flex:1;min-width:0">
                   <div style="font-size:.8rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(s.name)}</div>
-                  <div style="font-size:.65rem;color:var(--muted)">Code: <strong>${s.code}</strong> · ${st.total} saisies · sync: ${lastSync}</div>
+                  <div style="font-size:.65rem;color:var(--muted)">Code: <strong>${escH(s.code)}</strong> · ${st.total} saisies · sync: ${lastSync}</div>
                 </div>
                 ${sPct!==null?`<span style="font-size:.75rem;font-weight:800;color:${sCol};flex-shrink:0">${sPct}%</span>`:'<span style="font-size:.65rem;color:var(--muted)">Aucune donnée</span>'}
                 <div style="display:flex;gap:4px;flex-shrink:0">
-                  <button onclick="createTabletAccount('${s.id}','${escH(s.name)}','${s.code}')" style="padding:3px 8px;background:#f0fdf4;color:#166534;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)" title="Créer compte tablette">📱</button>
+                  <button onclick="createTabletAccount('${s.id}','${jsArg(s.name)}','${jsArg(s.code)}')" style="padding:3px 8px;background:#f0fdf4;color:#166534;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)" title="Créer compte tablette">📱</button>
                   <button onclick="openAdminModal('site','${s.id}')" style="padding:3px 8px;background:#e2e8f0;color:var(--navy);border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">✏️</button>
-                  <button onclick="confirmDelete('sites','${s.id}','${escH(s.name)}')" style="padding:3px 8px;background:#fff5f5;color:#dc2626;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">🗑</button>
+                  <button onclick="confirmDelete('sites','${s.id}','${jsArg(s.name)}')" style="padding:3px 8px;background:#fff5f5;color:#dc2626;border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">🗑</button>
                 </div>
               </div>`;
             }).join('')}
@@ -2181,7 +2209,7 @@ async function renderAdmin(){
       html += `<div style="background:var(--card);border-radius:16px;border:1.5px dashed var(--border);margin-bottom:14px;overflow:hidden">
         <div style="padding:10px 16px;background:#faf6fa;font-size:.78rem;font-weight:700;color:var(--muted)">📁 Secteurs sans territoire (${sectsOrphelins.length})</div>
         ${sectsOrphelins.map(sc=>`<div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px">
-          <div style="flex:1"><div style="font-size:.82rem;font-weight:700">${escH(sc.name)}</div><div style="font-size:.65rem;color:var(--muted)">${sc.code}</div></div>
+          <div style="flex:1"><div style="font-size:.82rem;font-weight:700">${escH(sc.name)}</div><div style="font-size:.65rem;color:var(--muted)">${escH(sc.code)}</div></div>
           <button onclick="openAdminModal('sector','${sc.id}')" style="padding:3px 8px;background:#e2e8f0;color:var(--navy);border:none;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">✏️ Rattacher</button>
         </div>`).join('')}
       </div>`;
@@ -2192,7 +2220,7 @@ async function renderAdmin(){
       html += `<div style="background:var(--card);border-radius:16px;border:1.5px dashed #fbd38d;margin-bottom:14px;overflow:hidden">
         <div style="padding:10px 16px;background:#fffbeb;font-size:.78rem;font-weight:700;color:#92400e">🏠 Sites sans secteur (${sitesOrphelins.length})</div>
         ${sitesOrphelins.map(s=>`<div style="padding:10px 16px;border-top:1px solid #fde68a;display:flex;align-items:center;gap:8px">
-          <div style="flex:1"><div style="font-size:.82rem;font-weight:700">${escH(s.name)}</div><div style="font-size:.65rem;color:var(--muted)">Code: ${s.code}</div></div>
+          <div style="flex:1"><div style="font-size:.82rem;font-weight:700">${escH(s.name)}</div><div style="font-size:.65rem;color:var(--muted)">Code: ${escH(s.code)}</div></div>
           <button onclick="openAdminModal('site','${s.id}')" style="padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fbd38d;border-radius:5px;font-size:.68rem;cursor:pointer;font-family:var(--font)">✏️ Rattacher</button>
         </div>`).join('')}
       </div>`;
@@ -2217,7 +2245,7 @@ async function renderAdmin(){
               <div style="font-size:.82rem;font-weight:700;color:#92400e">📡 ${code}</div>
               <div style="font-size:.68rem;color:var(--muted)">${st.total} saisie(s) reçue(s) — non rattaché à un établissement</div>
             </div>
-            <button onclick="openAdminModal('site',null,{code:'${code}'})" style="padding:6px 12px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:var(--font)">Enregistrer →</button>
+            <button onclick="openAdminModal('site',null,{code:'${jsArg(code)}'})" style="padding:6px 12px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:var(--font)">Enregistrer →</button>
           </div>`;
         }).join('')}
       </div>`;
@@ -2238,8 +2266,8 @@ async function renderAdmin(){
           <div style="flex:1;min-width:0">
             <div style="font-size:.88rem;font-weight:800">${escH(s.name)}</div>
             <div style="font-size:.72rem;color:var(--muted);margin-top:2px">
-              Code tablette: <strong>${s.code}</strong>
-              ${terr?` · 🗺️ ${terr.name}`:''}${sect?` › 🏢 ${sect.name}`:''}
+              Code tablette: <strong>${escH(s.code)}</strong>
+              ${terr?` · 🗺️ ${escH(terr.name)}`:''}${sect?` › 🏢 ${escH(sect.name)}`:''}
             </div>
             ${s.address?`<div style="font-size:.68rem;color:var(--muted)">📍 ${escH(s.address)}</div>`:''}
             <div style="display:flex;gap:12px;margin-top:8px;flex-wrap:wrap">
@@ -2251,7 +2279,7 @@ async function renderAdmin(){
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="openAdminModal('site','${s.id}')" style="padding:5px 10px;background:#e2e8f0;color:var(--navy);border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">✏️ Modifier</button>
-            <button onclick="confirmDelete('sites','${s.id}','${escH(s.name)}')" style="padding:5px 10px;background:#fff5f5;color:#dc2626;border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>
+            <button onclick="confirmDelete('sites','${s.id}','${jsArg(s.name)}')" style="padding:5px 10px;background:#fff5f5;color:#dc2626;border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>
           </div>
         </div>
       </div>`;
@@ -2271,9 +2299,10 @@ async function renderAdmin(){
         ➕ Inviter un utilisateur
       </button>
     </div>
-    ${!hasAdmin?`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:.75rem;color:#92400e">
-      <strong>💡 Pour inviter des utilisateurs :</strong> renseignez la clé <strong>service_role</strong> dans l\'écran de connexion (Supabase → Settings → API → service_role). Elle ne sert qu\'à la création de comptes.
-    </div>`:''}`;
+    `;
+    // (Ancien hint « collez votre clé service_role » retiré : conseil dangereux —
+    //  la clé bypasse toute la RLS. La création de comptes passe désormais par
+    //  la fonction Netlify admin-proxy, qui détient la clé service côté serveur.)
 
     // Grouper par rôle
     const roleOrder=['siege','directeur','chef_secteur','cuisinier'];
@@ -2445,7 +2474,7 @@ async function renderAdmin(){
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="openAdminModal('corrective-action','${a.id}')" style="padding:4px 9px;background:#e2e8f0;color:var(--navy);border:none;border-radius:7px;font-size:.7rem;font-weight:700;cursor:pointer;font-family:var(--font)">✏️</button>
-            <button onclick="confirmDelete('corrective_actions','${a.id}','${escH(a.name||'')}')" style="padding:4px 9px;background:#fff5f5;color:#dc2626;border:none;border-radius:7px;font-size:.7rem;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>
+            <button onclick="confirmDelete('corrective_actions','${a.id}','${jsArg(a.name||'')}')" style="padding:4px 9px;background:#fff5f5;color:#dc2626;border:none;border-radius:7px;font-size:.7rem;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>
           </div>
         </div>`).join('')}
       </div>`;
@@ -3024,7 +3053,7 @@ function _renderAlertDetailModal() {
       const q = D.search.trim().toLowerCase();
       pending = pending.filter(s=>{
         const site = (typeof _sites!=='undefined') ? _sites.find(x=>x.code===s) : null;
-        const blob = `${s} ${site?.name||''}`.toLowerCase();
+        const blob = `${s} ${escH(site?.name||'')}`.toLowerCase();
         return blob.includes(q);
       });
     }
@@ -3417,8 +3446,8 @@ async function createTabletAccount(siteId, siteName, siteCode) {
         <div style="margin-bottom:8px">
           <div style="font-size:.68rem;color:var(--muted);margin-bottom:3px">Email</div>
           <div style="font-size:.85rem;font-weight:800;font-family:monospace;background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${email}</span>
-            <button data-copy="${email}" onclick="copyText(this.dataset.copy)" style="background:none;border:none;cursor:pointer;font-size:.9rem;flex-shrink:0">📋</button>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escH(email)}</span>
+            <button data-copy="${escAttr(email)}" onclick="copyText(this.dataset.copy)" style="background:none;border:none;cursor:pointer;font-size:.9rem;flex-shrink:0">📋</button>
           </div>
         </div>
         <div style="margin-bottom:8px">
@@ -3546,7 +3575,7 @@ function generateGMOPDF(gmoId) {
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<title>Rapport GMO — ${site?.name||''} — ${g.visit_date||''}</title>
+<title>Rapport GMO — ${escH(site?.name||'')} — ${g.visit_date||''}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #1a202c; font-size: 12px; }
@@ -3570,8 +3599,8 @@ function generateGMOPDF(gmoId) {
     <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
       <div>
         <div style="font-size:10px;letter-spacing:1px;opacity:.55;text-transform:uppercase;margin-bottom:5px">Rapport de visite GMO</div>
-        <div style="font-size:1.5rem;font-weight:900;margin-bottom:3px">${site?.name||'—'}</div>
-        <div style="font-size:12px;opacity:.7;display:flex;align-items:center;gap:8px"><span>${dt}</span>${site?.code?`<span style="font-family:monospace;font-size:11px;background:rgba(255,255,255,.15);padding:1px 7px;border-radius:5px">${site.code}</span>`:''}</div>
+        <div style="font-size:1.5rem;font-weight:900;margin-bottom:3px">${escH(site?.name||'—')}</div>
+        <div style="font-size:12px;opacity:.7;display:flex;align-items:center;gap:8px"><span>${dt}</span>${site?.code?`<span style="font-family:monospace;font-size:11px;background:rgba(255,255,255,.15);padding:1px 7px;border-radius:5px">${escH(site.code)}</span>`:''}</div>
       </div>
       <div style="text-align:right;flex-shrink:0">
         <div class="score-big" style="color:${pct>=85?'#86efac':pct>=70?'#fcd34d':'#fca5a5'}">${pct!=null?pct+'%':'—'}</div>
@@ -3608,7 +3637,7 @@ function generateGMOPDF(gmoId) {
 
   <!-- PIED DE PAGE -->
   <div style="text-align:center;margin-top:20px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:10px;color:#94a3b8">
-    Rapport généré le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})} à ${new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — PMS HACCP Dashboard | ${site?.name||''} | Visite du ${g.visit_date||''}
+    Rapport généré le ${new Date().toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'})} à ${new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})} — PMS HACCP Dashboard | ${escH(site?.name||'')} | Visite du ${g.visit_date||''}
   </div>
 </div>
 </body></html>`;
@@ -3642,11 +3671,11 @@ function openAdminModal(type, id, prefill={}) {
     content=`<div style="padding:20px">
       <div style="font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:16px">${id?'✏️ Modifier le territoire':'➕ Nouveau territoire'}</div>
       <div class="admin-field"><label>Nom du territoire</label><input type="text" id="am-terr-name" placeholder="Ex: Île-de-France" value="${escH(t?.name||'')}"></div>
-      <div class="admin-field"><label>Code court</label><input type="text" id="am-terr-code" placeholder="Ex: IDF" value="${t?.code||''}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase"></div>
+      <div class="admin-field"><label>Code court</label><input type="text" id="am-terr-code" placeholder="Ex: IDF" value="${escH(t?.code||'')}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase"></div>
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="saveAdminModal()" style="flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--font)">💾 Enregistrer</button>
         <button onclick="closeAdminModal()" style="padding:12px 16px;background:#f1f5f9;color:var(--muted);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">Annuler</button>
-        ${id?`<button onclick="confirmDelete('territories','${id}','${escH(t?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
+        ${id?`<button onclick="confirmDelete('territories','${id}','${jsArg(t?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
       </div>
     </div>`;
   }
@@ -3659,15 +3688,15 @@ function openAdminModal(type, id, prefill={}) {
       <div class="admin-field"><label>Territoire</label>
         <select id="am-sect-terr">
           <option value="">Sans territoire</option>
-          ${_territories.map(t=>`<option value="${t.id}" ${t.id===defTerrId?'selected':''}>${t.name}</option>`).join('')}
+          ${_territories.map(t=>`<option value="${t.id}" ${t.id===defTerrId?'selected':''}>${escH(t.name)}</option>`).join('')}
         </select>
       </div>
       <div class="admin-field"><label>Nom du secteur</label><input type="text" id="am-sect-name" placeholder="Ex: IDF Nord" value="${escH(s?.name||'')}"></div>
-      <div class="admin-field"><label>Code</label><input type="text" id="am-sect-code" placeholder="Ex: IDF_NORD" value="${s?.code||''}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase"></div>
+      <div class="admin-field"><label>Code</label><input type="text" id="am-sect-code" placeholder="Ex: IDF_NORD" value="${escH(s?.code||'')}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase"></div>
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="saveAdminModal()" style="flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--font)">💾 Enregistrer</button>
         <button onclick="closeAdminModal()" style="padding:12px 16px;background:#f1f5f9;color:var(--muted);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">Annuler</button>
-        ${id?`<button onclick="confirmDelete('sectors','${id}','${escH(s?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
+        ${id?`<button onclick="confirmDelete('sectors','${id}','${jsArg(s?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
       </div>
     </div>`;
   }
@@ -3685,14 +3714,14 @@ function openAdminModal(type, id, prefill={}) {
       <div class="admin-field"><label>Secteur</label>
         <select id="am-site-sect">
           <option value="">Sans secteur</option>
-          ${_sectors.map(sc=>`<option value="${sc.id}" ${sc.id===defSect?'selected':''}>${sc.name}</option>`).join('')}
+          ${_sectors.map(sc=>`<option value="${sc.id}" ${sc.id===defSect?'selected':''}>${escH(sc.name)}</option>`).join('')}
         </select>
       </div>
       <div class="admin-field"><label>Adresse</label><input type="text" id="am-site-addr" placeholder="12 rue de la Paix, 75001 Paris" value="${escH(s?.address||'')}"></div>
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="saveAdminModal()" style="flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--font)">💾 Enregistrer</button>
         <button onclick="closeAdminModal()" style="padding:12px 16px;background:#f1f5f9;color:var(--muted);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">Annuler</button>
-        ${id?`<button onclick="confirmDelete('sites','${id}','${escH(s?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
+        ${id?`<button onclick="confirmDelete('sites','${id}','${jsArg(s?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
       </div>
     </div>`;
   }
@@ -3720,7 +3749,7 @@ function openAdminModal(type, id, prefill={}) {
       <div style="display:flex;gap:8px;margin-top:16px">
         <button onclick="saveAdminModal()" style="flex:1;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--font)">💾 Enregistrer</button>
         <button onclick="closeAdminModal()" style="padding:12px 16px;background:#f1f5f9;color:var(--muted);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">Annuler</button>
-        ${id?`<button onclick="confirmDelete('corrective_actions','${id}','${escH(a?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
+        ${id?`<button onclick="confirmDelete('corrective_actions','${id}','${jsArg(a?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
       </div>
     </div>`;
   }
@@ -3820,19 +3849,19 @@ function openAdminModal(type, id, prefill={}) {
       <div class="admin-field" id="am-field-site"><label>Site (cuisinier)</label>
         <select id="am-user-site">
           <option value="">Aucun</option>
-          ${_sites.map(s=>`<option value="${s.id}">${s.name} (${s.code})</option>`).join('')}
+          ${_sites.map(s=>`<option value="${s.id}">${escH(s.name)} (${escH(s.code)})</option>`).join('')}
         </select>
       </div>
       <div class="admin-field" id="am-field-sector"><label>Secteur (chef de secteur)</label>
         <select id="am-user-sector">
           <option value="">Aucun</option>
-          ${_sectors.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
+          ${_sectors.map(s=>`<option value="${s.id}">${escH(s.name)}</option>`).join('')}
         </select>
       </div>
       <div class="admin-field" id="am-field-territory"><label>Territoire (directeur)</label>
         <select id="am-user-territory">
           <option value="">Aucun</option>
-          ${_territories.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
+          ${_territories.map(t=>`<option value="${t.id}">${escH(t.name)}</option>`).join('')}
         </select>
       </div>
       <div style="display:flex;gap:8px;margin-top:16px">
@@ -4015,19 +4044,19 @@ function openCreateUserModal(){
     <div id="cu-field-site" class="admin-field" style="display:none"><label>Site (cuisine)</label>
       <select id="cu-site">
         <option value="">— Sélectionner —</option>
-        ${_sites.map(s=>`<option value="${s.id}">${s.name} (${s.code})</option>`).join('')}
+        ${_sites.map(s=>`<option value="${s.id}">${escH(s.name)} (${escH(s.code)})</option>`).join('')}
       </select>
     </div>
     <div id="cu-field-sector" class="admin-field" style="display:none"><label>Secteur</label>
       <select id="cu-sector">
         <option value="">— Sélectionner —</option>
-        ${_sectors.map(s=>`<option value="${s.id}">${s.name}</option>`).join('')}
+        ${_sectors.map(s=>`<option value="${s.id}">${escH(s.name)}</option>`).join('')}
       </select>
     </div>
     <div id="cu-field-terr" class="admin-field" style="display:none"><label>Territoire</label>
       <select id="cu-terr">
         <option value="">— Sélectionner —</option>
-        ${_territories.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}
+        ${_territories.map(t=>`<option value="${t.id}">${escH(t.name)}</option>`).join('')}
       </select>
     </div>
 
@@ -4185,7 +4214,7 @@ function openUserDetail(profileId){
           <div style="font-size:1.05rem;font-weight:900;color:#fff">${escH(p.full_name||'Sans nom')}</div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
             <span class="badge-role ${roleCls[p.role]||''}" style="font-size:.65rem">${roleLabel[p.role]||p.role}</span>
-            ${site?`<span style="font-size:.72rem;color:rgba(255,255,255,.7)">🏠 ${escH(site.name)} (${site.code})</span>`:''}
+            ${site?`<span style="font-size:.72rem;color:rgba(255,255,255,.7)">🏠 ${escH(site.name)} (${escH(site.code)})</span>`:''}
             ${sect&&!site?`<span style="font-size:.72rem;color:rgba(255,255,255,.7)">🏢 ${escH(sect.name)}</span>`:''}
             ${terr&&!sect&&!site?`<span style="font-size:.72rem;color:rgba(255,255,255,.7)">🗺️ ${escH(terr.name)}</span>`:''}
             ${p.email?`<span style="font-size:.7rem;color:rgba(255,255,255,.6)">📧 ${escH(p.email)}</span>`:''}
@@ -4249,7 +4278,7 @@ function openUserDetail(profileId){
         <!-- Actions -->
         <div style="display:flex;gap:8px">
           <button onclick="closeAdminModal();openAdminModal('user','${p.id}')" style="flex:1;padding:11px;background:#e2e8f0;color:var(--navy);border:none;border-radius:12px;font-weight:700;cursor:pointer;font-family:var(--font)">✏️ Modifier le profil</button>
-          <button onclick="openResetPassword('${p.id}','${p.full_name||p.email}')" style="flex:1;padding:11px;background:#fef3c7;color:#92400e;border:none;border-radius:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔑 Mot de passe</button>
+          <button onclick="openResetPassword('${p.id}','${jsArg(p.full_name||p.email)}')" style="flex:1;padding:11px;background:#fef3c7;color:#92400e;border:none;border-radius:12px;font-weight:700;cursor:pointer;font-family:var(--font)">🔑 Mot de passe</button>
           <button onclick="closeAdminModal()" style="padding:11px 16px;background:#f1f5f9;color:var(--muted);border:none;border-radius:12px;font-weight:700;cursor:pointer;font-family:var(--font)">Fermer</button>
         </div>
       </div>
@@ -4350,7 +4379,7 @@ function generateComparePDF() {
   // ── Construire les données par site ──────────────────────
   const sitesData = sitesFiltered.map(site => {
     const siteRecs = _records.filter(r =>
-      r.site_id === site.code && r.recorded_at?.startsWith(moisFilter)
+      r.site_id === site.code && _recDay(r).startsWith(moisFilter)
     );
     const siteGMO = _gmos.find(g =>
       g.site_id === site.id && g.visit_date?.startsWith(moisFilter)
@@ -4925,6 +4954,9 @@ function confirmDeleteUser(uid){
 async function execDeleteUser(){
   if(!_adminModal?.uid) return;
   const uid=_adminModal.uid;
+  // Garde anti auto-suppression : un admin ne doit pas pouvoir supprimer son
+  // propre compte (sinon verrouillage immédiat).
+  if(uid===_userId){ showToast('Vous ne pouvez pas supprimer votre propre compte','error'); closeAdminModal(); return; }
   try{
     // Supprimer profil
     await supa('DELETE',`/rest/v1/profiles?id=eq.${uid}`,null);
@@ -5094,7 +5126,7 @@ function renderSaisies() {
     <span class="sort-btn ${_sortField==='date_asc'?'active':''}" onclick="_setSort('date_asc')">📅 Plus ancien</span>
     <span class="sort-btn ${_sortField==='site'?'active':''}" onclick="_setSort('site')">🏠 Site</span>
     <span class="sort-btn ${_sortField==='enr'?'active':''}" onclick="_setSort('enr')">📋 ENR</span>
-    <span style="margin-left:auto;font-size:.73rem;color:var(--muted)">${recs.length} saisie(s)</span>
+    <span style="margin-left:auto;font-size:.73rem;color:var(--muted)">${recs.length} saisie(s)${recs.length>300?` · <strong style="color:#b45309">300 affichées</strong> (affinez le filtre/période)`:''}</span>
   </div>
   <div class="table-card"><div class="table-wrap"><table>
   <thead><tr>
@@ -5127,7 +5159,7 @@ function renderSaisies() {
         <div style="font-family:var(--mono);font-size:.78rem;font-weight:700">${dateStr}</div>
         <div style="font-size:.68rem;color:var(--muted)">${timeStr} · ${d.cuisinier||d.agent||''}</div>
       </td>
-      <td><span class="site-badge"><span class="site-dot"></span>${site?.name||r.site_id}</span></td>
+      <td><span class="site-badge"><span class="site-dot"></span>${escH(site?.name||r.site_id)}</span></td>
       <td><span class="tag tag-info" style="white-space:nowrap">${ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||'—'}</span></td>
       <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600">${escH(produit)}</td>
       <td>${tempCell}</td>
@@ -5159,7 +5191,7 @@ function openDetail(id) {
   const timeStr = dt ? dt.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '';
 
   document.getElementById('detail-title').textContent = ENR_LABELS[r.enr_type] || r.enr_type?.toUpperCase() || '—';
-  document.getElementById('detail-sub').textContent = `${site?.name||r.site_id} · ${dateStr} à ${timeStr}`;
+  document.getElementById('detail-sub').textContent = `${escH(site?.name||r.site_id)} · ${dateStr} à ${timeStr}`;
 
   let body = '';
 
@@ -5817,7 +5849,7 @@ function renderNC() {
             <span class="tag tag-info" style="font-size:.68rem">${enrL}</span>
           </div>
           <div style="font-size:.9rem;font-weight:800;color:${cloture?'var(--text)':'#7f1d1d'}">${escH(produit)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">🏠 ${site?.name||r.site_id} · 📅 ${dateStr} ${timeStr}${d.cuisinier?' · 👤 '+d.cuisinier:''}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">🏠 ${escH(site?.name||r.site_id)} · 📅 ${dateStr} ${timeStr}${d.cuisinier?' · 👤 '+d.cuisinier:''}</div>
         </div>
         <span style="color:var(--muted);font-size:1rem;flex-shrink:0">›</span>
       </div>
@@ -6261,10 +6293,10 @@ function renderGMO() {
               ${Object.entries(sitesBySector).map(([sectName, sites]) => `
                 ${Object.keys(sitesBySector).length > 1 ? `<div class="gmo-site-group-label">${sectName}</div>` : ''}
                 ${sites.map(s => `
-                <div class="gmo-site-pill" id="gmo-pill-${s.id}" onclick="gmoSelectSite('${s.id}','${s.name}','${s.code}')">
+                <div class="gmo-site-pill" id="gmo-pill-${s.id}" data-id="${escAttr(s.id)}" data-name="${escAttr(s.name)}" data-code="${escAttr(s.code)}" onclick="gmoSelectSitePill(this)">
                   <span class="site-dot"></span>
-                  <span class="gmo-site-pill-name">${s.name}</span>
-                  <span class="gmo-site-pill-code">${s.code}</span>
+                  <span class="gmo-site-pill-name">${escH(s.name)}</span>
+                  <span class="gmo-site-pill-code">${escH(s.code)}</span>
                   <span class="gmo-site-pill-check" id="gmo-check-${s.id}"></span>
                 </div>`).join('')}
               `).join('')}
@@ -6352,7 +6384,7 @@ function renderGMO() {
           return `<div class="gmo-recent-item" onclick="openGMODetail('${g.id}')">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
               <div>
-                <div style="font-size:.82rem;font-weight:700">${site?.name || g.site_id}</div>
+                <div style="font-size:.82rem;font-weight:700">${escH(site?.name || g.site_id)}</div>
                 <div style="font-size:.68rem;color:var(--muted)">${dt}</div>
               </div>
               ${glob !== null ? `<span style="font-size:1.1rem;font-weight:900;color:${col}">${glob}%</span>` : '<span style="color:var(--muted);font-size:.75rem">—</span>'}
@@ -6382,6 +6414,17 @@ function renderGMO() {
 
 // ── Sélecteur de site ────────────────────────────────────
 let _gmoSiteId = null;
+
+// Handlers délégués (data-* → évite l'injection JS via onclick interpolé)
+function gmoSelectSitePill(el) {
+  gmoSelectSite(el.dataset.id, el.dataset.name, el.dataset.code);
+}
+function ovSiteCardNav(el) {
+  const code = el.dataset.navCode || '';
+  const f = document.getElementById('filter-site');
+  if (f) { f.value = code; applyFilters(); }
+  navTo('saisies');
+}
 
 function gmoSelectSite(id, name, code) {
   _gmoSiteId = id;
@@ -6757,7 +6800,7 @@ function renderCompare() {
 
   const sitesData = sitesFiltered.map(site => {
     const siteRecs = _records.filter(r =>
-      r.site_id === site.code && r.recorded_at?.startsWith(moisFilter)
+      r.site_id === site.code && _recDay(r).startsWith(moisFilter)
     );
     const siteGMO = _gmos.find(g =>
       g.site_id === site.id && g.visit_date?.startsWith(moisFilter)
@@ -6790,7 +6833,7 @@ function renderCompare() {
   const allRecsCompare = _records.filter(r => {
     if (siteFilter && r.site_id !== siteFilter) return false;
     if (secteurFilter) { const s=_sites.find(x=>x.code===r.site_id); if(!s||s.sector_id!==secteurFilter) return false; }
-    return r.recorded_at?.startsWith(moisFilter);
+    return _recDay(r).startsWith(moisFilter);
   });
   const avgPMS  = pmsWeightedScore(allRecsCompare);
   const avgGMO  = withBoth.length ? Math.round(withBoth.reduce((s,x)=>s+x.gmoAvg,0)/withBoth.length) : null;
@@ -6892,8 +6935,8 @@ function renderCompare() {
 
     const trClick = siteGMOObj ? `onclick="openGMODetail('${siteGMOObj.id}')" style="cursor:pointer;transition:background .15s" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''"` : '';
     html += `<tr ${trClick}>
-      <td><span class="site-badge"><span class="site-dot"></span>${site.name}<br><small style="color:#718096">${site.code}</small></span></td>
-      <td style="color:var(--muted);font-size:.8rem">${sect?.name||'—'}</td>
+      <td><span class="site-badge"><span class="site-dot"></span>${escH(site.name)}<br><small style="color:#718096">${escH(site.code)}</small></span></td>
+      <td style="color:var(--muted);font-size:.8rem">${escH(sect?.name||'—')}</td>
       <td style="font-family:var(--mono)">${nb}</td>
       <td>${pmsCell}</td>
       <td>${gmoCell}</td>
@@ -7463,7 +7506,7 @@ function renderPageENR(type) {
   } else {
     recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
   }
-  if (f.mois) recs = recs.filter(r => r.recorded_at?.startsWith(f.mois));
+  if (f.mois) recs = recs.filter(r => _recDay(r).startsWith(f.mois));
   if (f.site) recs = recs.filter(r => r.site_id === f.site);
   recs.sort((a,b) => b.recorded_at?.localeCompare(a.recorded_at||'')||0);
 
@@ -7530,8 +7573,19 @@ function renderPageENR(type) {
 function _pgSetView(type, view) {
   const cfg = PAGE_ENR_CFG[type];
   const f = getFilters();
-  let recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
-  if (f.mois) recs = recs.filter(r => r.recorded_at?.startsWith(f.mois));
+  // Même logique que renderPageENR : la cuisson inclut les services de
+  // distribution dynamiques (enr_distrib_*), sinon ils disparaissaient au
+  // basculement Cartes↔Tableau.
+  let recs;
+  if (type === 'cuisson') {
+    recs = _records.filter(r =>
+      cfg.enrTypes.includes(r.enr_type) ||
+      (r.enr_type && r.enr_type.startsWith('enr_distrib_'))
+    );
+  } else {
+    recs = _records.filter(r => cfg.enrTypes.includes(r.enr_type));
+  }
+  if (f.mois) recs = recs.filter(r => _recDay(r).startsWith(f.mois));
   if (f.site) recs = recs.filter(r => r.site_id === f.site);
   recs.sort((a,b) => b.recorded_at?.localeCompare(a.recorded_at||'')||0);
 
@@ -7580,7 +7634,7 @@ function _initTempCharts(days) {
   const byEnc = {};
   enr19.forEach(r => {
     const id = r.data?.enc_id || '?';
-    const date = r.data?.date || r.recorded_at?.slice(0, 10);
+    const date = _recDay(r);
     if (!date) return;
     const t = parseFloat(r.data?.temp);
     if (isNaN(t)) return;
@@ -7693,7 +7747,7 @@ function _initOverviewTrendChart() {
   dateArr.forEach(d => { byDay[d] = { total: 0, nc: 0 }; });
 
   _records.forEach(r => {
-    const day = r.recorded_at?.slice(0, 10);
+    const day = _recDay(r);
     if (day && byDay[day] !== undefined) {
       byDay[day].total++;
       if (isNC(r)) byDay[day].nc++;
@@ -7740,7 +7794,7 @@ function _initOverviewTrendChart() {
 
 function _quickExportPDF() {
   const curM = new Date().toISOString().slice(0, 7);
-  const recs = _records.filter(r => r.recorded_at?.startsWith(curM));
+  const recs = _records.filter(r => _recDay(r).startsWith(curM));
   if (recs.length === 0) { showToast('Aucune saisie ce mois', 'warn'); return; }
 
   const moisLabel = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
@@ -7883,7 +7937,7 @@ function _renderCardsForType(type, cfg, recs) {
       const byDate = {};
       enr19.forEach(r => {
         const d=r.data||{};
-        const dateKey = d.date || r.recorded_at?.slice(0,10) || '—';
+        const dateKey = _recDay(r) || "—";
         if(!byDate[dateKey]) byDate[dateKey]=[];
         byDate[dateKey].push(r);
       });
@@ -7937,7 +7991,7 @@ function _renderCardsForType(type, cfg, recs) {
               </div>
             </div>
             <div class="rec-card-footer">
-              <span>🏠 ${site&&site.name||encRecs[0]&&encRecs[0].site_id}</span>
+              <span>🏠 ${escH(site&&site.name||encRecs[0]&&encRecs[0].site_id)}</span>
               <span style="margin-left:auto;color:${isPartial?'#d97706':nc?'#dc2626':'#16a34a'};font-weight:700">${nc?'NC':isPartial?'Partiel':'Complet'}</span>
             </div>
           </div>`;
@@ -7961,7 +8015,7 @@ function _renderCardsForType(type, cfg, recs) {
     const byDate = {};
     recs.forEach(r=>{
       const d=r.data||{};
-      const dk=d.date||r.recorded_at?.slice(0,10)||'—';
+      const dk=_recDay(r)||'—';
       if(!byDate[dk]) byDate[dk]=[];
       byDate[dk].push(r);
     });
@@ -8020,7 +8074,7 @@ function _renderCardsForType(type, cfg, recs) {
     const site=_sites.find(s=>s.code===siteId);
     if(siteIds.length>1){
       html+=`<div style="font-size:.75rem;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-bottom:6px;border-bottom:2px solid var(--navy)">
-        🏠 ${site?.name||siteId} — ${siteRecs.length} saisie(s)
+        🏠 ${escH(site?.name||siteId)} — ${siteRecs.length} saisie(s)
       </div>`;
     }
     html+='<div class="rec-grid">';
@@ -8095,7 +8149,7 @@ function _renderCardsStandard(cfg, recs) {
         ${ncFieldsVisible.length?`<div style="margin-top:8px;padding:6px 8px;background:#fff5f5;border-radius:7px;font-size:.72rem;color:#dc2626;font-weight:700">⚠️ ${ncFieldsVisible.map(k=>CONF_LABELS[k]||k).join(' · ')}</div>`:''}
       </div>
       <div class="rec-card-footer">
-        <span>🏠 ${site?.name||r.site_id}</span>
+        <span>🏠 ${escH(site?.name||r.site_id)}</span>
         <span style="margin-left:auto">${ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||''}</span>
         ${photoUrls.length?`<span>📷 ${photoUrls.length}</span>`:''}
       </div>
@@ -8129,7 +8183,7 @@ function _renderTableForType(type, cfg, recs) {
 
     html += `<tr style="cursor:pointer" onclick="openDetail('${r.id}')">
       <td style="font-family:var(--mono);font-size:.75rem;white-space:nowrap">${dateStr}<br><span style="color:var(--muted)">${timeStr}</span></td>
-      <td style="font-size:.78rem;font-weight:600">${site?.name||r.site_id}</td>
+      <td style="font-size:.78rem;font-weight:600">${escH(site?.name||r.site_id)}</td>
       ${cols.map(col => {
         const val = d[col.key];
         if (!val) return '<td style="color:#cbd5e0">—</td>';
@@ -8202,7 +8256,7 @@ function renderRapports() {
         <label>🏠 Site</label>
         <select id="rpt-site" onchange="updateRptPreview(document.getElementById('rpt-mois').value,this.value)">
           <option value="">Tous les sites</option>
-          ${_sites.map(s=>`<option value="${s.code}">${s.name} (${s.code})</option>`).join('')}
+          ${_sites.map(s=>`<option value="${escAttr(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`).join('')}
         </select>
       </div>
     </div>
@@ -8242,7 +8296,7 @@ function updateRptPreview(mois, site) {
   const dateFrom = document.getElementById('rpt-date-from')?.value;
   const dateTo = document.getElementById('rpt-date-to')?.value;
   if (dateFrom) recs = recs.filter(r => r.recorded_at >= dateFrom);
-  else if (mois && mois !== 'all') recs = recs.filter(r => r.recorded_at?.startsWith(mois));
+  else if (mois && mois !== 'all') recs = recs.filter(r => _recDay(r).startsWith(mois));
   if (dateTo) recs = recs.filter(r => r.recorded_at <= dateTo + 'T23:59:59');
   if (site) recs = recs.filter(r => r.site_id === site);
   const nc = recs.filter(r => isNC(r)).length;
@@ -8279,7 +8333,7 @@ async function generatePDF() {
       recs = recs.filter(r => r.recorded_at >= dateFrom);
       if (dateTo) recs = recs.filter(r => r.recorded_at <= dateTo + 'T23:59:59');
     } else if (mois && mois !== 'all') {
-      recs = recs.filter(r => r.recorded_at?.startsWith(mois));
+      recs = recs.filter(r => _recDay(r).startsWith(mois));
     }
     if (site) recs = recs.filter(r => r.site_id === site);
 
@@ -8365,7 +8419,7 @@ async function generatePDF() {
         const d  = r.data || {};
         const dt = fmtDT(r.recorded_at);
         const siteR = _sites.find(s => s.code === r.site_id);
-        const siteDisplay = siteR ? `${siteR.name}<br><small style="color:#6b7280;font-size:9px">${siteR.code}</small>` : (r.site_id || '—');
+        const siteDisplay = siteR ? `${escH(siteR.name)}<br><small style="color:#6b7280;font-size:9px">${escH(siteR.code)}</small>` : (r.site_id || '—');
 
         // Produit / référence principale
         const produit = d.produit || d.fournisseur || d.plat || d.theme || d.ref_id || d.plat_nom || '—';
@@ -8492,7 +8546,7 @@ async function generatePDF() {
         const d = r.data || {};
         const dt = fmtDT(r.recorded_at);
         const siteR = _sites.find(s => s.code === r.site_id);
-        const siteDisplay = siteR ? `${siteR.name} (${siteR.code})` : (r.site_id || '—');
+        const siteDisplay = siteR ? `${escH(siteR.name)} (${escH(siteR.code)})` : (r.site_id || '—');
         const produit = d.produit || d.fournisseur || d.plat || d.ref_id || '—';
         const enrLabel = ENR_LABELS[r.enr_type] || r.enr_type?.toUpperCase() || '—';
         const ncFields = CONF_FIELDS_ALL.filter(k => d[k] === 'NON');
@@ -8779,6 +8833,20 @@ function escAttr(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// Échappe une valeur passée en argument de chaîne JS dans un gestionnaire on* inline.
+// Sûr en double contexte : le navigateur HTML-décode l'attribut PUIS exécute le JS,
+// donc on échappe d'abord pour le JS (\\ et \'), puis pour l'attribut HTML.
+function jsArg(s) {
+  return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/\r?\n/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // ════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════
@@ -8972,8 +9040,8 @@ async function renderSuperAdmin() {
             ${c.logo ? `<img src="${c.logo}" height="24" style="object-fit:contain;border-radius:4px">` : `<span style="color:#fff;font-size:1rem">🏢</span>`}
           </div>
           <div style="flex:1">
-            <div style="font-size:.85rem;font-weight:800">${c.name}</div>
-            <div style="font-size:.68rem;color:var(--muted)">${c.tagline||''}</div>
+            <div style="font-size:.85rem;font-weight:800">${escH(c.name)}</div>
+            <div style="font-size:.68rem;color:var(--muted)">${escH(c.tagline||'')}</div>
           </div>
           <span style="font-size:.65rem;font-weight:800;padding:2px 8px;border-radius:20px;background:#f3e8f3;color:var(--navy)">${c.plan||'pro'}</span>
         </div>`).join('')}
@@ -9229,8 +9297,8 @@ function saRenderCompaniesHTML() {
       <div style="border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:10px;background:${c.colorNavy||'#0F2240'}">
         ${logoHtml}
         <div style="flex:1">
-          <div style="font-size:.9rem;font-weight:900;color:#fff">${c.name}</div>
-          ${c.tagline?`<div style="font-size:.65rem;color:rgba(255,255,255,.5);margin-top:1px">${c.tagline}</div>`:''}
+          <div style="font-size:.9rem;font-weight:900;color:#fff">${escH(c.name)}</div>
+          ${c.tagline?`<div style="font-size:.65rem;color:rgba(255,255,255,.5);margin-top:1px">${escH(c.tagline)}</div>`:''}
         </div>
         <div style="width:9px;height:9px;border-radius:50%;background:${c.colorGreen||'#8DC63F'}"></div>
       </div>
@@ -9555,7 +9623,7 @@ function saRenderThemes() {
         <span style="font-size:.75rem">${t.emoji}</span>
         <div style="width:10px;height:10px;border-radius:50%;background:${t.green}"></div>
       </div>
-      <div style="font-size:.58rem;font-weight:700;color:#374151;text-align:center;line-height:1.2">${t.name}</div>
+      <div style="font-size:.58rem;font-weight:700;color:#374151;text-align:center;line-height:1.2">${escH(t.name)}</div>
     </div>`).join('');
 }
 
@@ -9620,11 +9688,11 @@ async function saLoadCompanyStats(tenantId) {
       ${Array.isArray(sites) && sites.length > 0 ? `
       <div style="margin-top:10px">
         <div class="sa-label">Sites</div>
-        ${sites.map(s=>`<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:.82rem;font-weight:700">${s.name} <span style="color:var(--muted);font-weight:400;font-size:.72rem">${s.code}</span></div>`).join('')}
+        ${sites.map(s=>`<div style="padding:7px 0;border-bottom:1px solid var(--border);font-size:.82rem;font-weight:700">${escH(s.name)} <span style="color:var(--muted);font-weight:400;font-size:.72rem">${escH(s.code)}</span></div>`).join('')}
       </div>` : '<div style="color:var(--muted);font-size:.8rem;margin-top:8px">Aucun site créé</div>'}
     `;
   } catch(e) {
-    content.innerHTML = `<div style="color:var(--red);font-size:.8rem">Erreur : ${e.message}</div>`;
+    content.innerHTML = `<div style="color:var(--red);font-size:.8rem">Erreur : ${escH(e.message)}</div>`;
   }
 }
 
@@ -9838,7 +9906,7 @@ async function renderSubscription(){
             <div style="font-size:.85rem;font-weight:800;color:var(--text)">${escH(s.name)}</div>
             <div style="font-size:.65rem;color:var(--muted);margin-top:1px">Code : ${escH(s.code||s.id)}</div>
           </div>
-          <button onclick="openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+          <button onclick="openCuisine('${jsArg(s.id)}','${jsArg(s.code)}','${jsArg(s.name)}')"
             style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;${font}">
             Ouvrir PMS →
           </button>

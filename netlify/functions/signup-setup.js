@@ -36,6 +36,16 @@ const corsHeaders = {
   'Content-Type': 'application/json',
 };
 
+// Supprime un tenant fraîchement créé si une étape ultérieure échoue, pour ne pas
+// laisser de tenant orphelin (qui ferait recréer un nouveau tenant à chaque retry).
+async function rollbackTenant(tenantId) {
+  if (!tenantId) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tenantId}`, { method: 'DELETE', headers: svcHeaders });
+    console.warn('[signup-setup] rollback tenant orphelin', tenantId);
+  } catch (e) { console.error('[signup-setup] rollback échec:', e.message); }
+}
+
 exports.handler = async function(event) {
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: corsHeaders, body: '' };
@@ -133,10 +143,12 @@ exports.handler = async function(event) {
     if (!profRes.ok) {
       const profErr = await profRes.text();
       console.error('[signup-setup] profile POST failed:', profRes.status, profErr);
+      await rollbackTenant(tenantId);
       return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Compte créé mais profil non initialisé. Contactez le support.' }) };
     }
   } catch(e) {
     console.error('[signup-setup] profile:', e.message);
+    await rollbackTenant(tenantId);
     return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Erreur réseau lors de la création du profil.' }) };
   }
 
@@ -157,6 +169,6 @@ exports.handler = async function(event) {
   return {
     statusCode: 200,
     headers: corsHeaders,
-    body: JSON.stringify({ tenantId, role: 'directeur' })
+    body: JSON.stringify({ tenantId, role: plan === 'solo' ? 'cuisinier' : 'directeur' })
   };
 };

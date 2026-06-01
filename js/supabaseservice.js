@@ -107,25 +107,24 @@ const SupaEngine = (() => {
       }
     } catch(e) { _supaLog('[TOKEN] getSession erreur : ' + e.message); }
 
-    // 2. Refresh manuel via refresh_token
-    if (c.refreshToken && c.url && c.anonKey) {
+    // 2. Refresh via le helper PARTAGÉ single-flight (évite les courses de rotation
+    //    entre authguard/supabaseservice qui réutilisaient un refresh_token périmé).
+    //    On relit d'abord le dernier refresh_token connu (une autre garde a pu le tourner).
+    try {
+      var canon = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || 'null');
+      if (canon && canon.refreshToken) c.refreshToken = canon.refreshToken;
+    } catch(e) { /* ignore */ }
+    if (c.refreshToken && c.url && c.anonKey && typeof window !== 'undefined' && window.__haccpSharedRefresh) {
       try {
-        var r = await fetch(c.url + '/auth/v1/token?grant_type=refresh_token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': c.anonKey },
-          body: JSON.stringify({ refresh_token: c.refreshToken })
-        });
-        if (r.ok) {
-          var d2 = await r.json();
-          if (d2.access_token) {
-            c.userToken = d2.access_token;
-            if (d2.refresh_token) c.refreshToken = d2.refresh_token;
-            saveCfgLocal(c);
-            _supaLog('[TOKEN] Rafraichi via refresh_token');
-            return d2.access_token;
-          }
+        var refreshed = await window.__haccpSharedRefresh(c.url, c.anonKey, c.refreshToken);
+        if (refreshed && refreshed.access_token) {
+          c.userToken = refreshed.access_token;
+          c.refreshToken = refreshed.refresh_token || c.refreshToken;
+          saveCfgLocal(c);
+          _supaLog('[TOKEN] Rafraichi via refresh partagé');
+          return refreshed.access_token;
         }
-      } catch(e) { _supaLog('[TOKEN] refresh_token erreur : ' + e.message); }
+      } catch(e) { _supaLog('[TOKEN] refresh partagé erreur : ' + e.message); }
     }
 
     // 3. Fallback : token stocke ou anon key
@@ -139,10 +138,20 @@ const SupaEngine = (() => {
 
   // ── Queue ─────────────────────────────────────────
   function getQueue() {
-    try { return JSON.parse(localStorage.getItem(SUPA_QUEUE_KEY)||'[]'); } catch{ return []; }
+    const raw = localStorage.getItem(SUPA_QUEUE_KEY);
+    if (!raw) return [];
+    try { return JSON.parse(raw); }
+    catch(e){
+      // Ne PAS perdre silencieusement une queue corrompue : on en garde une copie
+      // (pour diagnostic/récupération) avant de repartir d'une queue vide.
+      try { localStorage.setItem(SUPA_QUEUE_KEY+'_corrupt_'+Date.now(), raw); } catch(_){}
+      console.error('[SupaEngine] queue corrompue — copie sauvegardée, reset à []');
+      return [];
+    }
   }
   function setQueue(q) {
-    try { localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q)); } catch(e){}
+    try { localStorage.setItem(SUPA_QUEUE_KEY, JSON.stringify(q)); }
+    catch(e){ console.error('[SupaEngine] échec persistance de la queue (quota ?) :', e && e.message); }
   }
   function qStats() {
     const q = getQueue();
@@ -256,7 +265,9 @@ const SupaEngine = (() => {
       }
     }
 
-    delete entry._fullPhotos;
+    // Ne libérer la pleine résolution que si TOUTES les photos sont passées.
+    // Sinon on la conserve pour ne pas perdre la preuve (réessai/récupération).
+    if (failed === 0) delete entry._fullPhotos;
     return { uploaded, failed };
   }
 
@@ -301,10 +312,12 @@ const SupaEngine = (() => {
       }
     }
 
-    // client_id DÉTERMINISTE = site_id + enr_type + _ts
-    // Cela garantit que le même enregistrement ne peut JAMAIS être inséré deux fois
-    // même si supaBackupSync le re-enqueue, la contrainte UNIQUE client_id bloquera
-    const stableClientId = [c.siteId, enrType, record._ts || new Date().toISOString()]
+    // client_id DÉTERMINISTE basé sur _uuid (unique par fiche, posé par stampEntry).
+    // Avant : basé sur _ts → deux fiches du même type/site au même instant entraient
+    // en collision et l'une écrasait l'autre (perte de fiche). _uuid élimine ce risque
+    // tout en restant idempotent (ré-enqueue de la MÊME fiche = même _uuid = même client_id).
+    const dedupKey = record._uuid || record._ts || new Date().toISOString();
+    const stableClientId = [c.siteId, enrType, dedupKey]
       .join('::')
       .replace(/[^a-zA-Z0-9:._-]/g, '_')
       .slice(0, 200);
@@ -351,13 +364,17 @@ const SupaEngine = (() => {
     if (!isEnabled() || !navigator.onLine || _flushing) return;
     const q = getQueue();
     const now = new Date().toISOString();
+    // Une fiche en erreur est retentée INDÉFINIMENT (gated par next_retry_at) : on ne
+    // l'abandonne jamais (l'ancien plafond retries<5 perdait des fiches après une panne
+    // réseau prolongée). Le backoff est capé à 5 min → recovery rapide, pas de boucle serrée.
     const pending = q.filter(e =>
       e.status === 'pending' ||
-      (e.status === 'error' && e.retries < 5 && (!e.next_retry_at || e.next_retry_at <= now))
+      (e.status === 'error' && (!e.next_retry_at || e.next_retry_at <= now))
     );
     if (!pending.length) return;
 
     _flushing = true;
+    try {
     _updateBadge('syncing');
     const c = cfg();
     // Toujours garantir un token valide avant d'envoyer (gere JWT expired)
@@ -449,8 +466,9 @@ const SupaEngine = (() => {
         entry.status = 'error';
         entry.retries = (entry.retries||0) + 1;
         entry.last_error = e.message;
-        // Backoff exponentiel : 3s, 6s, 12s, 24s, 48s (max 5 essais)
-        entry.next_retry_at = new Date(Date.now() + Math.min(3000 * Math.pow(2, entry.retries - 1), 48000)).toISOString();
+        // Backoff exponentiel capé à 5 min : 3s, 6s, 12s, 24s, 48s, 96s, 192s, 300s…
+        // (retries illimités — la fiche n'est jamais abandonnée)
+        entry.next_retry_at = new Date(Date.now() + Math.min(3000 * Math.pow(2, entry.retries - 1), 300000)).toISOString();
         hasError = true;
         _supaLog(`⚠️ ${entry.enr_type} erreur (essai ${entry.retries}) : ${e.message}`);
       }
@@ -463,7 +481,6 @@ const SupaEngine = (() => {
     const rest    = updated.filter(e => e.status!=='synced');
     setQueue([...rest, ...synced]);
 
-    _flushing = false;
     if (syncedCount > 0) {
       const c2 = cfg(); c2.lastSync = new Date().toISOString();
       if (totalPhotos > 0) c2.lastPhotoSync = new Date().toISOString();
@@ -471,6 +488,23 @@ const SupaEngine = (() => {
     }
     _updateBadge(hasError ? 'error' : 'ok');
     _refreshModalStats();
+
+    // Drain autonome : tant qu'il reste des fiches à envoyer, replanifier un flush
+    // aligné sur le prochain next_retry_at (sans dépendre d'une nouvelle saisie ou d'un reload).
+    const remaining = getQueue().filter(e => e.status === 'pending' || e.status === 'error');
+    if (remaining.length) {
+      const soonest = remaining.reduce((min, e) => {
+        const t = e.next_retry_at ? Date.parse(e.next_retry_at) : Date.now();
+        return Math.min(min, isNaN(t) ? Date.now() : t);
+      }, Infinity);
+      const delay = Math.max(3000, Math.min(soonest - Date.now(), 300000));
+      scheduleFlush(delay);
+    }
+    } finally {
+      // Toujours relâcher le verrou, même si une exception survient (refresh token,
+      // quota, etc.) → empêche un gel définitif de la synchronisation.
+      _flushing = false;
+    }
   }
 
   // ── Test connexion ────────────────────────────────
@@ -595,13 +629,15 @@ const SupaEngine = (() => {
 
   function init() {
     // ── Purger les doublons dans la queue locale ──────────
-    // Les anciens qid (UUID aléatoires) peuvent causer des doublons en base.
-    // On déduplique par (enr_type + recorded_at) en gardant le plus récent.
+    // Déduplication par `qid` (= client_id déterministe basé sur _uuid) : ne supprime
+    // QUE les vrais doublons (même fiche). Ne JAMAIS dédupliquer par (enr_type+recorded_at)
+    // car deux fiches distinctes au même instant (ex: deux plats témoins ENR33) seraient
+    // alors écrasées → perte de fiche.
     try {
       const q = getQueue();
-      const seen = new Map(); // clé: enr_type+recorded_at → entrée la plus récente
+      const seen = new Map(); // clé: qid → entrée la plus pertinente
       q.forEach(e => {
-        const k = (e.enr_type||'') + '::' + (e.recorded_at||'');
+        const k = e.qid || ((e.enr_type||'') + '::' + (e.recorded_at||''));
         const existing = seen.get(k);
         // Garder: synced > pending > error, et si même statut le plus récent
         if (!existing || (e.status==='synced' && existing.status!=='synced') ||

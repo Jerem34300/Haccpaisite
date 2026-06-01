@@ -66,6 +66,21 @@ let _menuPage = {
   selectedPlat: null,// objet plat sélectionné (pour vue Fiche plat)
 };
 
+// Jour LOCAL (fuseau FR) d'un ISO UTC, et jour effectif d'une fiche (date saisie
+// en priorité). Évite qu'une saisie après minuit FR (= veille UTC) soit rattachée
+// au mauvais menu/jour.
+function _mdLocalDay(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return String(iso).slice(0,10);
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), j=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${j}`;
+}
+function _mdRecDay(r){
+  const d = (r && r.data) || {};
+  return d.date || d.menu_date || _mdLocalDay(r && r.recorded_at);
+}
+
 // ════════════════════════════════════════════════════
 // 1) PARSER : extrait les menus depuis _records
 // ════════════════════════════════════════════════════
@@ -75,7 +90,7 @@ function getAllMenus(){
     id:         r.id,
     site_id:    r.site_id,
     recorded_at:r.recorded_at,
-    menu_date:  (r.data?.menu_date || r.recorded_at).slice(0,10),
+    menu_date:  (r.data?.menu_date || _mdLocalDay(r.recorded_at)),
     service:    r.data?.service || 'midi',
     type_repas: r.data?.type_repas || 'normal',
     menu_id:    r.data?.menu_id || r.id,
@@ -108,7 +123,7 @@ function getEnrLinkedToPlat(platId, siteCode, menuDate){
     if(r.data?._plat_id === platId) return true;
     // Match large : même site + même date + plat_nom dans le payload
     if(r.site_id !== siteCode) return false;
-    const recDate = (r.recorded_at||'').slice(0,10);
+    const recDate = _mdRecDay(r);
     return recDate === menuDate;
   }).sort((a,b) => (a.recorded_at||'').localeCompare(b.recorded_at||''));
 }
@@ -120,7 +135,7 @@ function getEnrLinkedToMenu(menuId, siteCode, menuDate){
     if(r.data?._menu_id === menuId) return true;
     // Fallback : tous les ENR du jour pour ce site
     if(r.site_id !== siteCode) return false;
-    const recDate = (r.recorded_at||'').slice(0,10);
+    const recDate = _mdRecDay(r);
     return recDate === menuDate;
   }).sort((a,b) => (a.recorded_at||'').localeCompare(b.recorded_at||''));
 }

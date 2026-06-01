@@ -417,7 +417,22 @@ async function api(method, path, body, extraHeaders) {
   }
 }
 
-/* ── Voir les données d'une entreprise depuis le dashboard ── */
+// Récupère TOUTES les lignes en paginant par 1000 (PostgREST plafonne à db-max-rows
+// ~1000 quel que soit limit) → KPIs justes au-delà de 1000 tenants/profils.
+async function apiAll(path) {
+  var out = [], PAGE = 1000;
+  for (var off = 0; off <= 200000; off += PAGE) {
+    var sep = path.indexOf('?') >= 0 ? '&' : '?';
+    var page = await api('GET', path + sep + 'limit=' + PAGE + '&offset=' + off);
+    if (!Array.isArray(page) || !page.length) break;
+    out = out.concat(page);
+    if (page.length < PAGE) break;
+  }
+  return out;
+}
+function viewTenantDataEl(el) {
+  viewTenantData(el.dataset.id, el.dataset.name, el.dataset.plan);
+}
 function viewTenantData(tenantId, tenantName, plan) {
   sessionStorage.setItem('sa_view_tenant', JSON.stringify({id: tenantId, name: tenantName, plan: plan || ''}));
   // Plan solo → PMS cuisine, autres plans → dashboard supervision
@@ -463,7 +478,7 @@ function renderSidebar(list) {
     var isTrial = sub && sub.status === 'trial';
     var trialExpired = isTrial && sub.trial_ends_at && new Date(sub.trial_ends_at) < new Date();
     var isActive = _selectedCo && _selectedCo.id === co.id;
-    var avatarStyle = (!isActive && co.color) ? ' style="background:'+_esc(co.color)+'"' : '';
+    var avatarStyle = (!isActive && co.color) ? ' style="background:'+_safeColor(co.color)+'"' : '';
     return '<div class="co-item'+(isActive?' active':'')+'" data-coid="'+_esc(co.id)+'">'
       +'<div class="co-avatar"'+avatarStyle+'>'+_esc(initials)+'</div>'
       +'<div class="co-name">'+_esc(co.name||'—')+'</div>'
@@ -502,13 +517,13 @@ function renderCompanyDetail() {
 
   document.getElementById('co-detail').innerHTML =
     '<div class="co-header">'
-      +'<div class="co-hd-avatar" style="background:'+(co.color||'var(--navy2)')+'">'+initials+'</div>'
+      +'<div class="co-hd-avatar" style="background:'+_safeColor(co.color)+'">'+initials+'</div>'
       +'<div><div class="co-hd-name">'+_esc(co.name||'—')+'</div>'
         +'<div class="co-hd-meta">Inscrit le '+since+'</div></div>'
       +'<div class="co-hd-right">'
         +'<span class="badge-plan '+(_planBadge(co.plan))+'">'+planLbl+'</span>'
         +'<button class="btn-edit-co" id="btn-hd-edit">✏️ Modifier</button>'
-        +`<button onclick="viewTenantData('${_esc(co.id)}','${_esc(co.name)}','${_esc(co.plan||'')}')" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>`
+        +`<button data-id="${_esc(co.id)}" data-name="${_esc(co.name)}" data-plan="${_esc(co.plan||'')}" onclick="viewTenantDataEl(this)" style="background:var(--green);color:#fff;border:none;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:800;cursor:pointer;white-space:nowrap">👁 Voir les cuisines</button>`
       +'</div>'
     +'</div>'
     +'<div class="co-tabs">'
@@ -1029,7 +1044,18 @@ function closeSidebar() {
 
 /* ── Helpers ── */
 function _esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/`/g,'&#96;');
+}
+// Valide une couleur destinée à un style inline : n'autorise que des formats sûrs
+// (hex, rgb/rgba, hsl/hsla, var(--…), nom CSS) → bloque toute injection CSS/HTML.
+function _safeColor(c, fallback) {
+  c = String(c||'').trim();
+  fallback = fallback || 'var(--navy2)';
+  if (/^#[0-9a-fA-F]{3,8}$/.test(c)) return c;
+  if (/^(rgb|rgba|hsl|hsla)\([0-9.,%\s/]+\)$/.test(c)) return c;
+  if (/^var\(--[a-zA-Z0-9_-]+\)$/.test(c)) return c;
+  if (/^[a-zA-Z]{1,30}$/.test(c)) return c;
+  return fallback;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1047,10 +1073,10 @@ async function showGlobalOverview() {
 
   try {
     // Charger tenants + subscriptions via jointure
-    var tenants = await api('GET',
-      '/rest/v1/tenants?select=id,name,plan,created_at,subscriptions(status,trial_ends_at,current_period_end,cancel_at_period_end,price_per_month,stripe_customer_id,stripe_subscription_id)&order=created_at.desc&limit=500'
+    var tenants = await apiAll(
+      '/rest/v1/tenants?select=id,name,plan,created_at,subscriptions(status,trial_ends_at,current_period_end,cancel_at_period_end,price_per_month,stripe_customer_id,stripe_subscription_id)&order=created_at.desc'
     ).catch(function() {
-      return api('GET', '/rest/v1/tenants?select=id,name,plan,created_at&order=created_at.desc&limit=500');
+      return apiAll('/rest/v1/tenants?select=id,name,plan,created_at&order=created_at.desc');
     });
 
     // Charger les emails depuis auth
@@ -1063,7 +1089,7 @@ async function showGlobalOverview() {
     // Charger les profils pour email + last login
     var profiles = [];
     try {
-      profiles = await api('GET', '/rest/v1/profiles?select=id,tenant_id,role,full_name&order=tenant_id&limit=1000');
+      profiles = await apiAll('/rest/v1/profiles?select=id,tenant_id,role,full_name&order=tenant_id');
       if (!Array.isArray(profiles)) profiles = [];
     } catch(e) { profiles = []; }
 
@@ -1082,7 +1108,13 @@ async function showGlobalOverview() {
       if (trialExpired) { status = 'expired'; }
       if (stats[status] !== undefined) stats[status]++;
       else stats.expired++;
-      if (status === 'active') stats.mrr += parseFloat(sub.price_per_month || 0);
+      if (status === 'active') {
+        // MRR : si price_per_month n'est pas peuplé, on retombe sur le tarif du plan
+        // (solo 29 / multi 49) au lieu de compter 0 → MRR sous-évalué.
+        var ppm = parseFloat(sub.price_per_month || 0);
+        if (!ppm) ppm = ({ solo: 29, starter: 29, multi: 49, pro: 49 })[t.plan] || 0;
+        stats.mrr += ppm;
+      }
     });
 
     // ── Profils par tenant ────────────────────────────────────

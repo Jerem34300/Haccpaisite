@@ -39,22 +39,24 @@ function save(){
     if(e.name==='QuotaExceededError'||e.code===22){
       try {
         const s2=JSON.parse(JSON.stringify(S));
-        const _photoKeys=['p1_photo','p2_photo','photo'];
         const _tasks=[];
-        ['enr23','enr31'].forEach(sec=>{
-          const d=(s2[sec]||{}).draft||{};
-          _photoKeys.forEach(k=>{
-            if(d[k]&&d[k].length>50000){
-              _tasks.push(new Promise(res=>_compressB64Async(d[k],0.4,c=>{d[k]=c;res();})));
+        // Compresse TOUTE image base64 volumineuse, quelle que soit la section ou le
+        // champ (avant : limité à enr23/enr31 → quota toujours dépassé ailleurs).
+        const _bigImg=v=>typeof v==='string'&&v.length>50000&&v.startsWith('data:image/');
+        const _scan=obj=>{
+          if(!obj||typeof obj!=='object') return;
+          Object.keys(obj).forEach(k=>{
+            const v=obj[k];
+            if(_bigImg(v)){
+              _tasks.push(new Promise(res=>_compressB64Async(v,0.4,c=>{obj[k]=c;res();})));
             }
           });
-          (s2[sec]?.lignes||[]).forEach(r=>{
-            _photoKeys.forEach(k=>{
-              if(r[k]&&r[k].length>50000){
-                _tasks.push(new Promise(res=>_compressB64Async(r[k],0.4,c=>{r[k]=c;res();})));
-              }
-            });
-          });
+        };
+        Object.keys(s2).forEach(sec=>{
+          const node=s2[sec];
+          if(!node||typeof node!=='object') return;
+          _scan(node.draft);
+          (node.lignes||[]).forEach(_scan);
         });
         Promise.all(_tasks).then(()=>{
           try{
@@ -1639,8 +1641,11 @@ function tpSet(id,sec,vn){
   // 6. Auto-calc
   doAutoCalc(sec);
 }
-function onTS(id,sec,val){tpSet(id,sec,parseFloat(val));}
-function onTM(id,sec,val){const v=parseFloat(val);if(!isNaN(v))tpSet(id,sec,v);}
+// Parse numérique tolérant à la virgule décimale (clavier FR) : « 8,5 » → 8.5
+// (parseFloat brut s'arrête à la virgule → 8 → conformité calculée sur T° fausse).
+const _num = v => parseFloat(String(v==null?'':v).replace(',','.'));
+function onTS(id,sec,val){tpSet(id,sec,_num(val));}
+function onTM(id,sec,val){const v=_num(val);if(!isNaN(v))tpSet(id,sec,v);}
 function onTP(id,sec,vn){tpSet(id,sec,vn);}
 
 // ════════════════════════════════════════════════════
@@ -1790,8 +1795,9 @@ const tdiff=(t1,t2,maxH)=>{
   const[h2,m2]=t2.split(':').map(Number);
   let d=(h2*60+m2)-(h1*60+m1);
   if(d<0)d+=1440;
-  // Si un max est précisé (en heures) et dépassé → saisie incohérente, retourner null
-  if(maxH&&d>maxH*60)return null;
+  // NB : on ne renvoie plus null si maxH est dépassé. Une durée trop longue est le
+  // cas le PLUS à risque (chaîne du froid/chaud rompue) : elle doit être calculée et
+  // évaluée NON conforme par l'appelant, jamais masquée en « non évalué ».
   return d;
 };
 const fmtD=m=>{
@@ -1799,7 +1805,7 @@ const fmtD=m=>{
   const h=Math.floor(m/60),mn=m%60;
   return h===0?`${mn}min`:mn===0?`${h}h`:`${h}h${String(mn).padStart(2,'0')}`;
 };
-const gtv=(fid,sec)=>{const x=(S[sec]||{}).draft?.[fid];return(x!==undefined&&x!==''&&!isNaN(parseFloat(x)))?parseFloat(x):null;};
+const gtv=(fid,sec)=>{const x=(S[sec]||{}).draft?.[fid];return(x!==undefined&&x!==''&&!isNaN(_num(x)))?_num(x):null;};
 const gts=(fid,sec)=>(S[sec]||{}).draft?.[fid]||'';
 const cv=(ok,has)=>has?(ok?'OUI':'NON'):null;
 
@@ -1816,7 +1822,7 @@ const AR={
   },
   enr02:sec=>{const d=(S[sec]||{}).draft||{},dur=tdiff(d.h_deb,d.h_fin),td=gtv('t_deb',sec),tf=gtv('t_fin',sec);return{duree:fmtD(dur),conf_deb:cv(td!==null&&td<=10,td!==null),conforme:cv(dur!==null&&dur<=60&&tf!==null&&tf>=63&&td!==null&&td<=10,dur!==null&&tf!==null&&td!==null)};},
   enr03:sec=>{const d=(S[sec]||{}).draft||{},dR=tdiff(d.h1,d.h2),t2=gtv('t2',sec),dRT=tdiff(d.h3,d.h4),t3=gtv('t3',sec),t4=gtv('t4',sec);return{duree_r:fmtD(dR),conf_r:cv(dR!==null&&dR<=120&&t2!==null&&t2<=10,dR!==null&&t2!==null),duree_rt:fmtD(dRT),conf_t3:cv(t3!==null&&t3<=10,t3!==null),conf_rt:cv(dRT!==null&&dRT<=60&&t4!==null&&t4>=63&&t3!==null&&t3<=10,dRT!==null&&t4!==null&&t3!==null)};},
-  enr04:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t>=65,t!==null)};},
+  enr04:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t>=63,t!==null)};},
   enr07:sec=>{
     const d=(S[sec]||{}).draft||{};
     const mode=d.mode_mixage||'froid';
@@ -1846,20 +1852,22 @@ const AR={
   enr10:sec=>{const d=(S[sec]||{}).draft||{},td=gtv('t_debut',sec),tf=gtv('t_fin',sec),dur=tdiff(d.h_ref_deb,d.h_ref_fin);return{conf_debut:cv(td!==null&&td<=3,td!==null),conf_couple:cv(dur!==null&&dur<=120,dur!==null),conf_fin:cv(tf!==null&&tf<=6,tf!==null)};},
   enr11:sec=>{const d=(S[sec]||{}).draft||{},t1=gtv('t_premier',sec),dur=tdiff(d.h_ref_deb,d.h_ref_fin);return{conf_premier:cv(t1!==null&&t1<=3,t1!==null),conf_couple:cv(dur!==null&&dur<=120,dur!==null)};},
   enr12:sec=>{const t1=gtv('t_premier',sec),td=gtv('t_ref_deb',sec);return{conf_premier:cv(t1!==null&&t1>=63,t1!==null),conf_couple:cv(td!==null&&td>=63,td!==null)};},
-  enr13:sec=>{const t=gtv('tc',sec),tp=gts('type',sec);if(t===null||!tp)return{};return{conforme:cv(tp==='Froid'?t<=10:t>=63,true)};},
-  enr14:sec=>{const tp=gtv('t_prem',sec),td=gtv('t_dern',sec),type=gts('type',sec);if(!type)return{};const r={};if(tp!==null)r.conf_prem=cv(type==='Froid'?tp<=10:tp>=63,true);if(td!==null)r.conf_dern=cv(type==='Froid'?td<=10:td>=63,true);return r;},
+  enr13:sec=>{const t=gtv('tc',sec),tp=gts('type',sec);if(t===null||!tp)return{};return{conforme:cv(tp==='Froid'?t<=3:t>=63,true)};},
+  enr14:sec=>{const tp=gtv('t_prem',sec),td=gtv('t_dern',sec),type=gts('type',sec);if(!type)return{};const r={};if(tp!==null)r.conf_prem=cv(type==='Froid'?tp<=3:tp>=63,true);if(td!==null)r.conf_dern=cv(type==='Froid'?td<=3:td>=63,true);return r;},
   enr15:sec=>{const td=gtv('t_deb',sec),tf=gtv('t_fin',sec),type=gts('type',sec);if(!type)return{};const r={};if(td!==null)r.conf_deb=cv(type==='Froid'?td<=3:td>=63,true);if(tf!==null)r.conf_fin=cv(type==='Froid'?tf<=3:tf>=63,true);return r;},
-  enr16:sec=>{const td=gtv('t_deb',sec),tf=gtv('t_fin',sec),type=gts('type',sec);if(!type)return{};const r={};if(td!==null)r.conf_deb=cv(type==='Froid'?td<=10:td>=63,true);if(tf!==null)r.conf_fin=cv(type==='Froid'?tf<=10:tf>=63,true);return r;},
+  enr16:sec=>{const td=gtv('t_deb',sec),tf=gtv('t_fin',sec),type=gts('type',sec);if(!type)return{};const r={};if(td!==null)r.conf_deb=cv(type==='Froid'?td<=3:td>=63,true);if(tf!==null)r.conf_fin=cv(type==='Froid'?tf<=3:tf>=63,true);return r;},
   enr17:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t<=6,t!==null)};},
   enr18:sec=>{const t=gtv('tc',sec),tp=gts('type',sec);if(t===null||!tp)return{};return{conforme:cv(tp==='Froid'?t<=6:t>=63,true)};},
   enr23:sec=>{
     const d=(S[sec]||{}).draft||{};
     const visuelOk=d.vehicule==='OUI'&&d.emballage==='OUI'&&d.etiquetage==='OUI'&&d.qualite==='OUI';
     const visuelHas=!!(d.vehicule&&d.emballage&&d.etiquetage&&d.qualite);
-    // Vérification T°C produits (seuil ≤+4°C pour produits frais par défaut)
-    const tc1=d.p1_tc!==undefined&&d.p1_tc!==''?parseFloat(d.p1_tc):null;
-    const tc2=d.p2_tc!==undefined&&d.p2_tc!==''?parseFloat(d.p2_tc):null;
-    const tcOk=(tc1===null||tc1<=4)&&(tc2===null||tc2<=4);
+    // Vérification T°C produits selon le type (frais ≤ +3°C / surgelé ≤ −18°C)
+    const tc1=d.p1_tc!==undefined&&d.p1_tc!==''?_num(d.p1_tc):null;
+    const tc2=d.p2_tc!==undefined&&d.p2_tc!==''?_num(d.p2_tc):null;
+    const tc1Ok=tc1===null||(d.p1_surge==='1'?tc1<=RECEP_SURGEL_MAX:tc1<=RECEP_FRAIS_MAX);
+    const tc2Ok=tc2===null||(d.p2_surge==='1'?tc2<=RECEP_SURGEL_MAX:tc2<=RECEP_FRAIS_MAX);
+    const tcOk=tc1Ok&&tc2Ok;
     const allOk=visuelOk&&tcOk;
     return{conforme:cv(allOk,visuelHas)};
   },
@@ -2856,6 +2864,11 @@ function saveRow(id){
         _auto:'1',_enr01_ref:r01._ts||'',_enr02_ref:ts,
         _sec:'enr03',_ts:new Date().toISOString(),
       }));
+      // Le return ci-dessous court-circuite l'enqueue normal de fin de fonction :
+      // on enfile ICI les DEUX fiches CCP (l'ENR02 courant + l'ENR03 auto-créée),
+      // sinon aucune des deux ne remonte.
+      try { SupaEngine.enqueue('enr03', S['enr03'].lignes[0]); } catch(e){}
+      try { SupaEngine.enqueue(id, _savedRow); } catch(e){}
       autoBackup();
   toast('✅ Saisie enregistrée + fiche ENR03 créée automatiquement !','success');
       save();autoBackup();goTo(id);return;
@@ -2944,9 +2957,15 @@ function saveRow(id){
   toast('✅ Saisie enregistrée !','success');
 }
 function clearRow(id){showConfirm('Effacer la saisie ?','Toutes les données saisies seront perdues.','🔄 Effacer',()=>{S[id]=S[id]||{};S[id].draft={};save();goTo(id);});}
+// Intégrité de la preuve : un cuisinier ne peut plus supprimer/modifier une fiche
+// au-delà de ce délai (jours). Ajustable selon la politique de l'établissement.
+const ENR_EDIT_LOCK_DAYS = 3;
 function delRow(id,idx){
   if(roCheck())return;
-  const chef = (S.config?.chefs||[]).find(c=>c.pin===_adminPin)||{nom:'Cuisinier'};
+  // S.config.chefs est un tableau de NOMS (chaînes) : l'ancien find(c=>c.pin===...)
+  // ne matchait jamais → attribution toujours « Cuisinier ». On prend la session active.
+  const _sess = (typeof getActiveSession === 'function') ? getActiveSession() : null;
+  const chefNom = (typeof _sess === 'string' ? _sess : (_sess && _sess.nom)) || (S.config?.chefs && S.config.chefs[0]) || 'Cuisinier';
   const doSoftDelete = () => {
     const lignes = S[id]?.lignes;
     if(!lignes) return;
@@ -2960,9 +2979,18 @@ function delRow(id,idx){
     }
     if(realIdx<0||realIdx>=lignes.length) return;
     row = lignes[realIdx];
+    // Verrou d'intégrité : fiche trop ancienne → non supprimable par le cuisinier.
+    const _rowDate = row._ts || row.date || row._created;
+    if(_rowDate){
+      const _ageDays = (Date.now() - new Date(_rowDate).getTime()) / 86400000;
+      if(_ageDays > ENR_EDIT_LOCK_DAYS){
+        toast(`🔒 Fiche verrouillée (plus de ${ENR_EDIT_LOCK_DAYS} j) — intégrité de la preuve. Voyez un responsable.`,'warning');
+        return;
+      }
+    }
     // Soft delete : marquer au lieu de supprimer
     row._deleted = true;
-    row._deleted_by = chef.nom || 'Cuisinier';
+    row._deleted_by = chefNom;
     row._deleted_at = new Date().toISOString();
     save();
     // Notifier Supabase si client_id connu
@@ -3704,8 +3732,13 @@ function encConforme(temp, consigne){
   if(temp===null||temp===undefined||temp==='')return null;
   const t=parseFloat(temp);if(isNaN(t))return null;
   if(!consigne||typeof consigne!=='string')return null; // ← FIX: consigne undefined crash
-  // Normaliser : remplacer le tiret Unicode − (U+2212) par le tiret ASCII
-  const c=consigne.replace(/−/g,'-').replace(/≤/g,'<=');
+  // Normaliser : tiret Unicode − → ASCII, ≤→<=, ≥→>=
+  const c=consigne.replace(/−/g,'-').replace(/≤/g,'<=').replace(/≥/g,'>=');
+  // Consigne "≥ X" ou ">= X" (enceintes CHAUDES) — à tester AVANT "<=" car ">=" contient "="
+  if(c.includes('>=')){
+    const min=parseFloat(c.replace(/.*>=\s*/,''));
+    return isNaN(min)?null:t>=min;
+  }
   // Consigne "≤ X" ou "<= X"
   if(c.includes('<=')|| c.includes('≤')){
     const max=parseFloat(c.replace(/.*[<=≤]\s*/,''));
@@ -3862,7 +3895,7 @@ function tpHtmlEnc(id, sec, label, tMin, tMax, presets){
   </div>`;
 }
 function onEncTS(id,sec,v,mn,mx){
-  const vn=Math.max(mn,Math.min(mx,parseFloat(v)));
+  const vn=Math.max(mn,Math.min(mx,_num(v)));
   sd(id,String(vn),sec);
   const disp=document.getElementById('td-'+id+'-'+sec);
   if(disp)disp.innerHTML=(vn>=0?'+':'')+(vn%1===0?vn.toFixed(0):vn.toFixed(1))+'<sub>°C</sub>';
@@ -6726,8 +6759,16 @@ function getDistribServices(){
   ];
 }
 function saveDistribServices(svcs){ S.config=S.config||{}; S.config.distribServices=svcs; save(); registerDistribSvcPages(); _saveConfigToSupabase(); }
-const DISTRIB_FROID_MAX = 10;  // ≤ +10°C conforme
+const DISTRIB_FROID_MAX = 3;   // ≤ +3°C conforme (distribution — décision métier)
 const DISTRIB_CHAUD_MIN = 63;  // ≥ +63°C conforme
+// Seuils de conformité à la réception, selon le type de produit (décision métier) :
+const RECEP_FRAIS_MAX  = 3;    // produit frais (réfrigéré) : conforme si ≤ +3°C
+const RECEP_SURGEL_MAX = -18;  // produit surgelé : conforme si ≤ −18°C
+// Conformité T°C d'un produit reçu : true/false, ou null si pas de mesure.
+function recepTcConf(tc, surge){
+  if(tc===undefined||tc===null||tc===''||isNaN(_num(tc))) return null;
+  return surge ? _num(tc)<=RECEP_SURGEL_MAX : _num(tc)<=RECEP_FRAIS_MAX;
+}
 
 // Structure draft: { date, midi_froid_plat, midi_froid_temp, midi_chaud_plat, midi_chaud_temp,
 //   midi_valide, midi_cuisinier, midi_heure,
@@ -6794,7 +6835,7 @@ function distribSlider(svc, type, val){
 }
 
 function distribDirect(svc, type, val){
-  const v=parseFloat(val);
+  const v=_num(val);
   if(isNaN(v)) return;
   const id=`${svc}_${type}_temp`;
   distribSD(id,String(v));
@@ -7749,9 +7790,9 @@ function r23s(id,val){ S[ENR23_SEC]=S[ENR23_SEC]||{}; S[ENR23_SEC].draft=S[ENR23
 function r23ConfGlobal(){
   const d=(S[ENR23_SEC]||{}).draft||{};
   const vehiculeOk=d.vehicule==='OUI';
-  // Vérif T°C selon type (frais/surgelé)
-  const p1TcOk=!d.p1_tc||(d.p1_surge==='1'?parseFloat(d.p1_tc)<=-15:parseFloat(d.p1_tc)<=6);
-  const p2TcOk=!d.p2_tc||(d.p2_surge==='1'?parseFloat(d.p2_tc)<=-15:parseFloat(d.p2_tc)<=6);
+  // Vérif T°C selon type (frais ≤ +3°C / surgelé ≤ −18°C), virgule décimale tolérée
+  const p1TcOk=!d.p1_tc||(d.p1_surge==='1'?_num(d.p1_tc)<=RECEP_SURGEL_MAX:_num(d.p1_tc)<=RECEP_FRAIS_MAX);
+  const p2TcOk=!d.p2_tc||(d.p2_surge==='1'?_num(d.p2_tc)<=RECEP_SURGEL_MAX:_num(d.p2_tc)<=RECEP_FRAIS_MAX);
   const p1Ok=d.p1_emballage==='OUI'&&d.p1_etiquetage==='OUI'&&d.p1_qualite==='OUI'&&p1TcOk;
   const p2Ok=!d.p2_produit||(d.p2_emballage==='OUI'&&d.p2_etiquetage==='OUI'&&d.p2_qualite==='OUI'&&p2TcOk);
   return vehiculeOk&&p1Ok&&p2Ok;
@@ -7956,12 +7997,12 @@ function r23TempWidget(pfx){
   const id=pfx+'_tc';
   const surge=r23d(pfx+'_surge')==='1';
   const val=r23d(id);
-  const numV=(val!==undefined&&val!==''&&!isNaN(parseFloat(val)))?parseFloat(val):null;
+  const numV=(val!==undefined&&val!==''&&!isNaN(_num(val)))?_num(val):null;
   const slMin=surge?-40:-10, slMax=surge?5:20;
-  const slV=numV!==null?Math.max(slMin,Math.min(slMax,numV)):(surge?-18:3);
-  const confStr=numV!==null?(surge?(numV<=-15?'ok':'nc'):(numV<=6?'ok':'nc')):null;
+  const slV=numV!==null?Math.max(slMin,Math.min(slMax,numV)):(surge?RECEP_SURGEL_MAX:RECEP_FRAIS_MAX);
+  const confStr=numV!==null?(surge?(numV<=RECEP_SURGEL_MAX?'ok':'nc'):(numV<=RECEP_FRAIS_MAX?'ok':'nc')):null;
   const disp=numV!==null?numV.toFixed(1):'';
-  const consigne=surge?'Consigne ≤ -18°C (surgélation)':'Consigne ≤ +3°C (tol. +6°C)';
+  const consigne=surge?'Consigne ≤ −18°C (surgélation)':'Consigne ≤ +3°C';
   const badgeCls='distrib-temp-badge '+(confStr||'nd');
   const badgeTxt=(confStr==='ok'?'✅ ':confStr==='nc'?'❌ ':''  )+(disp?disp+'°C':'—');
   const sliderCls='distrib-temp-slider'+(surge?'':' froid');
@@ -7985,11 +8026,11 @@ function r23TempWidget(pfx){
 }
 
 function r23UpdateTemp(pfx, val){
-  const v=parseFloat(val); if(isNaN(v)) return;
+  const v=_num(val); if(isNaN(v)) return;
   const di=document.getElementById('r23di-'+pfx);
   if(di) di.textContent=v.toFixed(1);
   const surge=r23d(pfx+'_surge')==='1';
-  const conf=surge?(v<=-15?'ok':'nc'):(v<=6?'ok':'nc');
+  const conf=recepTcConf(v,surge)?'ok':'nc';
   const badge=document.getElementById('r23badge-'+pfx);
   if(badge){
     badge.className='distrib-temp-badge '+conf;
@@ -8130,13 +8171,13 @@ function r23HistoCard(){
       <div class="hr-card-data">
         <div class="hr-data-grid">
           <div class="hdi"><div class="hdi-label">Produit 1</div><div class="hdi-val">${escH(r.p1_produit||'—')}</div></div>
-          <div class="hdi"><div class="hdi-label">T°C prod. 1</div><div class="hdi-val ${r.p1_tc&&(r.p1_surge==='1'?parseFloat(r.p1_tc)<=-15:parseFloat(r.p1_tc)<=6)?'conf-oui':'conf-non'}">${r.p1_surge==='1'?'❄️ ':''}${p1T}</div></div>
+          <div class="hdi"><div class="hdi-label">T°C prod. 1</div><div class="hdi-val ${recepTcConf(r.p1_tc,r.p1_surge==='1')?'conf-oui':'conf-non'}">${r.p1_surge==='1'?'❄️ ':''}${p1T}</div></div>
           <div class="hdi"><div class="hdi-label">DLC prod. 1</div><div class="hdi-val">${r.p1_dlc||'—'}</div></div>
           <div class="hdi"><div class="hdi-label">Lot prod. 1</div><div class="hdi-val">${r.p1_lot||'—'}</div></div>
           ${r.p1_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p1_photo,'📷 Étiquette produit 1')}</div>`:''}
           ${r.p2_produit?`
           <div class="hdi"><div class="hdi-label">Produit 2</div><div class="hdi-val">${escH(r.p2_produit)}</div></div>
-          <div class="hdi"><div class="hdi-label">T°C prod. 2</div><div class="hdi-val ${r.p2_tc&&parseFloat(r.p2_tc)<=6?'conf-oui':'conf-non'}">${p2T}</div></div>
+          <div class="hdi"><div class="hdi-label">T°C prod. 2</div><div class="hdi-val ${recepTcConf(r.p2_tc,r.p2_surge==='1')?'conf-oui':'conf-non'}">${p2T}</div></div>
           <div class="hdi"><div class="hdi-label">DLC prod. 2</div><div class="hdi-val">${r.p2_dlc||'—'}</div></div>
           <div class="hdi"><div class="hdi-label">Lot prod. 2</div><div class="hdi-val">${r.p2_lot||'—'}</div></div>
           ${r.p2_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p2_photo,'📷 Étiquette produit 2')}</div>`:''}`:''}
@@ -8694,8 +8735,8 @@ function generatePDF(type){
     <table><thead><tr><th>Date</th><th>Fournisseur</th><th>Produit 1</th><th>T°C</th><th>Produit 2</th><th>T°C</th><th>Conf.</th></tr></thead>
     <tbody>${recep.map(r=>`<tr>
       <td>${fmtDate(r.date)}</td><td>${r.fournisseur||'—'}</td>
-      <td>${r.p1_produit||'—'}</td><td class="${r.p1_tc&&parseFloat(r.p1_tc)<=6?'ok':'nc'}">${fmtT(r.p1_tc)}</td>
-      <td>${r.p2_produit||'—'}</td><td class="${r.p2_tc&&parseFloat(r.p2_tc)<=6?'ok':'nc'}">${fmtT(r.p2_tc)}</td>
+      <td>${r.p1_produit||'—'}</td><td class="${recepTcConf(r.p1_tc,r.p1_surge==='1')?'ok':'nc'}">${fmtT(r.p1_tc)}</td>
+      <td>${r.p2_produit||'—'}</td><td class="${recepTcConf(r.p2_tc,r.p2_surge==='1')?'ok':'nc'}">${fmtT(r.p2_tc)}</td>
       <td class="${r.conforme==='NON'?'nc':'ok'}">${conf(r.conforme)}</td>
     </tr>`).join('')}</tbody></table>` : '<p class="empty">Aucune donnée</p>';
 
@@ -10905,8 +10946,9 @@ function e33AddBatch(){
 
 function e33PrintBatch(){
   S['enr33']=S['enr33']||{}; S['enr33'].lignes=S['enr33'].lignes||[];
-  _e33batch.forEach(b=>S['enr33'].lignes.unshift(stampEntry({...b,date:today(),_ts:new Date().toISOString(),_sec:'enr33',nb_etiq:b.nb||1})));
-  save();
+  // Les lignes ont déjà été persistées ET enfilées par e33AddBatch (marqueur _dans_lot).
+  // On ne les ré-insère PAS ici (sinon doublon dans l'historique local). L'impression
+  // ci-dessous lit _e33batch directement, indépendamment de l'historique.
   const nb33=_e33batch.reduce(function(s,b){return s+(b.nb||1);},0);
   _e33batch.forEach(b=>e33Print(b, b.nb||1));
   autoBackup();
@@ -12430,8 +12472,8 @@ function e34PrintBatch(){
   if(!nb34){ toast('⚠️ Lot vide','warning'); return; }
   askCompleteBeforePrint(nb34, function(addBlanks){
     S['enr34']=S['enr34']||{};S['enr34'].lignes=S['enr34'].lignes||[];
-    _e34batch.forEach(b=>{ S['enr34'].lignes.unshift(stampEntry({...b,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:b.nb})); });
-    save();
+    // Déjà persistées + enfilées par e34AddBatch (marqueur _dans_lot) → pas de seconde
+    // insertion ici (sinon doublon dans l'historique local). L'impression lit batchCopy.
     var printItems=[...batchCopy];
     if(addBlanks>0){
       for(var i=0;i<addBlanks;i++){
@@ -15100,7 +15142,7 @@ function getActiveSession(){ return S.activeSession||null; }
 
 // Validation valeurs aberrantes
 function validateTemperature(val, context) {
-  const n = parseFloat(val);
+  const n = _num(val);
   if (isNaN(n)) return true; // pas une temp, on laisse passer
   if (context === 'froid' && (n < -30 || n > 15)) {
     showConfirm(`Température suspecte : ${n}°C`, 'Cette valeur semble aberrante pour un stockage froid. Confirmez-vous ?', '✅ Confirmer', () => {});
@@ -15695,6 +15737,18 @@ function init(){
   if (Object.keys(_ccpTimers).length > 0 && !_ccpTimerInterval) {
     _ccpTimerInterval = setInterval(ccpTimerRefreshAll, 10000);
   }
+  // Réveil de la tablette : setInterval est gelé en veille → l'alerte CCP au seuil
+  // (refroidissement 120 min, etc.) était ratée. On recalcule dès que la page
+  // redevient visible et on réarme l'interval au besoin.
+  if (!window.__ccpVisHooked) {
+    window.__ccpVisHooked = true;
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && Object.keys(_ccpTimers).length > 0) {
+        if (!_ccpTimerInterval) _ccpTimerInterval = setInterval(ccpTimerRefreshAll, 10000);
+        ccpTimerRefreshAll();
+      }
+    });
+  }
   setInterval(autoBackup, 30*60*1000); // sauvegarde auto toutes les 30 min
   // NE PAS appeler autoBackup() ici — on attend _loadFromSupabase() pour éviter
   // de ré-enqueuer l'ancien localStorage avant que le cloud soit chargé
@@ -15872,10 +15926,14 @@ function qtempConfirm(){
   if(!_qtCtx)return;
   var num=parseFloat(_qtBuf);
   if(isNaN(num))return;
-  var clamped=Math.max(_qtCtx.min!=null?_qtCtx.min:-999,Math.min(_qtCtx.max!=null?_qtCtx.max:999,num));
+  // On enregistre la valeur RÉELLEMENT saisie (plus de clamp silencieux sur min/max).
+  // Avant, une T° hors plage (ex. 50°C alors que max=15) était stockée comme 15 →
+  // l'anomalie disparaissait. La conformité se charge de signaler les hors-seuils ;
+  // on garde juste un garde-fou absolu contre les valeurs aberrantes de saisie.
+  num=Math.max(-99,Math.min(999,num));
   var cb=_qtCtx.ok;
   qtempClose();
-  if(cb)cb(clamped);
+  if(cb)cb(num);
 }
 function qtempClose(){
   var ov=document.getElementById('qtemp-ov');

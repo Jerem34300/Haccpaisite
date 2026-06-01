@@ -83,7 +83,24 @@ function verifyStripeSignature(rawBody, sigHeader, secret) {
 
   const payload = `${timestamp}.${rawBody}`;
   const expected = crypto.createHmac('sha256', secret).update(payload, 'utf8').digest('hex');
-  if (expected !== sig) throw new Error('Signature invalide');
+  // Comparaison à temps constant (évite les timing attacks)
+  const a = Buffer.from(expected, 'utf8');
+  const b = Buffer.from(sig, 'utf8');
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+    throw new Error('Signature invalide');
+  }
+}
+
+// L'API Stripe récente (Basil 2025+) déplace current_period_end de l'objet
+// Subscription vers ses items. On lit les deux pour rester compatible.
+function subPeriodEnd(sub) {
+  if (!sub) return null;
+  const raw = (sub.items && sub.items.data && sub.items.data[0]
+              && sub.items.data[0].current_period_end)
+              || sub.current_period_end;
+  if (!raw) return null;
+  const d = new Date(raw * 1000);
+  return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
 exports.handler = async function (event) {
@@ -134,17 +151,18 @@ exports.handler = async function (event) {
 
         const stripe = Stripe(stripeKey);
         const stripeSub = await stripe.subscriptions.retrieve(subId);
-        const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
+        const periodEnd = subPeriodEnd(stripeSub);
         const priceId   = stripeSub.items.data[0]?.price?.id || null;
 
-        await patchByTenantId(tenantId, {
+        const patch = {
           status:                  'active',
           stripe_customer_id:      custId,
           stripe_subscription_id:  subId,
           stripe_price_id:         priceId,
-          current_period_end:      periodEnd,
           cancel_at_period_end:    false,
-        });
+        };
+        if (periodEnd) patch.current_period_end = periodEnd;
+        await patchByTenantId(tenantId, patch);
         console.log('[stripe-webhook] Abonnement activé pour tenant:', tenantId);
         break;
       }
@@ -157,12 +175,11 @@ exports.handler = async function (event) {
 
         const stripe = Stripe(stripeKey);
         const stripeSub = await stripe.subscriptions.retrieve(subId);
-        const periodEnd = new Date(stripeSub.current_period_end * 1000).toISOString();
+        const periodEnd = subPeriodEnd(stripeSub);
 
-        await patchByStripeSubId(subId, {
-          status:             'active',
-          current_period_end: periodEnd,
-        });
+        const patch = { status: 'active' };
+        if (periodEnd) patch.current_period_end = periodEnd;
+        await patchByStripeSubId(subId, patch);
         break;
       }
 
@@ -183,9 +200,7 @@ exports.handler = async function (event) {
 
       // ── Abonnement modifié (changement de plan, annulation future) ─
       case 'customer.subscription.updated': {
-        const periodEnd = obj.current_period_end
-          ? new Date(obj.current_period_end * 1000).toISOString()
-          : null;
+        const periodEnd = subPeriodEnd(obj);
         const patch = {
           cancel_at_period_end: !!obj.cancel_at_period_end,
           status: obj.status === 'active' ? 'active'

@@ -137,10 +137,12 @@ exports.handler = async function(event) {
       + '-' + Math.random().toString(36).slice(2, 7);
 
     try {
+      // tenants.plan a un CHECK (starter/pro/enterprise) : on mappe le plan commercial.
+      const tenantPlan = ({ solo: 'starter', multi: 'pro', enterprise: 'enterprise' })[plan] || 'pro';
       const tenantResp = await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
         method:  'POST',
         headers: { ...svcHeaders, 'Prefer': 'return=representation' },
-        body:    JSON.stringify({ name: companyName, plan, slug, primary_color: color })
+        body:    JSON.stringify({ name: companyName, plan: tenantPlan, slug, primary_color: color })
       });
       if (!tenantResp.ok) {
         const err = await tenantResp.text();
@@ -174,38 +176,58 @@ exports.handler = async function(event) {
   } catch(e) { console.warn('[provision-tenant] subscription:', e.message); }
 
   // ── 6. Créer le site principal ────────────────────────────────
+  // ⚠️ N'insérer que des colonnes RÉELLES de la table `sites`
+  // (tenant_id, name, code, address, config). Les métadonnées (type, siret,
+  // couleur) vont dans `config` (jsonb). Un site non créé = fiches jamais remontées,
+  // donc l'échec est BLOQUANT (on ne laisse pas un compte cuisinier sans site).
   const finalSiteName = siteName || companyName;
-  // Code site : 3 premières lettres du nom + 2 chiffres aléatoires (ex: LAJ47)
   const _siteLetters = (finalSiteName || companyName || 'SIT')
     .toUpperCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^A-Z0-9]/g, '')
     .slice(0, 3)
     .padEnd(3, 'X');
-  const siteCode = _siteLetters + String(Math.floor(Math.random() * 89 + 10));
+  // Code = 3 lettres + 4 caractères base36 → ~1,7M combinaisons (vs 90 avant)
+  const _genCode = () => _siteLetters + Math.random().toString(36).slice(2, 6).toUpperCase();
 
   let siteId = null;
-  try {
-    const siteResp = await fetch(`${SUPABASE_URL}/rest/v1/sites`, {
-      method:  'POST',
-      headers: { ...svcHeaders, 'Prefer': 'return=representation' },
-      body:    JSON.stringify({
-        tenant_id: tenantId,
-        nom:       finalSiteName,
-        name:      finalSiteName,
-        code:      siteCode,
-        type:      type || 'restaurant',
-        siret:     siret || null,
-        primary_color: color
-      })
-    });
-    if (siteResp.ok) {
-      const sites = await siteResp.json();
-      siteId = Array.isArray(sites) ? sites[0]?.id : sites?.id;
-    } else {
-      console.warn('[provision-tenant] site POST:', siteResp.status, await siteResp.text());
+  let siteCode = null;
+  for (let attempt = 0; attempt < 6 && !siteId; attempt++) {
+    const code = _genCode();
+    try {
+      const siteResp = await fetch(`${SUPABASE_URL}/rest/v1/sites`, {
+        method:  'POST',
+        headers: { ...svcHeaders, 'Prefer': 'return=representation' },
+        body:    JSON.stringify({
+          tenant_id: tenantId,
+          name:      finalSiteName,
+          code,
+          address:   body.address || null,
+          config:    { type: type || 'restaurant', siret: siret || null, primary_color: color }
+        })
+      });
+      if (siteResp.ok) {
+        const sites = await siteResp.json();
+        siteId   = Array.isArray(sites) ? sites[0]?.id : sites?.id;
+        siteCode = code;
+      } else {
+        const errTxt = await siteResp.text();
+        // 409 / violation d'unicité = collision de code → on retente
+        if (siteResp.status === 409 || /duplicate|unique|23505/i.test(errTxt)) {
+          console.warn('[provision-tenant] collision code site, retry:', code);
+          continue;
+        }
+        console.error('[provision-tenant] site POST:', siteResp.status, errTxt);
+        return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Création du site échouée : ' + errTxt.slice(0, 200) }) };
+      }
+    } catch(e) {
+      console.error('[provision-tenant] site:', e.message);
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Création du site échouée : ' + e.message }) };
     }
-  } catch(e) { console.warn('[provision-tenant] site:', e.message); }
+  }
+  if (!siteId) {
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Impossible de générer un code de site unique. Réessayez.' }) };
+  }
 
   // ── 7. Créer ou mettre à jour le profil utilisateur ───────────
   // Solo plan → cuisinier (accès direct PMS), sinon directeur (accès dashboard)
@@ -217,16 +239,21 @@ exports.handler = async function(event) {
       body:    JSON.stringify({
         id:        userId,
         tenant_id: tenantId,
-        site_id:   siteId || null,
+        site_id:   siteId,
         role:      profileRole,
         full_name: fullName || companyName
       })
     });
     if (!profResp.ok) {
+      // Échec bloquant : sans profil lié au site, le cuisinier ne pourrait rien remonter.
       const profErr = await profResp.text();
       console.error('[provision-tenant] profile POST:', profResp.status, profErr);
+      return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Compte créé mais profil non lié au site : ' + profErr.slice(0, 200) }) };
     }
-  } catch(e) { console.error('[provision-tenant] profile:', e.message); }
+  } catch(e) {
+    console.error('[provision-tenant] profile:', e.message);
+    return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: 'Erreur lors de la liaison du profil au site : ' + e.message }) };
+  }
 
   return {
     statusCode: 200,
