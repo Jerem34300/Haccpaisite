@@ -64,7 +64,7 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 
 ### PWA / déploiement
 - ✅ **CORRIGÉ — `sw.js`** — JS/CSS repassés en Cache-First lié à `CACHE_NAME` (version bumpée v388) → tous les assets proviennent de la même génération, plus de mélange « app neuf + utils périmé » qui crashait le JS. Rafraîchissement atomique au bump de version.
-- **Icônes PWA manquantes** — `manifest.json`/`sw.js` référencent `favicon-32/icon-192/icon-512/apple-touch-icon.png` : aucune n'existe (seul `favicon.svg`) → PWA non installable sur tablette. *(vérifié)*
+- ✅ **CORRIGÉ — Icônes PWA** — `favicon-32.png`, `icon-192.png`, `icon-512.png` (maskable) et `apple-touch-icon.png` générées aux couleurs de la marque (navy + pastille verte) → PWA installable sur tablette. *(Icônes simples : à remplacer par le logo définitif quand disponible.)*
 
 ### Conformité température (passe dédiée)
 - ✅ **CORRIGÉ — ENR23 réception par type** — seuils câblés au sélecteur frais/surgelé : **frais ≤ +3°C / surgelé ≤ −18°C** (constantes `RECEP_FRAIS_MAX`/`RECEP_SURGEL_MAX` + helper `recepTcConf`, virgule décimale gérée). Alignés sur les 5 emplacements (conformité active `r23ConfGlobal`, legacy `AR.enr23`, widget de saisie, et 3 affichages d'historique/export). Un surgelé à −5°C est désormais **NON conforme** (12 tests OK). Cuisson (≥63/65°C) et distribution (chaud ≥63°C / froid ≤10°C service) déjà conformes au standard FR → inchangés.
