@@ -384,7 +384,7 @@ async function supa(method,path,body,anon=false,extraHeaders={}){
   if(body&&method!=='GET')opts.body=JSON.stringify(body);
   // Timeout 20s pour éviter le blocage infini (Supabase cold start)
   const _ctrl = new AbortController();
-  const _tid = setTimeout(() => _ctrl.abort(), 5000);
+  const _tid = setTimeout(() => _ctrl.abort(), 20000);
   let r;
   try {
     r = await fetch(SUPA_URL+path, {...opts, signal: _ctrl.signal});
@@ -431,7 +431,7 @@ async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${qu
 async function supaAdmin(method,path,body,extraHeaders={}){
   // Proxy sécurisé — la clé service_role ne quitte jamais le serveur Netlify
   const _ac = new AbortController();
-  const _at = setTimeout(() => _ac.abort(), 5000);
+  const _at = setTimeout(() => _ac.abort(), 20000);
   let r;
   try {
     r = await fetch('/.netlify/functions/admin-proxy', {
@@ -815,7 +815,17 @@ async function loadData(){
     const _loadPeriodSel = document.getElementById('filter-load-period');
     const _loadMonths = _loadPeriodSel ? parseInt(_loadPeriodSel.value)||6 : 6;
     const _loadSince = new Date(Date.now() - _loadMonths*30*24*3600*1000).toISOString().slice(0,10);
-    _records=await _get('pms_records',`select=*&order=recorded_at.desc&limit=5000&recorded_at=gte.${_loadSince}${tenantFilter}`);
+    // Pagination : PostgREST plafonne le nombre de lignes (db-max-rows, ~1000)
+    // quelle que soit la valeur de `limit`. On parcourt par pages de 1000 (offset)
+    // jusqu'à épuisement, sinon les fiches au-delà de 1000 manquaient → conformité faussée.
+    _records = [];
+    const _PAGE = 1000;
+    for (let _off = 0; _off <= 200000; _off += _PAGE) {
+      const _page = await _get('pms_records', `select=*&order=recorded_at.desc&limit=${_PAGE}&offset=${_off}&recorded_at=gte.${_loadSince}${tenantFilter}`);
+      if (!Array.isArray(_page) || !_page.length) break;
+      _records = _records.concat(_page);
+      if (_page.length < _PAGE) break;
+    }
     // Charger la config des enceintes par site
     try {
       const configs = await _get('pms_config', `select=*&type=eq.enceintes${tenantFilter}`);
@@ -1347,7 +1357,9 @@ function calcEnr19Assiduite(recs, mois) {
 
   // Assiduité = slots faits / slots attendus, jamais > 100%
   const assiduite  = Math.min(1, attendus > 0 ? faits / attendus : 0);
-  const conformite = faits > 0 ? (1 - ncTemp / faits) : 1;
+  // Aucune saisie ⇒ conformité 0 % (et non 100 %) : un site qui ne relève rien
+  // n'est pas « conforme », il est non documenté.
+  const conformite = faits > 0 ? (1 - ncTemp / faits) : 0;
 
   // Score combiné : 60 % assiduité + 40 % conformité
   const combined = Math.round((assiduite * 0.6 + conformite * 0.4) * 100);

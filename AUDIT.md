@@ -79,10 +79,10 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 ## 2. 🟠 IMPORTANTS
 
 ### Dashboard / remontée
-- Troncature : `limit=5000` ne contourne pas `db-max-rows` PostgREST (~1000) (`app-dashboard.js:818`) ; `renderSaisies` plafonne à 300 sans le dire (`:5108`) ; alertes 400 (`:591`).
-- Timeout réel 5 s (commentaire dit 20 s) (`:387,434`) → `AbortError` → rien ne s'affiche.
+- ✅ **CORRIGÉ — Troncature 1000 lignes** : chargement des `pms_records` paginé par offset (pages de 1000 jusqu'à épuisement) → plus de fiches manquantes au-delà de 1000 → conformité/compteurs justes. *(reste : plafond 300 de renderSaisies, à signaler — mineur)*
+- ✅ **CORRIGÉ — Timeout** : passé de 5 s à 20 s (`supa` GET + `supaAdmin`), conforme au commentaire et aux cold starts Supabase → plus d'`AbortError` prématuré.
 - Timezone UTC vs local FR dans regroupements/filtres (`:966,7696` ; `app-menu-dashboard.js:207`).
-- Score 100 % quand un site ne saisit rien (NC détectée seulement si fiche `conf=NON`).
+- ✅ **CORRIGÉ — Score 100 % sans saisie** : la conformité vaut désormais 0 % (et non 100 %) quand aucun relevé n'est fait → un site non documenté n'apparaît plus « conforme ».
 - Conformité calculée 2 façons (brut vs pondéré) qui se contredisent ; assiduité ENR19 surévaluée et fausse en multi-sites (`:1322-1326`).
 - Vue Tableau↔Cartes fait disparaître les fiches de distribution (`_pgSetView:7530`).
 - ✅ **CORRIGÉ — hint `service_role`** retiré (il invitait à coller la clé service_role dans le navigateur → bypass total de la RLS). La création de comptes passe par `admin-proxy` côté serveur. *(Le plomberie client `SUPA_SERVICE_KEY` résiduelle, défaut vide, pourra être nettoyée au lot 7.)*
