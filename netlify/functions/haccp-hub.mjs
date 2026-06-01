@@ -157,7 +157,11 @@ function normalizeAckResponse(v) {
 }
 
 function tenantFilter(tenantId) {
-  return tenantId ? `tenant_id=eq.${encodeURIComponent(tenantId)}` : 'tenant_id=is.null';
+  // Défense en profondeur : sans tenant, on ne filtre PAS sur is.null (pot commun)
+  // mais sur une valeur impossible → aucune ligne (le handler rejette déjà en amont).
+  return tenantId
+    ? `tenant_id=eq.${encodeURIComponent(tenantId)}`
+    : 'tenant_id=eq.00000000-0000-0000-0000-000000000000';
 }
 
 function siteFilter(siteId) {
@@ -338,6 +342,12 @@ export default async (req) => {
 
   const { profile, token } = auth;
   const tenantId = profile.tenant_id || null;
+
+  // Fail-closed : un compte sans tenant ne doit JAMAIS retomber sur le filtre
+  // `tenant_id=is.null` (pot commun cross-comptes). On rejette explicitement.
+  if (!tenantId) {
+    return jsonResponse(403, { error: 'Compte non rattaché à une organisation (tenant manquant)' });
+  }
 
   try {
     const url = new URL(req.url);

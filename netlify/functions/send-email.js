@@ -37,7 +37,8 @@ exports.handler = async function(event) {
     html    = _buildWelcomeEmail(to, company, plan);
 
   } else if (type === 'confirm') {
-    var confirmUrl = payload.confirmUrl || 'https://hacc.pro/login.html';
+    // confirmUrl vient du client : on n'autorise QUE des URL hacc.pro (anti-phishing)
+    var confirmUrl = _safeUrl(payload.confirmUrl, 'https://hacc.pro/login.html');
     subject = 'Confirmez votre adresse email HACC.PRO';
     html    = _buildConfirmEmail(to, confirmUrl);
 
@@ -61,8 +62,10 @@ exports.handler = async function(event) {
     });
     var linkData = await linkRes.json();
     if (!linkRes.ok || (!linkData.hashed_token && !linkData.action_link)) {
+      // Anti-énumération : ne JAMAIS révéler si l'email existe. On loggue côté serveur
+      // et on renvoie une réponse générique de succès (aucun email n'est envoyé).
       console.error('[send-email] generate_link error:', linkData);
-      return { statusCode: 502, body: JSON.stringify({ error: 'Impossible de générer le lien de réinitialisation' }) };
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
     }
     // Build a direct link using hashed_token — bypasses Supabase redirect allowlist entirely
     var resetUrl;
@@ -95,6 +98,11 @@ exports.handler = async function(event) {
       return { statusCode: 502, body: JSON.stringify({ error: data.message || 'Erreur Resend' }) };
     }
 
+    // Pour le reset : réponse générique (même corps que le cas "email inexistant")
+    // afin de ne pas créer d'oracle d'énumération.
+    if (type === 'reset') {
+      return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    }
     return { statusCode: 200, body: JSON.stringify({ id: data.id }) };
   } catch(err) {
     console.error('[send-email] fetch error:', err);
@@ -211,7 +219,7 @@ function _buildConfirmEmail(email, confirmUrl) {
   var content = `
     <div style="font-size:1.3rem;font-weight:900;color:#0F2240;margin-bottom:12px;">Confirmez votre adresse email</div>
     <p style="color:#7A6579;line-height:1.75;margin:0 0 24px;">Cliquez sur le bouton ci-dessous pour valider votre compte HACC.PRO et accéder à votre espace de gestion HACCP.</p>
-    <a href="${confirmUrl}" style="display:block;background:#0F2240;color:#fff;text-align:center;padding:16px;border-radius:14px;text-decoration:none;font-weight:900;font-size:1rem;">
+    <a href="${_escape(confirmUrl)}" style="display:block;background:#0F2240;color:#fff;text-align:center;padding:16px;border-radius:14px;text-decoration:none;font-weight:900;font-size:1rem;">
       Confirmer mon adresse →
     </a>
     <p style="color:#bbb;font-size:.75rem;margin-top:16px;text-align:center;">Ce lien expire dans 24h. Si vous n'avez pas créé de compte, ignorez cet email.</p>`;
@@ -224,7 +232,7 @@ function _buildResetEmail(email, resetUrl) {
     <div style="font-size:1.3rem;font-weight:900;color:#0F2240;margin-bottom:12px;">Réinitialisez votre mot de passe</div>
     <p style="color:#7A6579;line-height:1.75;margin:0 0 24px;">Vous avez demandé la réinitialisation du mot de passe pour votre compte HACC.PRO associé à <strong>${_escape(email)}</strong>.</p>
 
-    <a href="${resetUrl}" style="display:block;background:#8DC63F;color:#fff;text-align:center;padding:16px 24px;border-radius:14px;text-decoration:none;font-weight:900;font-size:1rem;">
+    <a href="${_escape(resetUrl)}" style="display:block;background:#8DC63F;color:#fff;text-align:center;padding:16px 24px;border-radius:14px;text-decoration:none;font-weight:900;font-size:1rem;">
       Choisir un nouveau mot de passe →
     </a>
     <p style="text-align:center;font-size:.75rem;color:#bbb;margin-top:10px;">Ce lien est valable <strong>1 heure</strong></p>
@@ -238,5 +246,16 @@ function _buildResetEmail(email, resetUrl) {
 }
 
 function _escape(str) {
-  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+// N'autorise qu'une URL HTTPS du domaine hacc.pro (anti-phishing). Sinon → fallback.
+function _safeUrl(url, fallback) {
+  try {
+    var u = new URL(String(url || ''));
+    if (u.protocol === 'https:' && (u.hostname === 'hacc.pro' || u.hostname.endsWith('.hacc.pro'))) {
+      return u.href;
+    }
+  } catch (e) { /* URL invalide */ }
+  return fallback;
 }

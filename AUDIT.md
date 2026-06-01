@@ -42,10 +42,11 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - ✅ **CORRIGÉ — `superadmin.html`** — couleur tenant injectée dans `style=` : nouvel `_safeColor()` (whitelist hex/rgb/hsl/var/nom) appliqué aux deux points d'injection (avatar liste + en-tête). *(corrigé)*
 - 🟠 **PARTIEL — `superadmin.html`** — token super_admin en `localStorage` : les vecteurs XSS qui permettaient son exfiltration sont fermés ; le stockage lui-même (vs cookie httpOnly) reste à revoir dans une passe auth dédiée. *(mitigé)*
 - ✅ **CORRIGÉ — `app-dashboard.js`** — XSS stocké via `<option>`/divs/`onclick` : tous les `name/code/email/tagline` non-fiables passent par `escH` (texte), `escAttr` (attribut) ou le nouvel `jsArg` (argument JS d'un `on*` inline — sûr en double contexte HTML→JS, prouvé par 20 tests). Les 3 `onclick` à arguments libres bruts (pastille GMO, carte site, viewTenant) refactorés en `data-*`. *(corrigé)*
-- **`haccp-hub.mjs:160`** — `tenant_id=is.null` pour comptes non provisionnés → pot commun cross-comptes. *(vérifié)*
+- ✅ **CORRIGÉ — `haccp-hub.mjs`** — un compte sans tenant est rejeté (403) au lieu de retomber sur `tenant_id=is.null` ; `tenantFilter` sans tenant cible une valeur impossible (fail-closed) → fin du pot commun cross-comptes.
 - **`menu_feature.sql:69,99`** — fonctions `SECURITY DEFINER` requêtant `pms_records` sans filtre tenant → bypass RLS.
 - **`stripe-checkout.js` / `stripe-portal.js`** — JWT vérifié mais appartenance au `tenantId` non vérifiée → portail Stripe / customer d'un autre tenant.
-- **`send-email.js:44`** — reset password public non authentifié + `confirmUrl` non échappé (oracle d'énumération, phishing).
+- ✅ **CORRIGÉ — `send-email.js`** — reset : réponse générique `{ok:true}` quel que soit l'existence de l'email (plus d'oracle d'énumération) ; `confirmUrl` validé (HTTPS hacc.pro uniquement, anti-phishing) et toutes les URL échappées dans les `href`.
+- ✅ **CORRIGÉ — `stripe-checkout.js` / `stripe-portal.js`** — l'appartenance de l'utilisateur au `tenantId` est désormais vérifiée (403 sinon) → impossible d'ouvrir le portail Stripe ou d'agir sur l'abonnement d'un autre tenant.
 - **`schema.sql:444-462`** — bucket `pms-photos` public en lecture + insert/update conditionnés au seul `bucket_id` → photos lisibles/écrasables cross-tenant. Enjeu RGPD.
 
 ### Revenus
