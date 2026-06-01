@@ -34,9 +34,9 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 ## 1. 🔴 CRITIQUES
 
 ### Sécurité multi-tenant
-- **`admin-proxy.js:24,112-134`** — Isolation tenant rompue. Rôles `super_admin/siege/directeur` ; `path` contrôlé client (`startsWith` `:115`) exécuté en **service_role** sans filtre `tenant_id`. Un directeur lit/modifie/supprime les données de TOUS les clients. *(vérifié)*
-- **`admin-proxy.js:128`** — `...extraHeaders` étalé après `Authorization`/`apikey` → le client peut écraser n'importe quel en-tête. *(vérifié)*
-- **`admin-proxy.js:115`** — pas de restriction de méthode par chemin ni de garde `id=eq.` → `DELETE /rest/v1/tenants` (table entière) possible.
+- ✅ **CORRIGÉ — `admin-proxy.js`** — Isolation tenant rétablie : injection forcée de `tenant_id`/`id` sur GET/PATCH/DELETE, forçage du tenant dans le corps des POST, refus par défaut (fail-closed) des tables non classées, contrôle d'escalade de rôle (rang), `subscriptions`/`tenants` en lecture seule, et comptes Auth (`/auth/v1/admin/users`) bornés au tenant (vérif du compte ciblé + post-filtrage des listes). Le super_admin conserve l'accès cross-tenant. Couvert par 26 tests. *(corrigé)*
+- ✅ **CORRIGÉ — `admin-proxy.js`** — En-têtes : seuls les en-têtes sûrs (`SAFE_HEADER_KEYS`) sont relayés, `apikey`/`Authorization` posés **après** → plus d'écrasement possible côté client. *(corrigé)*
+- ✅ **CORRIGÉ — `admin-proxy.js`** — Whitelist de chemins + garde « filtre requis » sur DELETE/PATCH REST ; création/suppression de `tenants` réservées au super_admin → `DELETE /rest/v1/tenants` global bloqué. *(corrigé)*
 - **`superadmin.html:511,1169,1171`** — XSS stocké : `_esc()` (`:1031`) n'échappe pas `'` ; nom d'entreprise injecté dans `onclick` → JS exécuté dans la session super_admin = prise de contrôle plateforme. *(vérifié)*
 - **`superadmin.html:505,901`** — couleur tenant/site injectée brute dans `style=` (modifiable par un directeur via le proxy).
 - **`superadmin.html:345`** — token super_admin en clair dans `localStorage` → exfiltré par les XSS ci-dessus.
@@ -147,7 +147,7 @@ supabaseservice.js:356       → après 5 retries → status='error' DÉFINITIF,
 
 | Lot | Contenu | Pourquoi d'abord |
 |-----|---------|------------------|
-| **1 — Sécurité bloquante** | admin-proxy (forcer tenant_id + whitelist méthode + retirer directeur/siege du bypass) · XSS dashboard + superadmin (escH/escAttr partout, data-* au lieu d'onclick) · CSP · retrait hint service_role `:2275` · webhook Stripe (`items.data[0].current_period_end` + constructEvent) | Fuite de données de tous les clients + revenus non encaissés |
+| **1 — Sécurité bloquante** | admin-proxy ✅ (tenant_id forcé + whitelist méthode + siège/directeur bornés à leur tenant, super_admin seul en cross-tenant) · XSS dashboard + superadmin (escH/escAttr partout, data-* au lieu d'onclick) · CSP · retrait hint service_role `:2275` · webhook Stripe (`items.data[0].current_period_end` + constructEvent) | Fuite de données de tous les clients + revenus non encaissés |
 | **2 — Remontée des fiches** | provision-tenant (colonnes `sites` réelles) · garantir `site_id`/`tenant_id` · bloquer/alerter si `siteId` vide au login · dédup par `_uuid` · lock flush try/finally · réarmer retries | Sans ça un nouveau client ne fait rien remonter |
 | **3 — PWA / déploiement** | générer les icônes manquantes · SW versionné cohérent (un seul bump, purge proactive) | Installabilité tablette + éviter crash JS |
 | **4 — Dashboard fiabilité** | pagination (count exact) · timeout 20 s · timezone · score si rien saisi · vue distribution | Justesse des chiffres de supervision |

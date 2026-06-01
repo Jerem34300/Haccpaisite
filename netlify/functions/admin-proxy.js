@@ -22,6 +22,8 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SERVICE_KEY       = process.env.SUPABASE_SERVICE_KEY;
 
 const ALLOWED_ROLES = ['super_admin', 'siege', 'directeur'];
+// Hiérarchie des rôles : un appelant ne peut attribuer un rôle de rang supérieur au sien.
+const ROLE_RANK = { cuisinier: 0, chef_secteur: 1, directeur: 2, siege: 3, super_admin: 4 };
 
 // Chemins autorisés (whitelist stricte)
 const ALLOWED_PATH_PREFIXES = [
@@ -38,8 +40,9 @@ const ALLOWED_PATH_PREFIXES = [
   '/rest/v1/gmo',
 ];
 
-// Tables REST scopées par la colonne tenant_id (isolation injectée pour les non-super_admin)
-const TENANT_SCOPED_TABLES = ['profiles', 'sites', 'sectors', 'territories', 'subscriptions', 'pms_records', 'gmo'];
+// Tables REST scopées par la colonne tenant_id (isolation injectée pour les non-super_admin).
+// `tenants` et `subscriptions` ont un traitement dédié (lecture seule) plus bas.
+const TENANT_SCOPED_TABLES = ['profiles', 'sites', 'sectors', 'territories', 'pms_records', 'gmo'];
 // Référentiels globaux partagés (pas de tenant_id) : lecture seule pour les non-super_admin
 const GLOBAL_TABLES = ['corrective_actions', 'nc_action_mapping'];
 // En-têtes que le client peut transmettre (jamais apikey / Authorization)
@@ -188,21 +191,39 @@ exports.handler = async function(event) {
         }
       } else if (table === 'tenants') {
         if (!callerTenant) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Tenant appelant introuvable' }) };
-        // Création/suppression d'un tenant réservées au super_admin
-        if (method === 'POST' || method === 'DELETE') {
-          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Création/suppression de tenant réservée au super_admin' }) };
+        // Lecture seule, bornée à son propre tenant. Toute écriture (création,
+        // changement de plan/is_active, suppression) est réservée au super_admin :
+        // empêche un directeur de s'auto-upgrader (plan) ou de modifier son tenant.
+        if (method !== 'GET') {
+          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Modification du tenant réservée au super_admin' }) };
         }
         path = appendFilter(path, `id=eq.${callerTenant}`);
+      } else if (table === 'subscriptions') {
+        // Abonnements : lecture seule pour les non-super_admin (l'écriture relève
+        // du super_admin via la console ou du webhook Stripe en service_role).
+        // Empêche un directeur de prolonger/modifier son propre abonnement (fraude facturation).
+        if (!callerTenant) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Tenant appelant introuvable' }) };
+        if (method !== 'GET') {
+          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Modification des abonnements réservée au super_admin' }) };
+        }
+        path = appendFilter(path, `tenant_id=eq.${callerTenant}`);
       } else if (TENANT_SCOPED_TABLES.includes(table)) {
         if (!callerTenant) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Tenant appelant introuvable' }) };
+        // Contrôle d'escalade de rôle sur les profils (création et mise à jour)
+        if (table === 'profiles' && (method === 'POST' || method === 'PATCH')) {
+          const rows = Array.isArray(bodyToSend) ? bodyToSend : [bodyToSend];
+          for (const o of rows) {
+            if (o && typeof o === 'object' && 'role' in o) {
+              const wanted = ROLE_RANK[o.role];
+              if (wanted === undefined || wanted > (ROLE_RANK[callerRole] ?? -1)) {
+                return { statusCode: 403, headers, body: JSON.stringify({ error: `Attribution du rôle "${o.role}" non autorisée pour ce rôle` }) };
+              }
+            }
+          }
+        }
         if (method === 'POST') {
           // Une insertion ne peut être filtrée par query → on force tenant_id dans le corps
           bodyToSend = forceTenantOnBody(bodyToSend, callerTenant);
-          // Empêche un non-super_admin de créer/élever un super_admin
-          const rows = Array.isArray(bodyToSend) ? bodyToSend : [bodyToSend];
-          if (table === 'profiles' && rows.some(o => o && o.role === 'super_admin')) {
-            return { statusCode: 403, headers, body: JSON.stringify({ error: 'Attribution du rôle super_admin interdite' }) };
-          }
         } else {
           // GET/PATCH/DELETE : injection du filtre tenant (PostgREST combine en ET)
           path = appendFilter(path, `tenant_id=eq.${callerTenant}`);
@@ -219,18 +240,18 @@ exports.handler = async function(event) {
     } else if (path.startsWith('/auth/v1/admin/users')) {
       if (!callerTenant) return { statusCode: 403, headers, body: JSON.stringify({ error: 'Tenant appelant introuvable' }) };
       const m = path.match(/\/auth\/v1\/admin\/users\/([^/?]+)/);
-      if (method === 'DELETE' || method === 'PUT' || method === 'PATCH') {
-        // Modification/suppression : le compte ciblé doit appartenir au tenant de l'appelant
-        if (!m) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Identifiant de compte requis' }) };
+      if (m) {
+        // Opération sur un compte précis (GET/PUT/PATCH/DELETE) : il doit appartenir
+        // au tenant de l'appelant. Vaut aussi pour le GET (sinon fuite d'un compte tiers).
         const targetTenant = await profileTenantOf(m[1]);
         if (targetTenant === undefined || targetTenant === null || targetTenant !== callerTenant) {
           return { statusCode: 403, headers, body: JSON.stringify({ error: 'Compte hors de votre périmètre' }) };
         }
       } else if (method === 'GET') {
-        // Liste/recherche : on post-filtrera la réponse aux comptes du tenant
+        // Liste/recherche (collection) : on post-filtrera la réponse aux comptes du tenant
         scopeAuthUsersGet = true;
       }
-      // POST (création) : autorisé ; le profil associé sera forcé au tenant (table profiles ci-dessus)
+      // POST (création) sur la collection : autorisé ; le profil associé sera forcé au tenant
     }
   }
 
@@ -271,22 +292,21 @@ exports.handler = async function(event) {
       };
     }
 
-    // Post-filtrage : un siège/directeur ne voit que les comptes de son tenant
+    // Post-filtrage : un siège/directeur ne voit que les comptes de son tenant.
+    // On récupère l'ensemble (borné) des IDs de profils du tenant plutôt que d'envoyer
+    // une requête id=in.(...) géante (qui échouerait avec per_page=1000).
     if (scopeAuthUsersGet && responseBody && typeof responseBody === 'object') {
       const users = Array.isArray(responseBody.users) ? responseBody.users
                   : (Array.isArray(responseBody) ? responseBody : null);
       if (users && users.length) {
-        const ids = users.map(u => u && u.id).filter(Boolean);
         const allowed = new Set();
-        if (ids.length) {
-          try {
-            const pr = await fetch(
-              `${SUPABASE_URL}/rest/v1/profiles?id=in.(${ids.join(',')})&select=id&tenant_id=eq.${callerTenant}`,
-              { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
-            );
-            if (pr.ok) (await pr.json()).forEach(p => allowed.add(p.id));
-          } catch (e) { /* en cas d'échec : on ne révèle rien */ }
-        }
+        try {
+          const pr = await fetch(
+            `${SUPABASE_URL}/rest/v1/profiles?tenant_id=eq.${callerTenant}&select=id`,
+            { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
+          );
+          if (pr.ok) (await pr.json()).forEach(p => allowed.add(p.id));
+        } catch (e) { /* en cas d'échec : on ne révèle rien (fail-closed) */ }
         const filtered = users.filter(u => u && allowed.has(u.id));
         responseBody = Array.isArray(responseBody) ? filtered : { ...responseBody, users: filtered };
       }
