@@ -2859,6 +2859,11 @@ function saveRow(id){
         _auto:'1',_enr01_ref:r01._ts||'',_enr02_ref:ts,
         _sec:'enr03',_ts:new Date().toISOString(),
       }));
+      // Le return ci-dessous court-circuite l'enqueue normal de fin de fonction :
+      // on enfile ICI les DEUX fiches CCP (l'ENR02 courant + l'ENR03 auto-créée),
+      // sinon aucune des deux ne remonte.
+      try { SupaEngine.enqueue('enr03', S['enr03'].lignes[0]); } catch(e){}
+      try { SupaEngine.enqueue(id, _savedRow); } catch(e){}
       autoBackup();
   toast('✅ Saisie enregistrée + fiche ENR03 créée automatiquement !','success');
       save();autoBackup();goTo(id);return;
@@ -10908,8 +10913,9 @@ function e33AddBatch(){
 
 function e33PrintBatch(){
   S['enr33']=S['enr33']||{}; S['enr33'].lignes=S['enr33'].lignes||[];
-  _e33batch.forEach(b=>S['enr33'].lignes.unshift(stampEntry({...b,date:today(),_ts:new Date().toISOString(),_sec:'enr33',nb_etiq:b.nb||1})));
-  save();
+  // Les lignes ont déjà été persistées ET enfilées par e33AddBatch (marqueur _dans_lot).
+  // On ne les ré-insère PAS ici (sinon doublon dans l'historique local). L'impression
+  // ci-dessous lit _e33batch directement, indépendamment de l'historique.
   const nb33=_e33batch.reduce(function(s,b){return s+(b.nb||1);},0);
   _e33batch.forEach(b=>e33Print(b, b.nb||1));
   autoBackup();
@@ -12433,8 +12439,8 @@ function e34PrintBatch(){
   if(!nb34){ toast('⚠️ Lot vide','warning'); return; }
   askCompleteBeforePrint(nb34, function(addBlanks){
     S['enr34']=S['enr34']||{};S['enr34'].lignes=S['enr34'].lignes||[];
-    _e34batch.forEach(b=>{ S['enr34'].lignes.unshift(stampEntry({...b,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:b.nb})); });
-    save();
+    // Déjà persistées + enfilées par e34AddBatch (marqueur _dans_lot) → pas de seconde
+    // insertion ici (sinon doublon dans l'historique local). L'impression lit batchCopy.
     var printItems=[...batchCopy];
     if(addBlanks>0){
       for(var i=0;i<addBlanks;i++){

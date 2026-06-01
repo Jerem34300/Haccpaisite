@@ -54,8 +54,8 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 ### Perte / corruption de fiches ENR
 - ✅ **CORRIGÉ — Déduplication par `_uuid`** (`supabaseservice.js`) — le `client_id` déterministe est désormais basé sur `_uuid` (unique par fiche) et la purge locale se fait par `qid` : deux fiches distinctes au même instant (lot ENR33, tablettes simultanées) ne s'écrasent plus. *(Reste à vérifier que les générateurs côté `app-cuisine.js` posent bien un `_uuid` par fiche.)*
 - **`app-cuisine.js:29-73`** — `save()` retourne avant persistance sur `QuotaExceededError` (compression async) ; récupération limitée à `enr23/enr31` → fiche jamais écrite mais toast de succès.
-- **`app-cuisine.js:2832-2861`** — `return` dans la branche ENR02→ENR03 auto court-circuite l'`enqueue` → 2 fiches CCP jamais mises en file.
-- **`app-cuisine.js:12381-12451,10889-10911`** — `e34AddBatch`+`e34PrintBatch` (et e33) enregistrent 2× chaque ligne (double `unshift` + double `enqueue`) → doublons. *(node --check OK : pas de SyntaxError, mais duplication logique réelle entre printservice.js et app-cuisine.js)*
+- ✅ **CORRIGÉ — `app-cuisine.js` ENR02→ENR03** — la branche auto enfile désormais explicitement les DEUX fiches (ENR02 courant + ENR03 auto-créée) avant le `return`.
+- ✅ **CORRIGÉ — `app-cuisine.js` lots e33/e34** — `e33PrintBatch`/`e34PrintBatch` ne ré-insèrent plus les lignes déjà persistées+enfilées par `AddBatch` → fin des doublons dans l'historique local (l'impression lit le lot, pas l'historique).
 - ✅ **CORRIGÉ — `supabaseservice.js` flush** — le verrou `_flushing` est désormais relâché dans un `finally` → plus de gel définitif de la sync sur exception.
 - **`supabaseservice.js:433-440`** — 409 + PATCH échoué marqué `synced` → perte de données confirmée.
 - **`supabaseservice.js:235-259`** — base64 effacé avant POST réussi → perte de preuve photo.
