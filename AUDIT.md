@@ -24,10 +24,11 @@ signup-setup.js:99-141       → ✅ CORRIGÉ : rôle retourné cohérent (solo�
 app-onboarding.js:603        → ✅ CORRIGÉ : sites supplémentaires sans colonne fantôme `nom`
 app-login.js:98-133          → siteId désormais peuplé (profile.site_id lié par provision-tenant)
 supabaseservice.js:267       → enqueue SKIP : déjà signalé par toast ; non bloquant une fois site_id présent
-supabaseservice.js:356       → ⏳ à traiter en Lot 5 : status='error' définitif à réarmer (dédup par _uuid)
+supabaseservice.js:356       → ✅ CORRIGÉ : retries illimités (backoff capé 5 min) → fiche jamais abandonnée
+supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collision _ts) + purge locale par qid
 ```
 
-**Maillon racine réparé : un client nouvellement onboardé obtient bien un site (code unique) lié à son profil, donc les fiches peuvent remonter. Reste la résilience de la file (Lot 5).**
+**Maillon racine réparé : un client nouvellement onboardé obtient bien un site (code unique) lié à son profil, et la file de sync ne perd plus de fiches (dédup _uuid, retries illimités, verrou try/finally). Les fiches remontent.**
 
 ---
 
@@ -51,11 +52,11 @@ supabaseservice.js:356       → ⏳ à traiter en Lot 5 : status='error' défin
 - **`stripe-webhook.js:137,160`** — `current_period_end` n'est plus sur l'objet Subscription (API Stripe récente) → `Invalid Date` → 500 → **abonnement payé jamais activé**. Aucune `apiVersion` figée. Signature HMAC non constant-time (`:86`). *(vérifié, dépend du défaut compte Stripe)*
 
 ### Perte / corruption de fiches ENR
-- **Déduplication par `_ts` au lieu de `_uuid`** (`supabaseservice.js:304-310` ; `app-cuisine.js:10013-10018,10908,12433`) — collisions en génération de lot ENR33 (même ms) ET entre tablettes du même site (même minute) → fiches écrasées local + serveur (`ON CONFLICT DO NOTHING`). Plat témoin manquant = non-conformité.
+- ✅ **CORRIGÉ — Déduplication par `_uuid`** (`supabaseservice.js`) — le `client_id` déterministe est désormais basé sur `_uuid` (unique par fiche) et la purge locale se fait par `qid` : deux fiches distinctes au même instant (lot ENR33, tablettes simultanées) ne s'écrasent plus. *(Reste à vérifier que les générateurs côté `app-cuisine.js` posent bien un `_uuid` par fiche.)*
 - **`app-cuisine.js:29-73`** — `save()` retourne avant persistance sur `QuotaExceededError` (compression async) ; récupération limitée à `enr23/enr31` → fiche jamais écrite mais toast de succès.
 - **`app-cuisine.js:2832-2861`** — `return` dans la branche ENR02→ENR03 auto court-circuite l'`enqueue` → 2 fiches CCP jamais mises en file.
 - **`app-cuisine.js:12381-12451,10889-10911`** — `e34AddBatch`+`e34PrintBatch` (et e33) enregistrent 2× chaque ligne (double `unshift` + double `enqueue`) → doublons. *(node --check OK : pas de SyntaxError, mais duplication logique réelle entre printservice.js et app-cuisine.js)*
-- **`supabaseservice.js:360-466`** — lock `_flushing` sans `try/finally` → une exception fige le flush à vie.
+- ✅ **CORRIGÉ — `supabaseservice.js` flush** — le verrou `_flushing` est désormais relâché dans un `finally` → plus de gel définitif de la sync sur exception.
 - **`supabaseservice.js:433-440`** — 409 + PATCH échoué marqué `synced` → perte de données confirmée.
 - **`supabaseservice.js:235-259`** — base64 effacé avant POST réussi → perte de preuve photo.
 - **`supabaseservice.js:142-145`** — queue corrompue → reset silencieux `[]` ; `setQueue` avale `QuotaExceeded`.
