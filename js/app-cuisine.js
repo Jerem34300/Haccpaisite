@@ -3729,8 +3729,13 @@ function encConforme(temp, consigne){
   if(temp===null||temp===undefined||temp==='')return null;
   const t=parseFloat(temp);if(isNaN(t))return null;
   if(!consigne||typeof consigne!=='string')return null; // ← FIX: consigne undefined crash
-  // Normaliser : remplacer le tiret Unicode − (U+2212) par le tiret ASCII
-  const c=consigne.replace(/−/g,'-').replace(/≤/g,'<=');
+  // Normaliser : tiret Unicode − → ASCII, ≤→<=, ≥→>=
+  const c=consigne.replace(/−/g,'-').replace(/≤/g,'<=').replace(/≥/g,'>=');
+  // Consigne "≥ X" ou ">= X" (enceintes CHAUDES) — à tester AVANT "<=" car ">=" contient "="
+  if(c.includes('>=')){
+    const min=parseFloat(c.replace(/.*>=\s*/,''));
+    return isNaN(min)?null:t>=min;
+  }
   // Consigne "≤ X" ou "<= X"
   if(c.includes('<=')|| c.includes('≤')){
     const max=parseFloat(c.replace(/.*[<=≤]\s*/,''));
@@ -15906,10 +15911,14 @@ function qtempConfirm(){
   if(!_qtCtx)return;
   var num=parseFloat(_qtBuf);
   if(isNaN(num))return;
-  var clamped=Math.max(_qtCtx.min!=null?_qtCtx.min:-999,Math.min(_qtCtx.max!=null?_qtCtx.max:999,num));
+  // On enregistre la valeur RÉELLEMENT saisie (plus de clamp silencieux sur min/max).
+  // Avant, une T° hors plage (ex. 50°C alors que max=15) était stockée comme 15 →
+  // l'anomalie disparaissait. La conformité se charge de signaler les hors-seuils ;
+  // on garde juste un garde-fou absolu contre les valeurs aberrantes de saisie.
+  num=Math.max(-99,Math.min(999,num));
   var cb=_qtCtx.ok;
   qtempClose();
-  if(cb)cb(clamped);
+  if(cb)cb(num);
 }
 function qtempClose(){
   var ov=document.getElementById('qtemp-ov');

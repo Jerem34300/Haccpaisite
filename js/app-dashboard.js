@@ -5107,7 +5107,7 @@ function renderSaisies() {
     <span class="sort-btn ${_sortField==='date_asc'?'active':''}" onclick="_setSort('date_asc')">📅 Plus ancien</span>
     <span class="sort-btn ${_sortField==='site'?'active':''}" onclick="_setSort('site')">🏠 Site</span>
     <span class="sort-btn ${_sortField==='enr'?'active':''}" onclick="_setSort('enr')">📋 ENR</span>
-    <span style="margin-left:auto;font-size:.73rem;color:var(--muted)">${recs.length} saisie(s)</span>
+    <span style="margin-left:auto;font-size:.73rem;color:var(--muted)">${recs.length} saisie(s)${recs.length>300?` · <strong style="color:#b45309">300 affichées</strong> (affinez le filtre/période)`:''}</span>
   </div>
   <div class="table-card"><div class="table-wrap"><table>
   <thead><tr>
