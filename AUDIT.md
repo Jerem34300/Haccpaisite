@@ -43,11 +43,11 @@ supabaseservice.js:304-310   → ✅ CORRIGÉ : dédup par _uuid (plus de collis
 - 🟠 **PARTIEL — `superadmin.html`** — token super_admin en `localStorage` : les vecteurs XSS qui permettaient son exfiltration sont fermés ; le stockage lui-même (vs cookie httpOnly) reste à revoir dans une passe auth dédiée. *(mitigé)*
 - ✅ **CORRIGÉ — `app-dashboard.js`** — XSS stocké via `<option>`/divs/`onclick` : tous les `name/code/email/tagline` non-fiables passent par `escH` (texte), `escAttr` (attribut) ou le nouvel `jsArg` (argument JS d'un `on*` inline — sûr en double contexte HTML→JS, prouvé par 20 tests). Les 3 `onclick` à arguments libres bruts (pastille GMO, carte site, viewTenant) refactorés en `data-*`. *(corrigé)*
 - ✅ **CORRIGÉ — `haccp-hub.mjs`** — un compte sans tenant est rejeté (403) au lieu de retomber sur `tenant_id=is.null` ; `tenantFilter` sans tenant cible une valeur impossible (fail-closed) → fin du pot commun cross-comptes.
-- **`menu_feature.sql:69,99`** — fonctions `SECURITY DEFINER` requêtant `pms_records` sans filtre tenant → bypass RLS.
+- ✅ **CORRIGÉ (migration `menu_feature_rls_fix.sql` à jouer)** — `menu_coverage()` et `plat_tracability()` repassées en `security invoker` → la RLS de `pms_records` s'applique, plus de fuite cross-tenant.
 - **`stripe-checkout.js` / `stripe-portal.js`** — JWT vérifié mais appartenance au `tenantId` non vérifiée → portail Stripe / customer d'un autre tenant.
 - ✅ **CORRIGÉ — `send-email.js`** — reset : réponse générique `{ok:true}` quel que soit l'existence de l'email (plus d'oracle d'énumération) ; `confirmUrl` validé (HTTPS hacc.pro uniquement, anti-phishing) et toutes les URL échappées dans les `href`.
 - ✅ **CORRIGÉ — `stripe-checkout.js` / `stripe-portal.js`** — l'appartenance de l'utilisateur au `tenantId` est désormais vérifiée (403 sinon) → impossible d'ouvrir le portail Stripe ou d'agir sur l'abonnement d'un autre tenant.
-- **`schema.sql:444-462`** — bucket `pms-photos` public en lecture + insert/update conditionnés au seul `bucket_id` → photos lisibles/écrasables cross-tenant. Enjeu RGPD.
+- 🟠 **CORRECTIF FOURNI (migration `photos_bucket_rls_fix.sql` à jouer)** — INSERT/UPDATE/DELETE du bucket `pms-photos` scopés au tenant (via le code site du chemin) → fin de l'écrasement cross-tenant. La privatisation de la lecture (RGPD) est fournie en section optionnelle (nécessite des URL signées côté client).
 
 ### Revenus
 - **`stripe-webhook.js:137,160`** — `current_period_end` n'est plus sur l'objet Subscription (API Stripe récente) → `Invalid Date` → 500 → **abonnement payé jamais activé**. Aucune `apiVersion` figée. Signature HMAC non constant-time (`:86`). *(vérifié, dépend du défaut compte Stripe)*
