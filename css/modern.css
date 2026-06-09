@@ -1,0 +1,194 @@
+/* ============================================================
+   HACC.PRO — Couche "ultra moderne" (overrides chirurgicaux)
+   Chargée APRÈS landing.css. Ne casse rien : ne fait que sublimer.
+   Palette conservée : navy #0F2240 · vert #8DC63F · prune #5C1E5A
+   Ajout typo : Space Grotesk (titres) + Nunito (corps, conservé)
+   ============================================================ */
+
+:root{
+  --display:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
+  --ink:#0a1828;
+  --green-glow:0 0 0 1px rgba(141,198,63,.25),0 12px 40px -8px rgba(141,198,63,.45);
+  --glass:rgba(255,255,255,.04);
+  --glass-brd:rgba(255,255,255,.10);
+  --ease:cubic-bezier(.16,1,.3,1);
+}
+
+/* ── Titres en Space Grotesk, plus serrés ── */
+.hero h1,
+.section-h2,
+.login-title,
+.stat-val,
+.s-temp-num{
+  font-family:var(--display);
+  letter-spacing:-.025em;
+}
+.hero h1{font-weight:700;line-height:1.08}
+.section-h2{font-weight:600;letter-spacing:-.03em}
+
+/* ── HERO : panneau de contrôle (texture grille + halo) ── */
+.hero{padding-top:104px}
+.hero::after{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
+  background-image:
+    linear-gradient(rgba(141,198,63,.045) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(141,198,63,.045) 1px,transparent 1px);
+  background-size:46px 46px;
+  -webkit-mask-image:radial-gradient(ellipse 80% 70% at 70% 35%,#000 0%,transparent 75%);
+          mask-image:radial-gradient(ellipse 80% 70% at 70% 35%,#000 0%,transparent 75%);
+}
+.hero-inner{position:relative;z-index:2}
+
+/* badge plus net */
+.hero-badge{
+  background:rgba(141,198,63,.12);
+  border:1px solid rgba(141,198,63,.28);
+  backdrop-filter:blur(8px);
+  font-family:var(--display);font-weight:600;letter-spacing:.04em
+}
+
+/* mot-clé surligné : trait vert sous le texte plutôt que couleur seule */
+.hero h1 em{
+  position:relative;color:#fff;z-index:1;
+}
+.hero h1 em::after{
+  content:'';position:absolute;left:-1px;right:-1px;bottom:.02em;height:.22em;z-index:-1;
+  background:linear-gradient(105deg,rgba(141,198,63,.9),rgba(141,198,63,.5));
+  border-radius:2px;transform:skewX(-6deg);
+}
+
+.btn-hero-primary{
+  font-family:var(--display);font-weight:700;letter-spacing:-.01em;
+  border-radius:13px;
+}
+.btn-hero-secondary{font-family:var(--display);font-weight:600;border-radius:13px}
+
+/* ── SIGNATURE : jauge de température "live" ── */
+.hero-gauge{
+  position:relative;width:100%;max-width:420px;margin-left:auto;
+  background:linear-gradient(160deg,rgba(26,53,88,.55),rgba(15,34,64,.85));
+  border:1px solid var(--glass-brd);
+  border-radius:24px;padding:30px 30px 26px;
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.06);
+  backdrop-filter:blur(20px);
+  overflow:hidden;
+}
+.hero-gauge::before{
+  content:'';position:absolute;top:-40%;right:-20%;width:60%;height:80%;
+  background:radial-gradient(circle,rgba(141,198,63,.18),transparent 70%);
+  pointer-events:none;
+}
+.gauge-top{
+  display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;
+}
+.gauge-eyebrow{
+  font-family:var(--display);font-size:.66rem;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;color:rgba(255,255,255,.45)
+}
+.gauge-live{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:.64rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+  color:#8DC63F;font-family:var(--display)
+}
+.gauge-live i{
+  width:7px;height:7px;border-radius:50%;background:#8DC63F;
+  box-shadow:0 0 0 0 rgba(141,198,63,.6);animation:gp 1.8s var(--ease) infinite;font-style:normal
+}
+@keyframes gp{0%{box-shadow:0 0 0 0 rgba(141,198,63,.55)}70%{box-shadow:0 0 0 9px rgba(141,198,63,0)}100%{box-shadow:0 0 0 0 rgba(141,198,63,0)}}
+
+.gauge-name{
+  font-family:var(--font);font-size:1.02rem;font-weight:800;color:#fff;margin-bottom:18px
+}
+.gauge-name small{display:block;font-size:.72rem;font-weight:600;color:rgba(255,255,255,.4);margin-top:2px}
+
+/* arc SVG */
+.gauge-arc-wrap{position:relative;width:230px;margin:2px auto 0}
+.gauge-arc{width:100%;height:auto;display:block;overflow:visible}
+.gauge-track{fill:none;stroke:rgba(255,255,255,.08);stroke-width:13;stroke-linecap:round}
+.gauge-fill{
+  fill:none;stroke:url(#gaugeGrad);stroke-width:13;stroke-linecap:round;
+  stroke-dasharray:289;stroke-dashoffset:289;
+  transition:stroke-dashoffset 2.1s var(--ease);
+  filter:drop-shadow(0 0 6px rgba(141,198,63,.35))
+}
+.gauge-readout{
+  position:absolute;left:0;right:0;bottom:6px;text-align:center;
+  display:flex;flex-direction:column;align-items:center;line-height:1
+}
+.gauge-val{
+  font-family:var(--display);font-size:2.9rem;font-weight:700;color:#fff;line-height:1;
+  letter-spacing:-.04em;display:inline
+}
+.gauge-unit{font-size:1.2rem;color:rgba(255,255,255,.55);font-weight:600;margin-left:2px}
+.gauge-range{
+  font-size:.66rem;font-weight:700;color:rgba(141,198,63,.85);margin-top:9px;
+  font-family:var(--font);white-space:nowrap;letter-spacing:.02em
+}
+
+/* tampon conforme */
+.gauge-stamp{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  margin-top:18px;padding:11px;border-radius:13px;
+  background:rgba(141,198,63,.12);border:1px solid rgba(141,198,63,.3);
+  font-family:var(--display);font-weight:700;font-size:.9rem;color:#a3d65f;
+  opacity:0;transform:translateY(8px) scale(.96);
+  transition:all .5s var(--ease) .9s
+}
+.gauge-stamp.on{opacity:1;transform:none}
+.gauge-stamp svg{flex-shrink:0}
+
+.gauge-meta{
+  display:flex;gap:18px;margin-top:16px;padding-top:16px;
+  border-top:1px solid rgba(255,255,255,.07)
+}
+.gauge-meta div{flex:1}
+.gauge-meta b{
+  display:block;font-family:var(--display);font-size:1.15rem;font-weight:700;color:#fff;
+  letter-spacing:-.02em
+}
+.gauge-meta span{font-size:.66rem;color:rgba(255,255,255,.42);font-weight:700;letter-spacing:.02em}
+
+/* on masque l'ancien mockup, on garde la nouvelle jauge */
+.hero-visual .app-mockup{display:none}
+
+/* ── STATS : Space Grotesk + filet ── */
+.stats{border-top:1px solid var(--border)}
+.stat-val{font-weight:700}
+.stat-val span{font-family:var(--font)}
+
+/* ── SECTION HEADERS : eyebrow uppercase plus technique ── */
+.section-eyebrow,.eyebrow{
+  font-family:var(--display)!important;font-weight:600;letter-spacing:.13em
+}
+
+/* ── CARTES : coins + ombres modernisés (sans casser la grille) ── */
+.feature-card,.testi-card,.problem-card,.price-card,.pricing-card{
+  border-radius:18px;
+  transition:transform .3s var(--ease),box-shadow .3s var(--ease),border-color .3s var(--ease)
+}
+.feature-card:hover{
+  transform:translateY(-5px);
+  box-shadow:0 22px 50px -18px rgba(15,34,64,.25);
+  border-color:rgba(141,198,63,.4)
+}
+
+/* ── FINAL CTA / footer accents ── */
+.final-cta h2,.cta-final h2{font-family:var(--display);font-weight:600;letter-spacing:-.03em}
+
+/* ── Respect reduced-motion ── */
+@media (prefers-reduced-motion:reduce){
+  .gauge-fill,.gauge-stamp,.gauge-live i,.feature-card{transition:none!important;animation:none!important}
+  .gauge-fill{stroke-dashoffset:139}
+  .gauge-stamp{opacity:1;transform:none}
+}
+
+/* ── Responsive : la jauge centrée sur mobile ── */
+@media (max-width:880px){
+  .hero-visual{display:flex!important}      /* l'ancien mockup était masqué ; la jauge, elle, mérite d'être vue */
+  .hero-gauge{margin:32px auto 0;max-width:380px}
+  .hero::after{-webkit-mask-image:radial-gradient(ellipse 120% 50% at 50% 20%,#000,transparent 80%);mask-image:radial-gradient(ellipse 120% 50% at 50% 20%,#000,transparent 80%)}
+}
+@media (max-width:480px){
+  .hero-gauge{padding:24px 20px 22px}
+  .gauge-val{font-size:2.6rem}
+}
