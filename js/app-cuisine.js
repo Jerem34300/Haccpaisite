@@ -14566,7 +14566,11 @@ function checkVibrationAlerts() {
 
   // T°C Distribution — 15 min avant chaque service
   getDistribServices().forEach(svc => {
-    const svcH = svc.heure ? parseFloat(svc.heure.split(':')[0]) + parseFloat(svc.heure.split(':')[1]||0)/60 : 12;
+    // Compat ascendante : midi_deb (nouveau champ, modifiable via le sélecteur horaire)
+    // prioritaire sur heure (ancien champ, peut rester figé sur sa valeur par défaut
+    // après reconfiguration de l'horaire dans Paramètres → décalage de l'alerte vibration)
+    const _svcHeure = svc.midi_deb || svc.heure || '';
+    const svcH = _svcHeure ? parseFloat(_svcHeure.split(':')[0]) + parseFloat(_svcHeure.split(':')[1]||0)/60 : 12;
     const key = 'distrib_' + svc.id + '_' + todayStr;
     const draft = distribDraft();
     const done = (draft.date===todayStr && draft[svc.id+'_valide']==='OUI')
