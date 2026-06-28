@@ -31,8 +31,12 @@ create table if not exists public.tenants (
   logo_url       text,
   plan           text not null default 'pro' check (plan in ('starter','pro','enterprise')),
   is_active      boolean not null default true,
+  allowed_enr    jsonb,
   created_at     timestamptz not null default now()
 );
+
+-- Idempotent add for already-deployed tenants tables (column may be missing).
+alter table public.tenants add column if not exists allowed_enr jsonb;
 
 -- =============================================================
 -- 2) HIÉRARCHIE Territoires → Secteurs → Sites
@@ -141,7 +145,7 @@ create index if not exists pms_records_site_type_recorded_idx
 create table if not exists public.pms_config (
   id         uuid primary key default gen_random_uuid(),
   site_id    text not null,
-  tenant_id  uuid references public.tenants(id) on delete set null,
+  tenant_id  text,
   type       text not null check (type in ('enceintes','canicule')),
   data       jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
@@ -362,9 +366,9 @@ create policy pms_records_insert on public.pms_records
   for insert to authenticated
   with check (
     public.is_super_admin()
-    or (tenant_id = public.current_tenant_id() and public.is_admin())
+    or ((tenant_id)::text = (public.current_tenant_id())::text and public.is_admin())
     or (upper(site_id) = public.current_site_code()
-        and tenant_id = public.current_tenant_id())
+        and (tenant_id)::text = (public.current_tenant_id())::text)
   );
 
 drop policy if exists pms_records_update on public.pms_records;
@@ -395,21 +399,31 @@ create policy pms_config_select on public.pms_config
   for select to authenticated
   using (
     public.is_super_admin()
-    or tenant_id = public.current_tenant_id()
+    or (tenant_id = (public.current_tenant_id())::text and public.is_admin())
     or upper(site_id) = public.current_site_code()
   );
 
 drop policy if exists pms_config_write on public.pms_config;
-create policy pms_config_write on public.pms_config
-  for all to authenticated
+drop policy if exists pms_config_insert on public.pms_config;
+create policy pms_config_insert on public.pms_config
+  for insert to authenticated
+  with check (
+    public.is_super_admin()
+    or (tenant_id = (public.current_tenant_id())::text and public.is_admin())
+    or upper(site_id) = public.current_site_code()
+  );
+
+drop policy if exists pms_config_update on public.pms_config;
+create policy pms_config_update on public.pms_config
+  for update to authenticated
   using (
     public.is_super_admin()
-    or (tenant_id = public.current_tenant_id() and public.is_admin())
+    or (tenant_id = (public.current_tenant_id())::text and public.is_admin())
     or upper(site_id) = public.current_site_code()
   )
   with check (
     public.is_super_admin()
-    or (tenant_id = public.current_tenant_id() and public.is_admin())
+    or (tenant_id = (public.current_tenant_id())::text and public.is_admin())
     or upper(site_id) = public.current_site_code()
   );
 
