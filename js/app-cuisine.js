@@ -1445,13 +1445,18 @@ function appBeep(){
   if(S.config?.soundOn===false) return;
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type='sine'; osc.frequency.value=880;
-    gain.gain.setValueAtTime(.25,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.6);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime+.6);
+    // Triple bip aigu (carré, plus perçant qu'une sinusoïde) calé sur le rythme
+    // de la vibration critique [1000,300,1000,300,1000] pour une alerte bien
+    // distincte des sons d'interface habituels.
+    [0, .45, .9].forEach(t => {
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type='square'; osc.frequency.value=1000;
+      gain.gain.setValueAtTime(.35,ctx.currentTime+t);
+      gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t+.35);
+      osc.start(ctx.currentTime+t); osc.stop(ctx.currentTime+t+.35);
+    });
   }catch(e){}
 }
 function toggleNavLock(){
@@ -14597,7 +14602,7 @@ function checkVibrationAlerts() {
     const keyDepasse = 'refr_depasse_' + r._ts;
     if (elapsedMin >= 120 && elapsedMin < 121 && !_alertsFired[keyDepasse]) {
       _alertsFired[keyDepasse] = true;
-      appVibrate([1000, 300, 1000, 300, 1000]);
+      appVibrate([1000, 300, 1000, 300, 1000]); appBeep();
       toast('🚨 Refroidissement "' + (r.produit||'') + '" DÉPASSÉ — NC obligatoire !', 'warning');
     }
   });
