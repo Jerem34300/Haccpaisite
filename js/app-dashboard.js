@@ -4970,6 +4970,17 @@ async function clotureNCDash(recordId) {
   if (!r) return;
   const actionInput = document.getElementById('detail-action-input');
   const action = actionInput?.value?.trim() || '';
+  try {
+    if(!action && !r.data?.action){
+      showToast('⚠️ Saisissez une action corrective avant de clôturer la NC.','warning');
+      if(actionInput){
+        actionInput.style.borderColor='#dc2626';
+        actionInput.style.boxShadow='0 0 0 2px rgba(220,38,38,.2)';
+        actionInput.focus();
+      }
+      return;
+    }
+  } catch(e) { /* validation UI best-effort */ }
   const btn = document.querySelector('[onclick*="clotureNCDash"]');
   if(btn){btn.textContent='⏳…';btn.disabled=true;}
   try {
@@ -5170,7 +5181,7 @@ function openDetail(id) {
     body += `<div style="background:${isCloturee?'#f0fdf4':'#fff5f5'};border:1.5px solid ${isCloturee?'#bbf7d0':'#fecaca'};border-radius:12px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <div style="font-size:.82rem;font-weight:800;color:${isCloturee?'#166534':'#991b1b'}">${isCloturee?'✅ NC clôturée':'🔴 Non-conformité en cours'}</div>
       ${!isCloturee?`<div style="display:flex;gap:6px;flex-wrap:wrap">
-        <input type="text" id="detail-action-input" placeholder="Action corrective…" style="padding:6px 10px;border:1.5px solid #fecaca;border-radius:8px;font-size:.75rem;font-family:var(--font);outline:none;min-width:150px">
+        <input type="text" id="detail-action-input" placeholder="Action corrective…" oninput="this.style.borderColor='#fecaca';this.style.boxShadow='none'" style="padding:6px 10px;border:1.5px solid #fecaca;border-radius:8px;font-size:.75rem;font-family:var(--font);outline:none;min-width:150px">
         <button onclick="clotureNCDash('${r.id}')" style="padding:6px 12px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:.75rem;font-weight:800;cursor:pointer;font-family:var(--font);white-space:nowrap">✅ Clôturer</button>
       </div>`:`<div style="font-size:.72rem;color:#16a34a">${d.action_cloture?'→ '+escH(d.action_cloture):''}</div>`}
     </div>`;
