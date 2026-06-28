@@ -9877,6 +9877,21 @@ async function _loadFromSupabase() {
     const recs = await recsRes.json();
     if (!Array.isArray(recs)) throw new Error('Réponse invalide');
 
+    // ── Ne pas écraser le local si le cloud revient vide ET qu'il reste des
+    // saisies en attente d'envoi (échec réseau/RLS ou sync pas encore terminée) :
+    // un cloud vide dans ce cas ne reflète pas la réalité, l'écraser détruirait
+    // des saisies réelles jamais remontées au serveur.
+    if (recs.length === 0) {
+      try {
+        const pendingQueue = JSON.parse(localStorage.getItem('haccp_supa_queue_v1') || '[]');
+        if (Array.isArray(pendingQueue) && pendingQueue.length > 0) {
+          console.warn('[_loadFromSupabase] Cloud vide mais '+pendingQueue.length+' saisie(s) en attente de sync — données locales conservées');
+          toast('⚠️ Synchronisation en attente — données locales conservées', 'warning');
+          return;
+        }
+      } catch(e) { /* si la lecture de la queue échoue, on continue normalement */ }
+    }
+
     // ── CLOUD = SOURCE DE VÉRITÉ ──
     // On vide toutes les saisies locales avant d'injecter le cloud
     // pour éviter tout doublon (le localStorage était un cache temporaire)
