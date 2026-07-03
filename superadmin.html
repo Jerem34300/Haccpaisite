@@ -256,6 +256,10 @@ button{font-family:var(--font)}
           style="width:100%;padding:9px 12px;background:rgba(141,198,63,.15);color:var(--green);border:1.5px solid rgba(141,198,63,.3);border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);margin-bottom:8px;text-align:left;display:flex;align-items:center;gap:8px">
           <span>📊</span> Vue d'ensemble clients
         </button>
+        <button onclick="showAuditLog()" id="btn-audit"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1.5px solid rgba(255,255,255,.1);border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);margin-bottom:8px;text-align:left;display:flex;align-items:center;gap:8px">
+          <span>📋</span> Journal d'audit
+        </button>
         <input class="sb-search" id="sb-search" placeholder="🔍 Rechercher..." oninput="filterCompanies(this.value)">
       </div>
       <div class="sb-label" id="sb-count">Entreprises</div>
@@ -1165,11 +1169,17 @@ async function showGlobalOverview() {
           +'<td '+td+'><span style="font-weight:800;color:'+(sl==='active'?'#166534':'var(--muted)')+'">'+mrr+'</span></td>'
           +'<td '+td+'>'+lastLogin+'</td>'
           +'<td '+td+'>'+created+'</td>'
-          +'<td '+td+' style="white-space:nowrap">'
+          +'<td '+td+' style="white-space:nowrap;vertical-align:middle">'
             +'<button onclick="selectCompany(\''+_esc(t.id)+'\')" title="Voir détails"'
-              +' style="padding:4px 10px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer;margin-right:4px">Détails</button>'
-            +(sl==='trial'?'<button onclick="extendTrial(\''+_esc(t.id)+'\',\''+_esc(t.name)+'\')" title="Prolonger l\'essai"'
-              +' style="padding:4px 8px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer">+7j</button>':'')
+              +' style="padding:4px 10px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer;margin-right:4px;margin-bottom:2px">Détails</button>'
+            +(sl==='trial'?'<button onclick="extendTrial(\''+_esc(t.id)+'\',\''+_esc(t.name)+'\')"'
+              +' style="padding:4px 8px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer;margin-right:4px;margin-bottom:2px">+Jours</button>':'')
+            +(sl==='trial'||sl==='active'||sl==='past_due'?'<button onclick="cancelSubscription(\''+_esc(t.id)+'\',\''+_esc(t.name)+'\')"'
+              +' style="padding:4px 8px;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer;margin-right:4px;margin-bottom:2px">Résilier</button>':'')
+            +(sl==='expired'||sl==='cancelled'||sl==='past_due'?'<button onclick="activateSubscription(\''+_esc(t.id)+'\',\''+_esc(t.name)+'\')"'
+              +' style="padding:4px 8px;background:#dcfce7;color:#166534;border:1px solid #86efac;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer;margin-right:4px;margin-bottom:2px">Activer</button>':'')
+            +'<button onclick="changePlan(\''+_esc(t.id)+'\',\''+_esc(t.name)+'\',\''+_esc(t.plan||'')+'\',\''+_esc(sub?sub.price_per_month||'':'')+'\')"'
+              +' style="padding:4px 8px;background:#f0f9ff;color:#0369a1;border:1px solid #bae6fd;border-radius:7px;font-size:.72rem;font-weight:800;cursor:pointer;margin-bottom:2px">Plan</button>'
           +'</td>'
           +'</tr>';
       }).join('');
@@ -1254,24 +1264,172 @@ async function extendTrial(tenantId, tenantName) {
     +'<option value="7">7 jours</option>'
     +'<option value="14" selected>14 jours</option>'
     +'<option value="30">30 jours</option>'
+    +'<option value="60">60 jours</option>'
+    +'<option value="90">90 jours</option>'
     +'</select></div>',
     [
       {label:'Prolonger', cls:'btn-primary green', fn: async function() {
         var days = parseInt(document.getElementById('m-trial-days').value) || 14;
-        // Récupérer la date d'expiration actuelle
         var subs = await api('GET', '/rest/v1/subscriptions?tenant_id=eq.'+tenantId+'&select=trial_ends_at&limit=1');
         var currentEnd = subs?.[0]?.trial_ends_at ? new Date(subs[0].trial_ends_at) : new Date();
         if (currentEnd < new Date()) currentEnd = new Date();
-        var newEnd = new Date(currentEnd.getTime() + days * 86400000).toISOString();
+        var newEnd = new Date(currentEnd.getTime() + days * 86400000);
+        // Plafond : jamais plus de 365 jours à partir d'aujourd'hui
+        var maxEnd = new Date(Date.now() + 365 * 86400000);
+        if (newEnd > maxEnd) newEnd = maxEnd;
         await api('PATCH', '/rest/v1/subscriptions?tenant_id=eq.'+tenantId, {
-          trial_ends_at: newEnd, status: 'trial'
+          trial_ends_at: newEnd.toISOString(), status: 'trial'
         });
+        await logAudit('extend_trial', tenantId, tenantName, { days, new_trial_ends_at: newEnd.toISOString() });
         toast('Essai prolongé de '+days+' jours ✓', 'green');
         return true;
       }},
       {label:'Annuler', cls:'btn-cancel', fn: null}
     ]
   );
+}
+
+/* ── Résilier un abonnement ── */
+async function cancelSubscription(tenantId, tenantName) {
+  showModal(
+    '✕ Résilier l\'abonnement',
+    '<div style="font-size:.88rem;color:var(--danger);margin-bottom:12px">⚠️ Résilier l\'abonnement de <strong>'+_esc(tenantName)+'</strong> ?</div>'
+    +'<p style="font-size:.82rem;color:var(--muted)">Le client perdra l\'accès à la prochaine vérification de statut. Cette action est réversible via "Activer".</p>',
+    [
+      {label:'Résilier', cls:'btn-primary', fn: async function() {
+        await api('PATCH', '/rest/v1/subscriptions?tenant_id=eq.'+tenantId, { status: 'cancelled' });
+        await logAudit('cancel', tenantId, tenantName, {});
+        toast('Abonnement résilié pour '+_esc(tenantName), 'green');
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Activer / réactiver un abonnement ── */
+async function activateSubscription(tenantId, tenantName) {
+  showModal(
+    '✓ Activer l\'abonnement',
+    '<div style="font-size:.88rem;color:var(--text);margin-bottom:12px">Activer l\'abonnement de <strong>'+_esc(tenantName)+'</strong></div>'
+    +'<p style="font-size:.82rem;color:var(--muted)">Le statut passera à "actif". Assurez-vous que le paiement est bien réglé avant de valider.</p>',
+    [
+      {label:'Activer', cls:'btn-primary green', fn: async function() {
+        var periodEnd = new Date(Date.now() + 30 * 86400000).toISOString();
+        await api('PATCH', '/rest/v1/subscriptions?tenant_id=eq.'+tenantId, {
+          status: 'active', current_period_end: periodEnd, cancel_at_period_end: false
+        });
+        await logAudit('activate', tenantId, tenantName, { current_period_end: periodEnd });
+        toast('Abonnement activé pour '+_esc(tenantName), 'green');
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Changer le plan ── */
+async function changePlan(tenantId, tenantName, currentPlan, currentPrice) {
+  var selStyle = 'width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.88rem;font-family:var(--font)';
+  showModal(
+    '📦 Modifier le plan',
+    '<div style="font-size:.88rem;color:var(--text);margin-bottom:12px">Modifier le plan de <strong>'+_esc(tenantName)+'</strong> (actuellement : <strong>'+_esc(currentPlan||'—')+'</strong>)</div>'
+    +'<div class="mf"><label>Nouveau plan</label>'
+    +'<select id="m-new-plan" style="'+selStyle+'">'
+    +'<option value="solo"'+(currentPlan==='solo'?' selected':'')+'>Solo — 1 site (29€/mois)</option>'
+    +'<option value="multi"'+(currentPlan==='multi'?' selected':'')+'>Multi — 3 sites (49€/mois)</option>'
+    +'<option value="enterprise"'+(currentPlan==='enterprise'?' selected':'')+'>Enterprise — illimité (sur devis)</option>'
+    +'</select></div>'
+    +'<div class="mf" style="margin-top:10px"><label>Prix mensuel (€)</label>'
+    +'<input id="m-new-price" type="number" min="0" step="1" value="'+(currentPrice||'49')+'" style="'+selStyle+'"></div>',
+    [
+      {label:'Enregistrer', cls:'btn-primary green', fn: async function() {
+        var newPlan  = document.getElementById('m-new-plan').value;
+        var newPrice = parseFloat(document.getElementById('m-new-price').value) || 0;
+        await api('PATCH', '/rest/v1/tenants?id=eq.'+tenantId, { plan: newPlan });
+        await api('PATCH', '/rest/v1/subscriptions?tenant_id=eq.'+tenantId, { plan: newPlan, price_per_month: newPrice });
+        await logAudit('change_plan', tenantId, tenantName, { old_plan: currentPlan, new_plan: newPlan, price_per_month: newPrice });
+        toast('Plan modifié : '+newPlan+' ('+newPrice+'€/mois)', 'green');
+        return true;
+      }},
+      {label:'Annuler', cls:'btn-cancel', fn: null}
+    ]
+  );
+}
+
+/* ── Enregistrer dans le journal d'audit ── */
+async function logAudit(action, tenantId, tenantName, payload) {
+  try {
+    await api('POST', '/rest/v1/admin_audit_log', {
+      actor_email: _adminEmail,
+      action,
+      tenant_id: tenantId || null,
+      tenant_name: tenantName || null,
+      payload
+    });
+  } catch(e) { /* journal non bloquant */ }
+}
+
+/* ── Journal d'audit ── */
+async function showAuditLog() {
+  document.querySelectorAll('.sb-item').forEach(function(i){ i.classList.remove('active'); });
+  document.getElementById('main-empty').style.display = 'none';
+  var detail = document.getElementById('co-detail');
+  detail.style.display = 'block';
+  detail.innerHTML = '<div style="padding:24px;text-align:center;color:var(--muted);font-size:.85rem">Chargement…</div>';
+  closeSidebar();
+
+  try {
+    var rows = await api('GET', '/rest/v1/admin_audit_log?order=created_at.desc&limit=200');
+    if (!Array.isArray(rows)) rows = [];
+
+    var actionLabels = {
+      extend_trial: '⏱ Prolongation essai',
+      cancel:       '✕ Résiliation',
+      activate:     '✓ Activation',
+      change_plan:  '📦 Changement plan',
+    };
+    var td = 'style="padding:9px 12px;border-bottom:1px solid var(--border);font-size:.79rem;color:var(--text)"';
+
+    detail.innerHTML =
+      '<div style="padding:24px">'
+      +'<h2 style="margin:0 0 20px;font-size:1.1rem;color:var(--navy)">📋 Journal d\'audit</h2>'
+      +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:16px;overflow:auto">'
+        +'<table style="width:100%;border-collapse:collapse;min-width:600px">'
+          +'<thead><tr style="background:#f8fafc">'
+            +'<th style="padding:9px 12px;text-align:left;font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase">Date</th>'
+            +'<th style="padding:9px 12px;text-align:left;font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase">Action</th>'
+            +'<th style="padding:9px 12px;text-align:left;font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase">Organisation</th>'
+            +'<th style="padding:9px 12px;text-align:left;font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase">Acteur</th>'
+            +'<th style="padding:9px 12px;text-align:left;font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase">Détails</th>'
+          +'</tr></thead>'
+          +'<tbody>'
+          +(rows.length === 0
+            ? '<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--muted);font-size:.82rem">Aucune entrée dans le journal</td></tr>'
+            : rows.map(function(r) {
+                var dt = r.created_at ? new Date(r.created_at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+                var label = actionLabels[r.action] || _esc(r.action);
+                var payload = '';
+                try {
+                  var p = (typeof r.payload === 'string') ? JSON.parse(r.payload) : (r.payload || {});
+                  payload = Object.entries(p).map(function(kv){ return '<small>'+_esc(kv[0])+': <strong>'+_esc(String(kv[1]))+'</strong></small>'; }).join(' &nbsp;');
+                } catch(e) {}
+                return '<tr>'
+                  +'<td '+td+' style="white-space:nowrap">'+dt+'</td>'
+                  +'<td '+td+'>'+label+'</td>'
+                  +'<td '+td+'>'+_esc(r.tenant_name||'—')+'</td>'
+                  +'<td '+td+'>'+_esc(r.actor_email||'—')+'</td>'
+                  +'<td '+td+'>'+payload+'</td>'
+                  +'</tr>';
+              }).join('')
+          )
+          +'</tbody>'
+        +'</table>'
+      +'</div>'
+      +'</div>';
+  } catch(e) {
+    detail.innerHTML = '<div style="padding:24px;color:var(--danger)">Erreur chargement journal : '+_esc(e.message)+'</div>';
+  }
 }
 </script>
 </body>

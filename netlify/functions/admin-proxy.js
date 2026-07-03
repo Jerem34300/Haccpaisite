@@ -36,12 +36,15 @@ const ALLOWED_PATH_PREFIXES = [
   '/rest/v1/corrective_actions',
   '/rest/v1/nc_action_mapping',
   '/rest/v1/gmo',
+  '/rest/v1/admin_audit_log',
 ];
 
 // Tables dont les lignes sont directement filtrables par tenant_id
 const TENANT_SCOPED_TABLES = ['profiles','sites','sectors','territories','subscriptions','pms_records','gmo'];
-// Tables de données globales (catalogues) — pas de tenant_id
+// Tables de données globales (catalogues) — pas de tenant_id ; GET autorisé pour tous les rôles admin
 const GLOBAL_READONLY_TABLES = ['corrective_actions','nc_action_mapping'];
+// Tables réservées au super_admin uniquement
+const SUPER_ADMIN_ONLY_TABLES = ['admin_audit_log'];
 
 exports.handler = async function(event) {
   // CORS preflight
@@ -148,7 +151,9 @@ exports.handler = async function(event) {
     } else {
       // Pour toutes les autres tables tenant-scopées, injecter tenant_id si absent
       const tableName = path.replace('/rest/v1/', '').split('?')[0];
-      if (GLOBAL_READONLY_TABLES.includes(tableName)) {
+      if (SUPER_ADMIN_ONLY_TABLES.includes(tableName)) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: `Table ${tableName} réservée au super_admin` }) };
+      } else if (GLOBAL_READONLY_TABLES.includes(tableName)) {
         // Catalogues globaux (corrective_actions, nc_action_mapping) — lecture seule
         if (method !== 'GET') {
           return { statusCode: 403, headers, body: JSON.stringify({ error: `Écriture sur ${tableName} réservée au super_admin` }) };
