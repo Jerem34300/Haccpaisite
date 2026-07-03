@@ -626,17 +626,20 @@ window.generatePMS = async function() {
   var encData = _enceintes.filter(function(e){ return e.nom.trim(); })
     .map(function(e, idx){ return _encToConfig(e, idx); });
   if (encData.length && siteIds.length && tenantId) {
-    try {
-      await fetch(SUPABASE_URL + '/rest/v1/pms_config', {
-        method: 'POST', headers: hdrMin,
-        body: JSON.stringify({
-          site_id:   siteCodes[0] || _slug(validSites[0] || 'cuisine'),
-          tenant_id: tenantId,
-          type:      'enceintes',
-          data:      encData
-        })
-      });
-    } catch(e) { console.warn('[Onboarding] pms_config:', e); }
+    for (var pmsIdx = 0; pmsIdx < siteCodes.length; pmsIdx++) {
+      var pmsSiteCode = siteCodes[pmsIdx] || _slug(validSites[pmsIdx] || 'cuisine');
+      try {
+        await fetch(SUPABASE_URL + '/rest/v1/pms_config', {
+          method: 'POST', headers: hdrMin,
+          body: JSON.stringify({
+            site_id:   pmsSiteCode,
+            tenant_id: tenantId,
+            type:      'enceintes',
+            data:      encData
+          })
+        });
+      } catch(e) { console.warn('[Onboarding] pms_config site ' + pmsSiteCode + ':', e); }
+    }
   }
 
   /* 6. Écrire haccp_v6 */
