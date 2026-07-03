@@ -64,3 +64,27 @@
   from = "/guides/tracabilite"
   to = "/guides/tracabilite-alimentaire.html"
   status = 200
+
+# /tarifs(.html) had no matching page (pricing lives as a #pricing anchor on
+# landing.html), causing 404s. Redirect to the anchor.
+[[redirects]]
+  from = "/tarifs"
+  to = "/landing.html#pricing"
+  status = 301
+
+[[redirects]]
+  from = "/tarifs.html"
+  to = "/landing.html#pricing"
+  status = 301
+
+# /account(.html) never existed as a standalone page — account/subscription
+# management lives inside the dashboard (Abonnement section). Redirect there.
+[[redirects]]
+  from = "/account"
+  to = "/dashboard.html"
+  status = 301
+
+[[redirects]]
+  from = "/account.html"
+  to = "/dashboard.html"
+  status = 301

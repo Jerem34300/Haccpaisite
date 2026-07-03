@@ -1445,13 +1445,18 @@ function appBeep(){
   if(S.config?.soundOn===false) return;
   try{
     const ctx=new(window.AudioContext||window.webkitAudioContext)();
-    const osc=ctx.createOscillator();
-    const gain=ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type='sine'; osc.frequency.value=880;
-    gain.gain.setValueAtTime(.25,ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.6);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime+.6);
+    // Triple bip aigu (carré, plus perçant qu'une sinusoïde) calé sur le rythme
+    // de la vibration critique [1000,300,1000,300,1000] pour une alerte bien
+    // distincte des sons d'interface habituels.
+    [0, .45, .9].forEach(t => {
+      const osc=ctx.createOscillator();
+      const gain=ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type='square'; osc.frequency.value=1000;
+      gain.gain.setValueAtTime(.35,ctx.currentTime+t);
+      gain.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+t+.35);
+      osc.start(ctx.currentTime+t); osc.stop(ctx.currentTime+t+.35);
+    });
   }catch(e){}
 }
 function toggleNavLock(){
@@ -9877,6 +9882,21 @@ async function _loadFromSupabase() {
     const recs = await recsRes.json();
     if (!Array.isArray(recs)) throw new Error('Réponse invalide');
 
+    // ── Ne pas écraser le local si le cloud revient vide ET qu'il reste des
+    // saisies en attente d'envoi (échec réseau/RLS ou sync pas encore terminée) :
+    // un cloud vide dans ce cas ne reflète pas la réalité, l'écraser détruirait
+    // des saisies réelles jamais remontées au serveur.
+    if (recs.length === 0) {
+      try {
+        const pendingQueue = JSON.parse(localStorage.getItem('haccp_supa_queue_v1') || '[]');
+        if (Array.isArray(pendingQueue) && pendingQueue.length > 0) {
+          console.warn('[_loadFromSupabase] Cloud vide mais '+pendingQueue.length+' saisie(s) en attente de sync — données locales conservées');
+          toast('⚠️ Synchronisation en attente — données locales conservées', 'warning');
+          return;
+        }
+      } catch(e) { /* si la lecture de la queue échoue, on continue normalement */ }
+    }
+
     // ── CLOUD = SOURCE DE VÉRITÉ ──
     // On vide toutes les saisies locales avant d'injecter le cloud
     // pour éviter tout doublon (le localStorage était un cache temporaire)
@@ -14551,7 +14571,11 @@ function checkVibrationAlerts() {
 
   // T°C Distribution — 15 min avant chaque service
   getDistribServices().forEach(svc => {
-    const svcH = svc.heure ? parseFloat(svc.heure.split(':')[0]) + parseFloat(svc.heure.split(':')[1]||0)/60 : 12;
+    // Compat ascendante : midi_deb (nouveau champ, modifiable via le sélecteur horaire)
+    // prioritaire sur heure (ancien champ, peut rester figé sur sa valeur par défaut
+    // après reconfiguration de l'horaire dans Paramètres → décalage de l'alerte vibration)
+    const _svcHeure = svc.midi_deb || svc.heure || '';
+    const svcH = _svcHeure ? parseFloat(_svcHeure.split(':')[0]) + parseFloat(_svcHeure.split(':')[1]||0)/60 : 12;
     const key = 'distrib_' + svc.id + '_' + todayStr;
     const draft = distribDraft();
     const done = (draft.date===todayStr && draft[svc.id+'_valide']==='OUI')
@@ -14578,7 +14602,7 @@ function checkVibrationAlerts() {
     const keyDepasse = 'refr_depasse_' + r._ts;
     if (elapsedMin >= 120 && elapsedMin < 121 && !_alertsFired[keyDepasse]) {
       _alertsFired[keyDepasse] = true;
-      appVibrate([1000, 300, 1000, 300, 1000]);
+      appVibrate([1000, 300, 1000, 300, 1000]); appBeep();
       toast('🚨 Refroidissement "' + (r.produit||'') + '" DÉPASSÉ — NC obligatoire !', 'warning');
     }
   });
