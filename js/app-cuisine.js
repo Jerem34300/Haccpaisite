@@ -138,7 +138,7 @@ function toast(msg,type='success'){
   if(pinOpen) return;
   const t=document.getElementById('toast');
   t.textContent=msg;t.className=`show ${type}`;
-  setTimeout(()=>t.className='',1800);
+  setTimeout(()=>t.className='',4000);
 }
 function escAttr(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
 

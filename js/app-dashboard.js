@@ -384,7 +384,7 @@ async function supa(method,path,body,anon=false,extraHeaders={}){
   if(body&&method!=='GET')opts.body=JSON.stringify(body);
   // Timeout 20s pour éviter le blocage infini (Supabase cold start)
   const _ctrl = new AbortController();
-  const _tid = setTimeout(() => _ctrl.abort(), 5000);
+  const _tid = setTimeout(() => _ctrl.abort(), 12000);
   let r;
   try {
     r = await fetch(SUPA_URL+path, {...opts, signal: _ctrl.signal});
@@ -431,7 +431,7 @@ async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${qu
 async function supaAdmin(method,path,body,extraHeaders={}){
   // Proxy sécurisé — la clé service_role ne quitte jamais le serveur Netlify
   const _ac = new AbortController();
-  const _at = setTimeout(() => _ac.abort(), 5000);
+  const _at = setTimeout(() => _ac.abort(), 12000);
   let r;
   try {
     r = await fetch('/.netlify/functions/admin-proxy', {
