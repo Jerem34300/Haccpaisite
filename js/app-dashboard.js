@@ -184,7 +184,6 @@ function openCuisine(siteId, siteCode, siteName){
 // ════════════════════════════════════════════════════
 // MODE DÉMO — données mockées sans Supabase
 // ════════════════════════════════════════════════════
-const DEMO_PASSWORD = 'demo2025';
 function activerModeDemo() {
   _DEMO_MODE = true;
   _token = 'demo-token';
