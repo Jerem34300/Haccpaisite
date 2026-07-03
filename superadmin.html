@@ -8,6 +8,7 @@
 <meta name="theme-color" content="#0F2240">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -259,6 +260,10 @@ button{font-family:var(--font)}
         <button onclick="showAuditLog()" id="btn-audit"
           style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1.5px solid rgba(255,255,255,.1);border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);margin-bottom:8px;text-align:left;display:flex;align-items:center;gap:8px">
           <span>📋</span> Journal d'audit
+        </button>
+        <button onclick="showBulkImport()" id="btn-import"
+          style="width:100%;padding:9px 12px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1.5px solid rgba(255,255,255,.1);border-radius:10px;font-size:.8rem;font-weight:900;cursor:pointer;font-family:var(--font);margin-bottom:8px;text-align:left;display:flex;align-items:center;gap:8px">
+          <span>📥</span> Import Excel
         </button>
         <input class="sb-search" id="sb-search" placeholder="🔍 Rechercher..." oninput="filterCompanies(this.value)">
       </div>
@@ -1368,6 +1373,229 @@ async function logAudit(action, tenantId, tenantName, payload) {
       payload
     });
   } catch(e) { /* journal non bloquant */ }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   IMPORT EXCEL EN MASSE
+══════════════════════════════════════════════════════════════ */
+function showBulkImport() {
+  document.querySelectorAll('.sb-item').forEach(function(i){ i.classList.remove('active'); });
+  document.getElementById('main-empty').style.display = 'none';
+  var detail = document.getElementById('co-detail');
+  detail.style.display = 'block';
+  closeSidebar();
+
+  var inputStyle = 'width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.88rem;font-family:var(--font)';
+  detail.innerHTML =
+    '<div style="padding:24px;max-width:860px">'
+    +'<h2 style="margin:0 0 6px;font-size:1.1rem;color:var(--navy)">📥 Import Excel en masse</h2>'
+    +'<p style="font-size:.82rem;color:var(--muted);margin-bottom:20px">Importez des centaines de sites, secteurs et cuisiniers en une seule opération.</p>'
+
+    // Sélection du tenant
+    +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px">'
+      +'<label style="font-size:.8rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Organisation cible</label>'
+      +'<select id="bi-tenant" style="'+inputStyle+';margin-top:6px">'
+      +'<option value="">— Sélectionner une organisation —</option>'
+      +(_companies||[]).map(function(c){ return '<option value="'+_esc(c.id)+'">'+_esc(c.name)+'</option>'; }).join('')
+      +'</select>'
+    +'</div>'
+
+    // Format du fichier
+    +'<div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+        +'<label style="font-size:.8rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">Fichier Excel</label>'
+        +'<button onclick="downloadBulkTemplate()" style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.75rem;font-weight:800;cursor:pointer">⬇ Télécharger le modèle</button>'
+      +'</div>'
+      +'<p style="font-size:.78rem;color:var(--muted);margin-bottom:10px">Colonnes requises (dans l\'ordre) : <strong>Territoire | Secteur | Site Nom | Site Code | Email Cuisinier | Nom Cuisinier</strong></p>'
+      +'<div id="bi-dropzone" onclick="document.getElementById(\'bi-file\').click()" '
+        +'style="border:2px dashed var(--border2);border-radius:12px;padding:28px;text-align:center;cursor:pointer;background:#fafafa;transition:background .2s">'
+        +'<div style="font-size:2rem;margin-bottom:8px">📂</div>'
+        +'<div style="font-size:.85rem;font-weight:800;color:var(--navy)">Cliquez ou glissez votre fichier .xlsx / .xls / .csv</div>'
+        +'<div style="font-size:.75rem;color:var(--muted);margin-top:4px">Maximum 1 000 lignes</div>'
+      +'</div>'
+      +'<input type="file" id="bi-file" accept=".xlsx,.xls,.csv,.ods" style="display:none" onchange="parseBulkFile(this)">'
+    +'</div>'
+
+    // Zone de preview
+    +'<div id="bi-preview" style="display:none;background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px">'
+      +'<div style="font-size:.8rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:10px">Aperçu des données (<span id="bi-count">0</span> lignes)</div>'
+      +'<div id="bi-table-wrap" style="overflow:auto;max-height:300px"></div>'
+      +'<button onclick="launchBulkImport()" id="bi-launch" style="margin-top:16px;padding:10px 24px;background:var(--green);color:#fff;border:none;border-radius:10px;font-size:.88rem;font-weight:900;cursor:pointer">🚀 Lancer l\'import</button>'
+    +'</div>'
+
+    // Résultats
+    +'<div id="bi-result" style="display:none"></div>'
+    +'</div>';
+
+  // Drag & drop
+  var dz = document.getElementById('bi-dropzone');
+  if (dz) {
+    dz.addEventListener('dragover', function(e){ e.preventDefault(); dz.style.background='#f0f9ff'; });
+    dz.addEventListener('dragleave', function(){ dz.style.background='#fafafa'; });
+    dz.addEventListener('drop', function(e){
+      e.preventDefault(); dz.style.background='#fafafa';
+      var file = e.dataTransfer.files[0];
+      if (file) parseBulkFile({ files: [file] });
+    });
+  }
+}
+
+var _biRows = [];
+
+function parseBulkFile(input) {
+  var file = input.files ? input.files[0] : null;
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var data = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      // Détecter les colonnes (flexible)
+      var cols = { territoire:null, secteur:null, siteNom:null, siteCode:null, email:null, nomCuisinier:null };
+      if (data.length > 0) {
+        var keys = Object.keys(data[0]);
+        keys.forEach(function(k) {
+          var kl = k.toLowerCase().replace(/[\s_-]/g,'');
+          if (!cols.territoire && (kl.includes('territ'))) cols.territoire = k;
+          else if (!cols.secteur && kl.includes('sect')) cols.secteur = k;
+          else if (!cols.siteNom && (kl.includes('site') || kl.includes('nom'))) cols.siteNom = k;
+          else if (!cols.siteCode && kl.includes('code')) cols.siteCode = k;
+          else if (!cols.email && kl.includes('mail')) cols.email = k;
+          else if (!cols.nomCuisinier && (kl.includes('cuisinier')||kl.includes('prenom')||kl.includes('agent'))) cols.nomCuisinier = k;
+        });
+        // Fallback par position si les colonnes ne sont pas nommées
+        if (!cols.territoire && keys[0]) cols.territoire = keys[0];
+        if (!cols.secteur    && keys[1]) cols.secteur    = keys[1];
+        if (!cols.siteNom    && keys[2]) cols.siteNom    = keys[2];
+        if (!cols.siteCode   && keys[3]) cols.siteCode   = keys[3];
+        if (!cols.email      && keys[4]) cols.email      = keys[4];
+        if (!cols.nomCuisinier && keys[5]) cols.nomCuisinier = keys[5];
+      }
+      _biRows = data.filter(function(r){
+        return String(r[cols.siteNom]||'').trim();
+      }).map(function(r) {
+        return {
+          territoire:   String(r[cols.territoire]  ||'').trim(),
+          secteur:      String(r[cols.secteur]     ||'').trim(),
+          siteNom:      String(r[cols.siteNom]     ||'').trim(),
+          siteCode:     String(r[cols.siteCode]    ||'').trim().toUpperCase(),
+          email:        String(r[cols.email]       ||'').trim().toLowerCase(),
+          nomCuisinier: String(r[cols.nomCuisinier]||'').trim(),
+        };
+      });
+      showBiPreview();
+    } catch(e) {
+      toast('Erreur lecture fichier : ' + e.message, 'danger');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showBiPreview() {
+  var preview = document.getElementById('bi-preview');
+  var wrap    = document.getElementById('bi-table-wrap');
+  var cnt     = document.getElementById('bi-count');
+  if (!preview || !wrap) return;
+  cnt.textContent = _biRows.length;
+  var th = 'style="padding:6px 10px;background:#f8fafc;font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase;white-space:nowrap"';
+  var td = 'style="padding:5px 10px;font-size:.78rem;border-bottom:1px solid var(--border)"';
+  var html = '<table style="width:100%;border-collapse:collapse;min-width:600px"><thead><tr>'
+    +'<th '+th+'>Territoire</th><th '+th+'>Secteur</th><th '+th+'>Site</th><th '+th+'>Code</th><th '+th+'>Email Cuisinier</th><th '+th+'>Nom</th>'
+    +'</tr></thead><tbody>';
+  _biRows.slice(0, 20).forEach(function(r) {
+    html += '<tr>'
+      +'<td '+td+'>'+_esc(r.territoire||'—')+'</td>'
+      +'<td '+td+'>'+_esc(r.secteur||'—')+'</td>'
+      +'<td '+td+'><strong>'+_esc(r.siteNom)+'</strong></td>'
+      +'<td '+td+'>'+_esc(r.siteCode||'(auto)')+'</td>'
+      +'<td '+td+'>'+_esc(r.email||'—')+'</td>'
+      +'<td '+td+'>'+_esc(r.nomCuisinier||'—')+'</td>'
+      +'</tr>';
+  });
+  if (_biRows.length > 20) html += '<tr><td colspan="6" style="padding:8px 10px;text-align:center;color:var(--muted);font-size:.75rem">… et '+(_biRows.length-20)+' lignes supplémentaires</td></tr>';
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  preview.style.display = 'block';
+}
+
+async function launchBulkImport() {
+  var tenantId = document.getElementById('bi-tenant')?.value;
+  if (!tenantId) { toast('Sélectionnez une organisation', 'danger'); return; }
+  if (!_biRows.length) { toast('Aucune donnée à importer', 'danger'); return; }
+
+  var btn = document.getElementById('bi-launch');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Import en cours…'; }
+  var result = document.getElementById('bi-result');
+  if (result) result.style.display = 'none';
+
+  try {
+    var r = await fetch('/.netlify/functions/bulk-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _token },
+      body: JSON.stringify({ tenantId, rows: _biRows })
+    });
+    var data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Erreur ' + r.status);
+
+    // Afficher les résultats
+    var s = data.created || {};
+    var html =
+      '<div style="background:#fff;border:1.5px solid var(--border);border-radius:14px;padding:18px">'
+      +'<h3 style="margin:0 0 14px;color:var(--navy)">✅ Import terminé</h3>'
+      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">'
+      +kpiCard('Territoires', s.territories||0, '#f0f9ff', '#0369a1')
+      +kpiCard('Secteurs',    s.sectors||0,    '#f0f9ff', '#0369a1')
+      +kpiCard('Sites',       s.sites||0,      '#dcfce7', '#166534')
+      +kpiCard('Cuisiniers',  s.users||0,      '#dcfce7', '#166534')
+      +'</div>';
+
+    if (data.errors && data.errors.length) {
+      html += '<details style="margin-bottom:14px"><summary style="cursor:pointer;font-size:.82rem;color:var(--danger);font-weight:800">⚠️ '+data.errors.length+' erreur(s)</summary>'
+        +'<ul style="margin-top:8px;font-size:.78rem;color:var(--danger)">'+data.errors.map(function(e){ return '<li>'+_esc(e)+'</li>'; }).join('')+'</ul></details>';
+    }
+
+    if (data.credentials && data.credentials.length) {
+      html += '<button onclick="downloadCredentials()" style="padding:9px 18px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-size:.82rem;font-weight:900;cursor:pointer">⬇ Télécharger les identifiants</button>';
+      window._biCredentials = data.credentials;
+    }
+
+    html += '</div>';
+    if (result) { result.innerHTML = html; result.style.display = 'block'; }
+  } catch(e) {
+    toast('Erreur import : ' + e.message, 'danger');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 Lancer l\'import'; }
+  }
+}
+
+function downloadCredentials() {
+  var creds = window._biCredentials || [];
+  if (!creds.length) return;
+  if (typeof XLSX === 'undefined') { toast('SheetJS non chargé', 'danger'); return; }
+  var wb = XLSX.utils.book_new();
+  var data = [['Site Code','Site Nom','Email','Mot de passe','Cuisinier']].concat(
+    creds.map(function(c){ return [c.siteCode, c.siteNom, c.email, c.password, c.nomCuisinier||'']; })
+  );
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:14},{wch:30},{wch:32},{wch:20},{wch:24}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Identifiants');
+  XLSX.writeFile(wb, 'hacc_pro_identifiants_'+new Date().toISOString().slice(0,10)+'.xlsx');
+}
+
+function downloadBulkTemplate() {
+  if (typeof XLSX === 'undefined') { toast('SheetJS non chargé', 'danger'); return; }
+  var wb = XLSX.utils.book_new();
+  var data = [
+    ['Territoire','Secteur','Site Nom','Site Code','Email Cuisinier','Nom Cuisinier'],
+    ['Territoire Nord','Secteur Paris','Lycée Voltaire','LYC-VOL','cuisinier1@exemple.fr','Marie Dupont'],
+    ['Territoire Nord','Secteur Paris','Collège Moulin','COL-MOU','cuisinier2@exemple.fr','Jean Martin'],
+    ['Territoire Sud','Secteur Lyon','EHPAD Tilleuls','EHP-TIL','cuisinier3@exemple.fr','Sophie Bernard'],
+  ];
+  var ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:18},{wch:16},{wch:26},{wch:12},{wch:28},{wch:20}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Import');
+  XLSX.writeFile(wb, 'hacc_pro_modele_import.xlsx');
 }
 
 /* ── Journal d'audit ── */
