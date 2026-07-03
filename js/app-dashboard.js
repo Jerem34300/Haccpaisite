@@ -3440,12 +3440,44 @@ async function createTabletAccount(siteId, siteName, siteCode) {
         💡 Notez ce mot de passe maintenant — il ne sera plus affiché.
       </div>
 
+      <button id="cc-send-email-btn" onclick="sendCuisinierCredentials('${email}','${siteName}','${siteCode}','${email}','${pass}')"
+        style="width:100%;padding:12px;background:#f0fdf4;color:#166534;border:1.5px solid #86efac;border-radius:12px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);margin-bottom:8px">
+        📧 Envoyer les identifiants par email
+      </button>
+
       <button onclick="this.closest('[style*=fixed]').remove()" style="width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:12px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font)">
         ✅ C'est noté, fermer
       </button>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function sendCuisinierCredentials(toEmail, siteName, siteCode, loginEmail, pass) {
+  const btn = document.getElementById('cc-send-email-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+  try {
+    const senderName = _profile?.full_name || 'Votre responsable';
+    const r = await fetch('/.netlify/functions/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'credentials',
+        to: toEmail,
+        siteName, siteCode,
+        loginEmail: loginEmail || toEmail,
+        password: pass,
+        senderName
+      })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    if (btn) { btn.textContent = '✅ Email envoyé !'; btn.style.background = '#dcfce7'; }
+    showToast('Identifiants envoyés à ' + toEmail, 'success');
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📧 Envoyer les identifiants par email'; }
+    showToast('Erreur envoi email : ' + e.message, 'error');
+  }
 }
 
 async function toggleDataLock(profileId, currentlyLocked) {

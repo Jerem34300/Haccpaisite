@@ -75,6 +75,15 @@ exports.handler = async function(event) {
     subject = 'Réinitialisez votre mot de passe HACC.PRO';
     html    = _buildResetEmail(to, resetUrl);
 
+  } else if (type === 'credentials') {
+    var siteName   = payload.siteName   || '';
+    var siteCode   = payload.siteCode   || '';
+    var loginEmail = payload.loginEmail || to;
+    var password   = payload.password   || '';
+    var senderName = payload.senderName || 'votre responsable';
+    subject = '🔑 Vos identifiants HACC.PRO — ' + (siteName || siteCode);
+    html    = _buildCredentialsEmail(to, siteName, siteCode, loginEmail, password, senderName);
+
   } else {
     return { statusCode: 400, body: JSON.stringify({ error: 'Type inconnu' }) };
   }
@@ -234,6 +243,42 @@ function _buildResetEmail(email, resetUrl) {
         🔒 <strong>Si vous n'êtes pas à l'origine de cette demande</strong>, ignorez cet email. Votre mot de passe reste inchangé. Votre compte est en sécurité.
       </div>
     </div>`;
+  return _wrap(content);
+}
+
+/* ─── Credentials email ─── */
+function _buildCredentialsEmail(to, siteName, siteCode, loginEmail, password, senderName) {
+  var content = `
+    <div style="font-size:1.25rem;font-weight:900;color:#0F2240;margin-bottom:8px;">Vos identifiants HACC.PRO 🔑</div>
+    <p style="color:#7A6579;line-height:1.75;margin:0 0 20px;">${_escape(senderName)} vous a transmis vos accès pour la cuisine <strong>${_escape(siteName || siteCode)}</strong>. Utilisez-les ci-dessous pour vous connecter depuis la tablette.</p>
+
+    <div style="background:#F5F6FA;border-radius:14px;padding:18px 20px;margin-bottom:20px;">
+      <div style="font-size:.7rem;font-weight:900;text-transform:uppercase;letter-spacing:.05em;color:#7A6579;margin-bottom:12px;">Vos identifiants de connexion</div>
+
+      <div style="margin-bottom:10px;">
+        <div style="font-size:.72rem;color:#7A6579;margin-bottom:3px;">Site</div>
+        <div style="font-weight:900;color:#0F2240;font-size:.95rem;">${_escape(siteName)} <span style="color:#8DC63F;">${siteCode ? '('+_escape(siteCode)+')' : ''}</span></div>
+      </div>
+
+      <div style="margin-bottom:10px;">
+        <div style="font-size:.72rem;color:#7A6579;margin-bottom:3px;">Email</div>
+        <div style="font-family:monospace;background:#fff;border:1.5px solid #E4DEE4;border-radius:8px;padding:8px 14px;font-size:.9rem;font-weight:700;color:#0F2240;">${_escape(loginEmail)}</div>
+      </div>
+
+      <div>
+        <div style="font-size:.72rem;color:#7A6579;margin-bottom:3px;">Mot de passe</div>
+        <div style="font-family:monospace;background:#fff;border:1.5px solid #E4DEE4;border-radius:8px;padding:8px 14px;font-size:.9rem;font-weight:700;color:#0F2240;">${_escape(password)}</div>
+      </div>
+    </div>
+
+    <div style="background:#FFF8E8;border:1px solid #FDE8A0;border-radius:10px;padding:12px 16px;margin-bottom:20px;font-size:.78rem;color:#92400e;line-height:1.6;">
+      💡 <strong>Notez bien votre mot de passe.</strong> Pour des raisons de sécurité, il ne vous sera plus communiqué par email. Si vous le perdez, contactez votre responsable.
+    </div>
+
+    <a href="https://hacc.pro/cuisine.html" style="display:block;background:#8DC63F;color:#fff;text-align:center;padding:14px 24px;border-radius:14px;text-decoration:none;font-weight:900;font-size:.95rem;">
+      Accéder à mon espace cuisine →
+    </a>
+    <p style="text-align:center;font-size:.73rem;color:#bbb;margin-top:10px;">Sur tablette, ouvrez hacc.pro/cuisine.html et saisissez vos identifiants ci-dessus.</p>`;
   return _wrap(content);
 }
 
