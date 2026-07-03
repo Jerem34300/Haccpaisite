@@ -50,7 +50,7 @@ const _SUPA_URL_DEFAULT = SUPABASE_URL;
 const _SUPA_KEY_DEFAULT = SUPABASE_ANON_KEY;
 const _SUPA_SVC_DEFAULT = ''; // clé service_role supprimée — proxy Netlify utilisé
 let SUPA_URL=_SUPA_URL_DEFAULT, SUPA_KEY=_SUPA_KEY_DEFAULT, SUPA_SERVICE_KEY=_SUPA_SVC_DEFAULT, _token='', _refreshToken='', _userId='', _profile=null, _viewTenant=null;
-let _records=[], _gmos=[], _sites=[], _sectors=[], _territories=[];
+let _records=[], _gmos=[], _sites=[], _sectors=[], _territories=[], _profiles=[];
 let _encConfigs={}; // { siteId: { data: [...enceintes] } }
 let _caniculeConfigs={}; // { siteId: { data: {active:bool} } }
 let _correctiveActions=[]; // référentiel actions correctives HACCP
@@ -2051,6 +2051,8 @@ async function renderAdmin(){
     }
   }
 
+  _profiles = profiles; // accessible aux fonctions globales (openChangeCuisinier, etc.)
+
   const knownCodes = new Set(_sites.map(s=>s.code));
   const unknownCodes = [...new Set(_records.map(r=>r.site_id).filter(Boolean))].filter(c=>!knownCodes.has(c));
 
@@ -2231,6 +2233,7 @@ async function renderAdmin(){
       const pct=st.total>0?Math.round((1-st.nc/st.total)*100):null;
       const col=pct===null?'var(--muted)':pct>=90?'#16a34a':pct>=75?'#d97706':'#dc2626';
       const lastSync=st.lastSync?new Date(st.lastSync).toLocaleDateString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'Jamais';
+      const cuisinier=profiles.find(p=>p.site_id===s.id&&p.role==='cuisinier');
 
       html+=`<div style="background:var(--card);border-radius:14px;border:1px solid var(--border);margin-bottom:10px;padding:14px 16px">
         <div style="display:flex;align-items:flex-start;gap:10px">
@@ -2248,10 +2251,18 @@ async function renderAdmin(){
               <div style="font-size:.7rem"><span style="color:var(--muted)">Conformité :</span> <strong style="color:${col}">${pct!==null?pct+'%':'—'}</strong></div>
               <div style="font-size:.7rem"><span style="color:var(--muted)">Dernière sync :</span> ${lastSync}</div>
             </div>
+            <div style="margin-top:8px;font-size:.7rem;color:var(--muted)">
+              👨‍🍳 Cuisinier : ${cuisinier
+                ? `<strong style="color:var(--text)">${escH(cuisinier.full_name||cuisinier.email||'—')}</strong> <span style="color:var(--muted)">(${escH(cuisinier.email||'')})</span>`
+                : '<em style="color:#f59e0b">Aucun cuisinier assigné</em>'}
+            </div>
           </div>
-          <div style="display:flex;gap:6px;flex-shrink:0">
-            <button onclick="openAdminModal('site','${s.id}')" style="padding:5px 10px;background:#e2e8f0;color:var(--navy);border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">✏️ Modifier</button>
-            <button onclick="confirmDelete('sites','${s.id}','${escH(s.name)}')" style="padding:5px 10px;background:#fff5f5;color:#dc2626;border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>
+          <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end">
+            <div style="display:flex;gap:6px">
+              <button onclick="openAdminModal('site','${s.id}')" style="padding:5px 10px;background:#e2e8f0;color:var(--navy);border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">✏️ Modifier</button>
+              <button onclick="confirmDelete('sites','${s.id}','${escH(s.name)}')" style="padding:5px 10px;background:#fff5f5;color:#dc2626;border:none;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>
+            </div>
+            <button onclick="openChangeCuisinier('${s.id}','${escH(s.name)}')" style="padding:5px 10px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:7px;font-size:.72rem;font-weight:700;cursor:pointer;font-family:var(--font);width:100%">👨‍🍳 Cuisinier</button>
           </div>
         </div>
       </div>`;
@@ -4134,6 +4145,131 @@ function cuCopyInfo(){
   if(!u)return;
   const txt=`Identifiants PMS HACCP\nNom : ${u.name}\nEmail : ${u.email}\nMot de passe : ${u.pass}\nRôle : ${u.role}\nPérimètre : ${u.scope}`;
   navigator.clipboard.writeText(txt).then(()=>showToast('✅ Identifiants copiés','success')).catch(()=>showToast('Copiez manuellement','info'));
+}
+
+// ── Changer le cuisinier assigné à un site ───────────────────────────────────
+// Accessible directement depuis l'onglet Sites sans passer par l'onglet Utilisateurs.
+// Deux cas : même cuisinier (reset MDP) ou nouveau cuisinier (crée/assigne + génère identifiants).
+function openChangeCuisinier(siteId, siteName) {
+  const ov = document.getElementById('admin-modal-ov');
+  const box = document.getElementById('admin-modal-content');
+  if (!ov || !box) { renderAdmin(); setTimeout(() => openChangeCuisinier(siteId, siteName), 200); return; }
+
+  const cuisinier = _profiles.find(p => p.site_id === siteId && p.role === 'cuisinier');
+
+  // Générer un mot de passe par défaut
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789!@#';
+  const genPass = () => Array.from({length:10}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+  const defaultPass = genPass();
+
+  box.innerHTML = `<div style="padding:22px">
+    <div style="font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:2px">👨‍🍳 Cuisinier — ${escH(siteName)}</div>
+    ${cuisinier
+      ? `<div style="font-size:.75rem;color:var(--muted);margin-bottom:16px">Cuisinier actuel : <strong>${escH(cuisinier.full_name||cuisinier.email||'—')}</strong> · ${escH(cuisinier.email||'')}</div>`
+      : `<div style="font-size:.75rem;color:#f59e0b;margin-bottom:16px;font-weight:700">⚠️ Aucun cuisinier assigné à ce site</div>`
+    }
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <div>
+        <label style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block;margin-bottom:4px">Prénom Nom</label>
+        <input id="cc-name" type="text" value="${escH(cuisinier?.full_name||'')}" placeholder="Jean Dupont"
+          style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.9rem;font-family:var(--font);outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block;margin-bottom:4px">Email</label>
+        <input id="cc-email" type="email" value="${escH(cuisinier?.email||'')}" placeholder="cuisinier@restaurant.fr"
+          style="width:100%;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.9rem;font-family:var(--font);outline:none;box-sizing:border-box">
+      </div>
+      <div>
+        <label style="font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:block;margin-bottom:4px">
+          Mot de passe ${cuisinier ? '(laisser vide pour ne pas changer)' : ''}
+        </label>
+        <div style="display:flex;gap:6px">
+          <input id="cc-pass" type="text" value="${cuisinier ? '' : defaultPass}" placeholder="${cuisinier ? 'Laisser vide = inchangé' : 'Mot de passe'}"
+            style="flex:1;padding:10px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:.9rem;font-family:monospace;font-weight:700;color:var(--navy);outline:none">
+          <button onclick="document.getElementById('cc-pass').value='${defaultPass.replace(/'/g,"\\'")}'"
+            style="padding:10px 12px;background:#f1f5f9;border:1px solid var(--border);border-radius:10px;cursor:pointer;font-size:.85rem" title="Générer">🔄</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="cc-recap" style="display:none;margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px">
+      <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:8px">✅ Cuisinier enregistré</div>
+      <div id="cc-recap-txt" style="font-size:.82rem;line-height:1.7;background:#fff;border:1px solid #d1fae5;border-radius:7px;padding:10px;color:var(--navy)"></div>
+      <button onclick="ccCopyInfo()" style="width:100%;margin-top:10px;padding:10px;background:#dcfce7;color:#166534;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-family:var(--font)">📋 Copier les identifiants</button>
+    </div>
+
+    <div id="cc-btns" style="display:flex;gap:10px;margin-top:20px">
+      <button onclick="closeAdminModal()" style="flex:1;padding:12px;background:#f1f5f9;color:var(--muted);border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">Annuler</button>
+      <button id="cc-submit" onclick="ccSubmit('${siteId}')" style="flex:2;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--font)">
+        ${cuisinier ? '💾 Enregistrer' : '✅ Créer et assigner'}
+      </button>
+    </div>
+  </div>`;
+
+  ov.style.display = 'flex';
+}
+
+async function ccSubmit(siteId) {
+  const name  = (document.getElementById('cc-name')?.value||'').trim();
+  const email = (document.getElementById('cc-email')?.value||'').trim();
+  const pass  = (document.getElementById('cc-pass')?.value||'').trim();
+
+  if (!email) { showToast('Email obligatoire', 'error'); return; }
+  if (!name)  { showToast('Nom obligatoire', 'error'); return; }
+  if (pass && pass.length < 8) { showToast('Mot de passe trop court (min. 8 caractères)', 'error'); return; }
+
+  const btn = document.getElementById('cc-submit');
+  if (btn) { btn.textContent = '⏳…'; btn.disabled = true; }
+
+  try {
+    const existing = _profiles.find(p => p.site_id === siteId && p.role === 'cuisinier');
+
+    if (existing && existing.email === email && !pass) {
+      // Email inchangé, pas de nouveau mot de passe — juste mise à jour du nom si besoin
+      if (name !== existing.full_name) {
+        await supaAdmin('PATCH', `/rest/v1/profiles?id=eq.${existing.id}`, { full_name: name });
+      }
+      showToast('✅ Nom mis à jour', 'success');
+      closeAdminModal();
+      await loadData();
+      return;
+    }
+
+    // Cas : nouveau cuisinier OU changement d'email OU reset mot de passe
+    const finalPass = pass || null;
+    if (!finalPass && !existing) { showToast('Mot de passe obligatoire pour un nouveau cuisinier', 'error'); if(btn){btn.textContent='✅ Créer et assigner';btn.disabled=false;} return; }
+    if (!finalPass) { showToast('Saisissez le nouveau mot de passe', 'error'); if(btn){btn.textContent='💾 Enregistrer';btn.disabled=false;} return; }
+
+    await createUser(email, finalPass, name, 'cuisinier', siteId, null, null, '');
+
+    const siteCode = _sites.find(s => s.id === siteId)?.code || '';
+    window._lastCCUser = { name, email, pass: finalPass, siteCode, siteName: _sites.find(s=>s.id===siteId)?.name||'' };
+
+    document.getElementById('cc-btns').style.display = 'none';
+    const recap = document.getElementById('cc-recap');
+    if (recap) recap.style.display = 'block';
+    document.getElementById('cc-recap-txt').innerHTML =
+      `<div>👤 <strong>Nom :</strong> ${escH(name)}</div>` +
+      `<div>📧 <strong>Email :</strong> ${escH(email)}</div>` +
+      `<div>🔑 <strong>Mot de passe :</strong> ${escH(finalPass)}</div>` +
+      `<div>🏠 <strong>Site :</strong> ${escH(_sites.find(s=>s.id===siteId)?.name||'')}${siteCode?' ('+siteCode+')':''}</div>`;
+
+    showToast('✅ Cuisinier enregistré', 'success');
+    await loadData();
+  } catch(e) {
+    showToast('❌ ' + (e.message||'Erreur'), 'error');
+    if (btn) { btn.textContent = '💾 Enregistrer'; btn.disabled = false; }
+  }
+}
+
+function ccCopyInfo() {
+  const u = window._lastCCUser;
+  if (!u) return;
+  const txt = `Identifiants HACC.PRO\nSite : ${u.siteName}${u.siteCode?' ('+u.siteCode+')':''}\nEmail : ${u.email}\nMot de passe : ${u.pass}`;
+  navigator.clipboard.writeText(txt)
+    .then(() => showToast('✅ Identifiants copiés', 'success'))
+    .catch(() => showToast('Copiez manuellement : ' + u.email + ' / ' + u.pass, 'info'));
 }
 
 // ── Fiche utilisateur — voir ses saisies ─────────────
