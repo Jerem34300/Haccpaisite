@@ -38,6 +38,11 @@ const ALLOWED_PATH_PREFIXES = [
   '/rest/v1/gmo',
 ];
 
+// Tables dont les lignes sont directement filtrables par tenant_id
+const TENANT_SCOPED_TABLES = ['profiles','sites','sectors','territories','subscriptions','pms_records','gmo'];
+// Tables de données globales (catalogues) — pas de tenant_id
+const GLOBAL_READONLY_TABLES = ['corrective_actions','nc_action_mapping'];
+
 exports.handler = async function(event) {
   // CORS preflight
   const headers = {
@@ -84,18 +89,19 @@ exports.handler = async function(event) {
   }
 
   // ── 4. Vérifier le rôle admin dans profiles ───────────────
-  // Utilise la service_role key pour bypasser les politiques RLS
-  // (nécessaire pour les super_admin qui n'ont pas de tenant_id dans leur JWT)
+  let callerRole = '';
+  let callerTenantId = null;
   try {
     const profileRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role&limit=1`,
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role,tenant_id&limit=1`,
       { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
     );
     if (!profileRes.ok) throw new Error('Profil inaccessible');
     const profiles = await profileRes.json();
-    const role = profiles?.[0]?.role || '';
-    if (!ALLOWED_ROLES.includes(role)) {
-      return { statusCode: 403, headers, body: JSON.stringify({ error: `Rôle insuffisant : ${role}` }) };
+    callerRole     = profiles?.[0]?.role || '';
+    callerTenantId = profiles?.[0]?.tenant_id || null;
+    if (!ALLOWED_ROLES.includes(callerRole)) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: `Rôle insuffisant : ${callerRole}` }) };
     }
   } catch(e) {
     return { statusCode: 403, headers, body: JSON.stringify({ error: 'Vérification rôle échouée' }) };
@@ -118,6 +124,52 @@ exports.handler = async function(event) {
     return { statusCode: 403, headers, body: JSON.stringify({ error: `Chemin non autorisé : ${path}` }) };
   }
 
+  // ── 6b. Restriction par tenant pour les rôles non super_admin ──
+  // Le super_admin peut tout voir. Les autres rôles (siege, directeur)
+  // sont restreints à leur propre tenant.
+  let enforcedPath = path;
+  if (callerRole !== 'super_admin') {
+    if (!callerTenantId) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Tenant introuvable pour cet utilisateur' }) };
+    }
+
+    if (path.startsWith('/auth/v1/admin/users')) {
+      // Seuls POST (créer) et PUT (reset mdp) sont autorisés pour les non-super_admin
+      // GET /auth/v1/admin/users (liste) est réservé au super_admin
+      if (method === 'GET' && !path.match(/\/auth\/v1\/admin\/users\/[0-9a-f-]{36}/)) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: 'Liste des comptes auth réservée au super_admin' }) };
+      }
+    } else if (path.startsWith('/rest/v1/tenants')) {
+      // Pour la table tenants, la colonne clé est "id" (pas tenant_id)
+      const sep = path.includes('?') ? '&' : '?';
+      if (!path.includes('id=eq.')) {
+        enforcedPath = path + sep + `id=eq.${callerTenantId}`;
+      }
+    } else {
+      // Pour toutes les autres tables tenant-scopées, injecter tenant_id si absent
+      const tableName = path.replace('/rest/v1/', '').split('?')[0];
+      if (GLOBAL_READONLY_TABLES.includes(tableName)) {
+        // Catalogues globaux (corrective_actions, nc_action_mapping) — lecture seule
+        if (method !== 'GET') {
+          return { statusCode: 403, headers, body: JSON.stringify({ error: `Écriture sur ${tableName} réservée au super_admin` }) };
+        }
+      } else if (TENANT_SCOPED_TABLES.includes(tableName)) {
+        // Injecter le filtre tenant_id si la requête ne l'impose pas déjà
+        const sep = path.includes('?') ? '&' : '?';
+        if (!path.includes('tenant_id=eq.')) {
+          enforcedPath = path + sep + `tenant_id=eq.${callerTenantId}`;
+        } else if (!path.includes(`tenant_id=eq.${callerTenantId}`)) {
+          // Un tenant_id différent est présent dans la requête → refus
+          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Accès inter-tenant refusé' }) };
+        }
+        // Pour POST/PATCH, vérifier que le body ne cible pas un autre tenant
+        if (reqBody && typeof reqBody === 'object' && reqBody.tenant_id && reqBody.tenant_id !== callerTenantId) {
+          return { statusCode: 403, headers, body: JSON.stringify({ error: 'Modification inter-tenant refusée' }) };
+        }
+      }
+    }
+  }
+
   // ── 7. Exécuter la requête Supabase avec service_role ─────
   try {
     const supaHeaders = {
@@ -131,7 +183,7 @@ exports.handler = async function(event) {
     const opts = { method, headers: supaHeaders };
     if (reqBody && method !== 'GET') opts.body = JSON.stringify(reqBody);
 
-    const supaRes = await fetch(`${SUPABASE_URL}${path}`, opts);
+    const supaRes = await fetch(`${SUPABASE_URL}${enforcedPath}`, opts);
 
     // 204 No Content (PATCH/DELETE avec Prefer: return=minimal) → corps vide
     if (supaRes.status === 204) {
