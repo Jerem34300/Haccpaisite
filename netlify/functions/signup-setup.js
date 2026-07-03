@@ -96,8 +96,14 @@ exports.handler = async function(event) {
     };
   }
 
-  // ── 4. Créer le tenant ────────────────────────────────────────
-  // Générer un slug unique à partir du nom de l'entreprise
+  // ── 4. Valider le quota sites côté serveur ───────────────────
+  const PLAN_MAX_SITES = { solo: 1, multi: 3, enterprise: Infinity, starter: 1, pro: 3 };
+  const maxSites = PLAN_MAX_SITES[plan] ?? 3;
+  if (sites > maxSites) {
+    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: `Plan ${plan} : maximum ${maxSites} site(s). Demande reçue : ${sites}.` }) };
+  }
+
+  // ── 5. Créer le tenant ────────────────────────────────────────
   const slug = company.toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40)
@@ -108,7 +114,7 @@ exports.handler = async function(event) {
     const r = await fetch(`${SUPABASE_URL}/rest/v1/tenants`, {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'return=representation' },
-      body: JSON.stringify({ name: company, slug })
+      body: JSON.stringify({ name: company, slug, plan })
     });
     if (r.ok) {
       const t = await r.json();

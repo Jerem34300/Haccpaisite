@@ -62,66 +62,12 @@ function _updateStepper(){
 // ── Vérification email + transition étape 1→2 (async) ────────
 async function checkEmailAndGoStep2(){
   if(!validateStep(1)) return;
-
-  const btn   = document.getElementById('btn-step1');
-  const label = document.getElementById('btn-step1-label');
-  const spin  = document.getElementById('btn-step1-spin');
-  if(btn) btn.disabled = true;
-  if(label) label.style.display = 'none';
-  if(spin) spin.style.display = 'block';
-  hideErr(1);
-
-  // Déjà vérifié pour cet email : ne pas rappeler Supabase
-  if(_supaAuth && _supaAuthEmail === _data.email){
-    _showStep(2);
-    if(btn){ btn.disabled = false; }
-    if(label) label.style.display = 'inline';
-    if(spin) spin.style.display = 'none';
-    return;
-  }
-
-  try {
-    const r = await fetch(`${_SU}/auth/v1/signup`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':_SK},
-      body:JSON.stringify({ email:_data.email, password:_data.password })
-    });
-    const auth = await r.json();
-
-    const rawMsg = (auth.error?.message || auth.msg || auth.message || '').toLowerCase();
-    const isDup = rawMsg.includes('already') || rawMsg.includes('exists')
-      || auth.error_code === 'user_already_exists' || auth.code === 422
-      || (auth.user && Array.isArray(auth.user.identities) && auth.user.identities.length === 0)
-      || (Array.isArray(auth.identities) && auth.identities.length === 0 && !auth.access_token && (auth.id || auth.user?.id));
-
-    if(isDup){
-      const el = document.getElementById('err-1');
-      if(el){
-        el.innerHTML = '⚠️ Cet email est déjà utilisé. <a href="login.html" style="color:var(--plum);font-weight:900;text-decoration:underline">Se connecter →</a>';
-        el.style.display = 'block';
-      }
-      return;
-    }
-
-    if(auth.error && auth.code !== 200){
-      showErr(1, auth.error?.message || auth.msg || auth.message || 'Erreur. Réessayez.');
-      return;
-    }
-
-    const token  = auth.access_token;
-    const userId = auth.user?.id || auth.id;
-    _supaAuth = token ? { token, userId, pending:false } : { pending:true };
-    _supaAuthEmail = _data.email;
-
-    _showStep(2);
-
-  } catch(e){
-    showErr(1, 'Impossible de vérifier l\'email. Vérifiez votre connexion.');
-  } finally {
-    if(btn) btn.disabled = false;
-    if(label) label.style.display = 'inline';
-    if(spin) spin.style.display = 'none';
-  }
+  // Ne pas appeler auth/v1/signup ici — cela créerait un compte fantôme si
+  // l'utilisateur abandonne avant l'étape 4. La détection de doublon et la
+  // création du compte se font uniquement dans doSignup() (étape 4).
+  _supaAuth = null;
+  _supaAuthEmail = _data.email;
+  _showStep(2);
 }
 
 // ── Validation ────────────────────────────────────────────────
