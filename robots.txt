@@ -9,6 +9,7 @@ Allow: /signup.html
 # Pages privées de l'app — ne pas indexer
 Disallow: /dashboard.html
 Disallow: /cuisine.html
+Disallow: /account.html
 Disallow: /onboarding.html
 Disallow: /pms-setup.html
 Disallow: /netlify/

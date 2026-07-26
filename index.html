@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>HACC.PRO</title>
-<meta name="robots" content="noindex">
 <script>
+/* Session guard — utilisateurs déjà connectés : redirection immédiate vers leur interface.
+   Aucune session valide → on ne fait rien, la landing page s'affiche normalement. */
 (function(){
   try {
     var s1 = JSON.parse(localStorage.getItem('haccpro_session')||'{}');
@@ -20,9 +20,1033 @@
       window.location.replace('cuisine.html'); return;
     }
   } catch(e){}
-  window.location.replace('landing.html');
 })();
 </script>
+<title>Logiciel HACCP pour Restaurants &amp; Restauration Collective — HACC.PRO</title>
+<meta name="description" content="HACC.PRO : logiciel HACCP en ligne pour restaurants et restauration collective. Plats témoins, relevés de températures, traçabilité alimentaire. PMS généré automatiquement en 20 minutes. Essai gratuit 14 jours.">
+<meta name="keywords" content="logiciel haccp, plan de maîtrise sanitaire, haccp restaurant, traçabilité alimentaire, plat témoin, registre haccp, application haccp restauration collective">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://www.hacc.pro/">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="HACC.PRO — Logiciel HACCP pour restaurants, PMS automatique">
+<meta property="og:description" content="Gérez votre HACCP 100% en ligne : plats témoins, températures, traçabilité et PMS généré automatiquement. Essai gratuit 14 jours.">
+<meta property="og:url" content="https://hacc.pro/">
+<meta property="og:image" content="https://hacc.pro/icon-512.png">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="HACC.PRO — Logiciel HACCP numérique">
+<meta name="twitter:description" content="Traçabilité, plats témoins, PMS automatique. Essai gratuit 14 jours.">
+
+<link rel="icon" type="image/svg+xml" href="favicon.svg"><link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<meta name="theme-color" content="#0F2240">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/landing.css">
+<link rel="stylesheet" href="css/modern.css">
+<style>
+/* Critical nav CSS inline — immune au cache du service worker */
+.nav{position:sticky;top:0;z-index:100;background:rgba(15,34,64,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,.08)}
+.nav-inner{max-width:1140px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:14px 24px}
+.nav-logo{display:flex;align-items:center;gap:10px;text-decoration:none}
+.nav-logo-name{font-size:1.25rem;font-weight:900;color:#fff;font-family:'Nunito',sans-serif}
+.nav-logo-name span{color:#8DC63F}
+.nav-links{display:flex;align-items:center;gap:4px}
+.nav-link-plain{color:rgba(255,255,255,.65);font-size:.85rem;font-weight:700;text-decoration:none;padding:7px 12px;border-radius:8px;transition:color .2s}
+.nav-link-plain:hover{color:#fff}
+.nav-btn-pill{background:#8DC63F;color:#fff;border-radius:20px;padding:9px 22px;font-size:.85rem;font-weight:900;text-decoration:none;display:inline-block;transition:all .2s;box-shadow:0 2px 10px rgba(141,198,63,.35);margin-left:8px;white-space:nowrap}
+.nav-btn-pill:hover{background:#6fa832;transform:translateY(-1px)}
+.nav-link-login{color:rgba(255,255,255,.6);font-size:.82rem;font-weight:700;text-decoration:none;padding:7px 10px;border-radius:8px;transition:color .2s;white-space:nowrap}
+.nav-link-login:hover{color:#fff}
+@media(max-width:640px){
+  .nav-inner{padding:12px 16px}
+  .nav-hide-mobile{display:none}
+  .nav-btn-pill{padding:8px 14px;font-size:.78rem;margin-left:4px}
+  .nav-link-login{font-size:.78rem;padding:6px 8px}
+}
+/* ── FAB Menu flottant (mobile) ── */
+.fab{display:none;position:fixed;bottom:22px;right:18px;z-index:300;width:52px;height:52px;border-radius:50%;background:#8DC63F;border:none;cursor:pointer;box-shadow:0 4px 20px rgba(141,198,63,.5);flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:background .2s,transform .2s}
+.fab:hover{background:#6fa832;transform:scale(1.08)}
+.fab span{display:block;width:20px;height:2px;background:#fff;border-radius:2px;transition:all .25s}
+.fab.open span:nth-child(1){transform:translateY(6px) rotate(45deg)}
+.fab.open span:nth-child(2){opacity:0}
+.fab.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg)}
+.fab-sheet{position:fixed;inset:0;z-index:290;pointer-events:none}
+.fab-overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);opacity:0;transition:opacity .25s}
+.fab-panel{position:absolute;bottom:0;left:0;right:0;background:#0F2240;border-radius:20px 20px 0 0;padding:20px 20px 32px;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);max-height:82vh;overflow-y:auto}
+.fab-sheet.open .fab-overlay{opacity:1;pointer-events:auto}
+.fab-sheet.open .fab-panel{transform:translateY(0);pointer-events:auto}
+.fab-handle{width:36px;height:4px;background:rgba(255,255,255,.2);border-radius:2px;margin:0 auto 20px}
+.fab-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fab-link{display:flex;align-items:center;gap:10px;padding:13px 14px;background:rgba(255,255,255,.07);border-radius:12px;text-decoration:none;color:#fff;font-size:.88rem;font-weight:800;transition:background .18s}
+.fab-link:hover{background:rgba(255,255,255,.14)}
+.fab-link-icon{font-size:1.1rem;flex-shrink:0}
+.fab-link.primary{background:rgba(141,198,63,.2);border:1px solid rgba(141,198,63,.3);color:#c8e87a}
+.fab-link.primary:hover{background:rgba(141,198,63,.3)}
+.fab-divider{grid-column:1/-1;border:none;border-top:1px solid rgba(255,255,255,.1);margin:4px 0}
+@media(max-width:640px){.fab{display:flex}}
+
+/* ── App Screenshots section ── */
+.screens-section{padding:72px 0 80px;background:#fff;overflow-x:hidden}
+.screens-inner{max-width:1100px;margin:0 auto;padding:0 24px}
+.screens-wrap{display:flex;gap:28px;justify-content:center;align-items:flex-end;margin-top:52px;flex-wrap:wrap}
+.screen-item{display:flex;flex-direction:column;align-items:center;gap:14px}
+.screen-item-main .s-phone{transform:translateY(-16px);box-shadow:0 32px 80px rgba(15,34,64,.22)!important}
+.screen-label{font-size:.72rem;font-weight:900;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;background:#f7f2f7;border-radius:20px;padding:5px 14px}
+/* Phone frame */
+.s-phone{width:204px;border-radius:26px;overflow:hidden;box-shadow:0 16px 48px rgba(15,34,64,.14);border:2px solid rgba(15,34,64,.1);background:#fff}
+.s-notch{height:20px;background:#0a1828;display:flex;align-items:center;justify-content:center}
+.s-dot{width:52px;height:5px;background:rgba(255,255,255,.18);border-radius:3px}
+.s-hd{background:linear-gradient(135deg,#0F2240 0%,#1a3558 100%);padding:10px 14px}
+.s-hd-label{font-size:.62rem;font-weight:900;color:rgba(255,255,255,.65);text-transform:uppercase;letter-spacing:.6px}
+.s-body{padding:12px}
+/* Dashboard screen */
+.s-score-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.s-site-card{background:#f8f9fc;border-radius:10px;padding:8px 7px;text-align:center;border:1px solid #e8e0e8}
+.s-site-card.s-warn-card{border-color:#fde68a;background:#fffbeb}
+.s-site-name{font-size:.58rem;font-weight:800;color:#7A6579;margin-bottom:4px;line-height:1.3}
+.s-site-score{font-size:1.15rem;font-weight:900;margin-bottom:2px}
+.s-green{color:#6fa832}.s-orange{color:#d97706}.s-red{color:#dc2626}
+.s-site-tag{font-size:.54rem;font-weight:900;color:#7A6579}
+.s-kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
+.s-kpi{background:#f8f9fc;border-radius:8px;padding:6px 4px;text-align:center;border:1px solid #e8e0e8}
+.s-kpi-val{font-size:.92rem;font-weight:900;color:#0F2240}
+.s-kpi-lbl{font-size:.5rem;font-weight:700;color:#7A6579;line-height:1.3;margin-top:1px}
+/* Temperature screen */
+.s-enceinte{display:flex;align-items:center;gap:8px;background:#e0f0ff;border-radius:10px;padding:8px 10px;margin-bottom:10px}
+.s-enceinte-name{font-size:.63rem;font-weight:900;color:#1d4ed8;line-height:1.3}
+.s-temp-display{text-align:center;padding:8px 0 6px}
+.s-temp-num{font-size:2.2rem;font-weight:900;color:#0F2240;line-height:1}
+.s-temp-seuil{font-size:.58rem;color:#7A6579;font-weight:700;margin-top:4px;margin-bottom:4px}
+.s-temp-ok{display:inline-block;background:#f0fdf4;color:#166534;font-size:.63rem;font-weight:900;border-radius:6px;padding:2px 9px}
+.s-btn-submit{background:#8DC63F;color:#fff;border-radius:10px;padding:8px;text-align:center;font-size:.64rem;font-weight:900;margin:9px 0 8px;cursor:pointer}
+.s-history-mini{border-top:1px solid #e8e0e8;padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.s-history-item{display:flex;justify-content:space-between;font-size:.6rem;color:#7A6579;font-weight:700}
+.s-history-nc .s-red{color:#dc2626}
+/* Plats témoins screen */
+.s-plat{display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid #f3f0f3}
+.s-plat:last-of-type{border-bottom:none}
+.s-plat-icon{font-size:.95rem;width:22px;text-align:center}
+.s-plat-info{flex:1;min-width:0}
+.s-plat-name{font-size:.64rem;font-weight:900;color:#3D2A3C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-plat-date{font-size:.57rem;color:#7A6579;font-weight:700;margin-top:1px}
+.s-urgent{color:#dc2626!important;font-weight:900!important}
+.s-plat-badge{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:900;flex-shrink:0}
+.s-badge-ok{background:#f0fdf4;color:#166534}
+.s-badge-warn{background:#fffbeb;color:#92400e}
+.s-badge-danger{background:#fef2f2;color:#dc2626}
+.s-add-btn{background:linear-gradient(135deg,#8DC63F,#6fa832);color:#fff;border-radius:10px;padding:7px;text-align:center;font-size:.62rem;font-weight:900;margin-top:8px}
+@media(max-width:640px){
+  .screens-wrap{gap:14px}
+  .s-phone{width:160px}
+  .s-temp-num{font-size:1.7rem}
+  .s-site-score{font-size:.95rem}
+}
+</style>
+
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"SoftwareApplication",
+  "name":"HACC.PRO",
+  "description":"Logiciel HACCP en ligne pour restaurants et restauration collective. Gestion des plats témoins, relevés de températures, traçabilité alimentaire et génération automatique du Plan de Maîtrise Sanitaire.",
+  "applicationCategory":"BusinessApplication",
+  "operatingSystem":"Web, iOS, Android",
+  "inLanguage":"fr",
+  "url":"https://hacc.pro",
+  "offers":[
+    {"@type":"Offer","name":"Solo","price":"29","priceCurrency":"EUR","priceSpecification":{"@type":"UnitPriceSpecification","price":"29","priceCurrency":"EUR","unitText":"MONTH"}},
+    {"@type":"Offer","name":"Multi","price":"49","priceCurrency":"EUR","priceSpecification":{"@type":"UnitPriceSpecification","price":"49","priceCurrency":"EUR","unitText":"MONTH"}}
+  ],
+  "featureList":["Gestion des plats témoins","Relevés de températures HACCP","Traçabilité alimentaire","Plan de Maîtrise Sanitaire automatique","Dashboard multi-sites","Alertes en temps réel"],
+  "publisher":{"@type":"Organization","name":"HACC.PRO","url":"https://hacc.pro"}
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"Organization",
+  "name":"HACC.PRO",
+  "url":"https://hacc.pro",
+  "logo":"https://hacc.pro/icon-192.png",
+  "description":"Éditeur de logiciel HACCP pour la restauration",
+  "foundingDate":"2024",
+  "areaServed":"FR",
+  "contactPoint":{"@type":"ContactPoint","contactType":"customer support","email":"contact@hacc.pro","availableLanguage":"fr"}
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"FAQPage",
+  "mainEntity":[
+    {
+      "@type":"Question",
+      "name":"Le HACCP est-il obligatoire pour les restaurants en France ?",
+      "acceptedAnswer":{"@type":"Answer","text":"Oui, le HACCP est obligatoire pour tous les établissements de restauration commerciale et collective en France depuis le Règlement (CE) n°852/2004 (Paquet Hygiène). Chaque professionnel de l'alimentation doit mettre en place des procédures basées sur les principes HACCP et les consigner dans un Plan de Maîtrise Sanitaire (PMS)."}
+    },
+    {
+      "@type":"Question",
+      "name":"Qu'est-ce qu'un Plan de Maîtrise Sanitaire (PMS) ?",
+      "acceptedAnswer":{"@type":"Answer","text":"Le Plan de Maîtrise Sanitaire (PMS) est un document obligatoire regroupant les bonnes pratiques d'hygiène, les procédures HACCP et les procédures de traçabilité. HACC.PRO le génère automatiquement en 20 minutes via un questionnaire adapté à votre établissement."}
+    },
+    {
+      "@type":"Question",
+      "name":"Qu'est-ce qu'un plat témoin en HACCP ?",
+      "acceptedAnswer":{"@type":"Answer","text":"Un plat témoin est un échantillon de chaque plat cuisiné, conservé et identifié pendant au minimum 5 jours après le service. Obligatoire en restauration collective, il permet d'analyser un aliment suspect en cas d'intoxication. HACC.PRO automatise leur enregistrement, étiquetage et alertes de destruction."}
+    },
+    {
+      "@type":"Question",
+      "name":"À quelle fréquence relever les températures HACCP ?",
+      "acceptedAnswer":{"@type":"Answer","text":"Les températures des enceintes réfrigérées doivent être relevées au minimum deux fois par jour. Pour les surgélateurs, un relevé quotidien est requis. Les températures à la livraison doivent aussi être enregistrées. HACC.PRO permet ces relevés en quelques secondes depuis un smartphone."}
+    },
+    {
+      "@type":"Question",
+      "name":"HACC.PRO est-il adapté à la restauration collective ?",
+      "acceptedAnswer":{"@type":"Answer","text":"Oui, HACC.PRO est conçu pour la restauration collective (cantines, EHPAD, hôpitaux) comme commerciale. Il gère les plats témoins obligatoires, menus multi-services, traçabilité des mixés (BF Cuit/BF Cru) et la supervision multi-sites pour les groupes."}
+    }
+  ]
+}
+</script>
 </head>
-<body></body>
+<body>
+
+<!-- ── NAV ── -->
+<nav class="nav" role="navigation" aria-label="Navigation principale">
+  <div class="nav-inner">
+    <a href="/" class="nav-logo" aria-label="HACC.PRO — Accueil">
+      <svg width="30" height="30" viewBox="0 0 90 90" fill="none" aria-hidden="true">
+        <rect x="20" y="54" width="50" height="13" rx="4" fill="rgba(255,255,255,.18)"/>
+        <rect x="23" y="47" width="44" height="10" rx="2" fill="rgba(255,255,255,.14)"/>
+        <circle cx="45" cy="33" r="16" fill="white"/>
+        <circle cx="29" cy="38" r="11" fill="white"/>
+        <circle cx="61" cy="38" r="11" fill="white"/>
+        <path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      <span class="nav-logo-name">HACC<span>.PRO</span></span>
+    </a>
+    <div class="nav-links">
+      <a href="#features" class="nav-link-plain nav-hide-mobile">Fonctionnalités</a>
+      <a href="#pricing" class="nav-link-plain nav-hide-mobile">Tarifs</a>
+      <a href="faq/index.html" class="nav-link-plain nav-hide-mobile">Guides HACCP</a>
+      <a href="guides/plan-maitrise-sanitaire.html" class="nav-link-plain nav-hide-mobile">Blog</a>
+      <a href="mode-emploi.html" class="nav-link-plain nav-hide-mobile">Mode d'emploi</a>
+      <a href="login.html" class="nav-link-login">Se connecter</a>
+      <a href="signup.html" class="nav-btn-pill">Commencer →</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero" aria-labelledby="hero-h1">
+  <div class="hero-inner">
+    <div class="hero-text">
+      <div class="hero-badge">✓ 100 % conforme Paquet Hygiène UE</div>
+      <h1 id="hero-h1">
+        Le logiciel <em>HACCP</em> qui génère votre <em>PMS</em> automatiquement
+      </h1>
+      <p class="hero-sub">
+        Traçabilité alimentaire, plats témoins, relevés de températures et dashboard multi-sites.
+        Conçu pour les cuisiniers, conçu pour survivre aux contrôles DDPP. Zéro papier.
+      </p>
+      <div class="hero-ctas">
+        <a href="signup.html" class="btn-hero-primary">Essai gratuit 14 jours →</a>
+        <a href="#how" class="btn-hero-secondary">Voir comment ça marche</a>
+      </div>
+      <div class="hero-free-badge" style="display:flex;align-items:center;gap:10px;margin:14px 0 4px;background:rgba(141,198,63,.13);border:1.5px solid rgba(141,198,63,.35);border-radius:12px;padding:10px 16px;width:fit-content">
+        <span style="font-size:1.4rem">🎁</span>
+        <span style="font-size:1rem;font-weight:900;color:#c8e87a">14 jours GRATUITS</span>
+        <span style="font-size:.82rem;color:rgba(255,255,255,.7);font-weight:600">— Accès complet, sans carte bancaire</span>
+      </div>
+      <div class="hero-trust">
+        <span class="hero-trust-dot"></span><strong style="color:#8DC63F">Dès 29€/mois</strong>
+        <span class="hero-trust-dot"></span>Sans carte bancaire
+        <span class="hero-trust-dot"></span>Résiliation en 1 clic
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="hero-gauge" role="img" aria-label="Relevé de température en temps réel : chambre froide à 3°C, conforme.">
+        <div class="gauge-top">
+          <span class="gauge-eyebrow">Relevé en direct</span>
+          <span class="gauge-live"><i></i>Live</span>
+        </div>
+        <div class="gauge-name">Chambre froide n°1<small>Cuisine centrale · Seuil 0 → 4°C</small></div>
+
+        <div class="gauge-arc-wrap">
+          <svg class="gauge-arc" viewBox="0 0 230 128" aria-hidden="true">
+            <defs>
+              <linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#6fa832"/>
+                <stop offset="1" stop-color="#a3d65f"/>
+              </linearGradient>
+            </defs>
+            <!-- demi-cercle : gauche(23,115) -> haut -> droite(207,115), r=92 -->
+            <path class="gauge-track" d="M23 115 A92 92 0 0 1 207 115"/>
+            <path class="gauge-fill" id="gaugeFill" d="M23 115 A92 92 0 0 1 207 115"/>
+          </svg>
+          <div class="gauge-readout">
+            <div><span class="gauge-val" id="gaugeVal">11</span><span class="gauge-unit">°C</span></div>
+            <div class="gauge-range">Plage conforme&nbsp;: 0 à 4°C</div>
+          </div>
+        </div>
+
+        <div class="gauge-stamp" id="gaugeStamp">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#a3d65f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Conforme — enregistré &amp; horodaté
+        </div>
+
+        <div class="gauge-meta">
+          <div><b>08h12</b><span>Dernier relevé</span></div>
+          <div><b>RA3414</b><span>Site</span></div>
+          <div><b>5&nbsp;ans</b><span>Archivage</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRUST BAR ── -->
+<div class="trust-bar">
+  <div class="trust-bar-inner">
+    <p class="trust-headline">Rejoignez le mouvement</p>
+    <p class="trust-sub">Sécurisez votre traçabilité et passez vos contrôles DDPP sans stress — restaurants, cantines, EHPAD, traiteurs.</p>
+    <div class="trust-badges">
+      <span class="trust-badge">🍽️ Restaurants</span>
+      <span class="trust-badge">🏫 Cantines</span>
+      <span class="trust-badge">🏥 EHPAD</span>
+      <span class="trust-badge">🎂 Traiteurs</span>
+      <span class="trust-badge trust-badge-lang">🌐 Disponible dans toutes les langues</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── STATS ── -->
+<section class="stats" aria-label="Chiffres clés HACC.PRO">
+  <div class="stats-inner">
+    <div class="stat-card">
+      <div class="stat-val">0<span> papier</span></div>
+      <div class="stat-lbl">Traçabilité 100% numérique</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">20<span> min</span></div>
+      <div class="stat-lbl">Pour générer votre PMS complet</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">40<span>+</span></div>
+      <div class="stat-lbl">Modules HACCP disponibles</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val">100<span>%</span></div>
+      <div class="stat-lbl">Conforme Paquet Hygiène UE</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── APP SCREENSHOTS ── -->
+<section class="screens-section" id="interface" aria-labelledby="screens-h2">
+  <div class="screens-inner">
+    <div class="section-header">
+      <div class="section-tag">L'interface</div>
+      <h2 class="section-h2" id="screens-h2">Simple à utiliser. Puissant en coulisses.</h2>
+      <p class="section-sub">Tout fonctionne sur smartphone — aucune installation, aucune formation. Vos cuisiniers sont opérationnels en 5 minutes.</p>
+    </div>
+    <div class="screens-wrap">
+
+      <!-- Screen 1 : Dashboard -->
+      <div class="screen-item">
+        <div class="s-phone">
+          <div class="s-notch"><div class="s-dot"></div></div>
+          <div class="s-hd"><div class="s-hd-label">📊 Tableau de bord</div></div>
+          <div class="s-body">
+            <div class="s-score-grid">
+              <div class="s-site-card">
+                <div class="s-site-name">Cuisine Centrale</div>
+                <div class="s-site-score s-green">98%</div>
+                <div class="s-site-tag">✓ Conforme</div>
+              </div>
+              <div class="s-site-card s-warn-card">
+                <div class="s-site-name">Brasserie du Parc</div>
+                <div class="s-site-score s-orange">84%</div>
+                <div class="s-site-tag">⚠️ 1 alerte</div>
+              </div>
+              <div class="s-site-card">
+                <div class="s-site-name">EHPAD Les Lilas</div>
+                <div class="s-site-score s-green">96%</div>
+                <div class="s-site-tag">✓ Conforme</div>
+              </div>
+              <div class="s-site-card">
+                <div class="s-site-name">Cantine Scolaire</div>
+                <div class="s-site-score s-green">100%</div>
+                <div class="s-site-tag">✓ Parfait</div>
+              </div>
+            </div>
+            <div class="s-kpi-row">
+              <div class="s-kpi"><div class="s-kpi-val">24</div><div class="s-kpi-lbl">Relevés aujourd'hui</div></div>
+              <div class="s-kpi"><div class="s-kpi-val">7</div><div class="s-kpi-lbl">Plats témoins</div></div>
+              <div class="s-kpi"><div class="s-kpi-val" style="color:#dc2626">1</div><div class="s-kpi-lbl">NC ouverte</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="screen-label">📊 Dashboard multi-sites</div>
+      </div>
+
+      <!-- Screen 2 : Temperature (center, featured) -->
+      <div class="screen-item screen-item-main">
+        <div class="s-phone">
+          <div class="s-notch"><div class="s-dot"></div></div>
+          <div class="s-hd"><div class="s-hd-label">🌡️ Relevé de température</div></div>
+          <div class="s-body">
+            <div class="s-enceinte">
+              <span style="font-size:1rem">❄️</span>
+              <div class="s-enceinte-name">Chambre froide n°1<br><span style="color:rgba(29,78,216,.6);font-weight:700;font-size:.54rem">Seuil : 0°C à +4°C</span></div>
+            </div>
+            <div class="s-temp-display">
+              <div class="s-temp-num">+3,2°C</div>
+              <div class="s-temp-seuil">Température actuelle</div>
+              <div class="s-temp-ok">✓ Dans la plage</div>
+            </div>
+            <div class="s-btn-submit">Valider le relevé →</div>
+            <div class="s-history-mini">
+              <div class="s-history-item"><span style="color:#7A6579">Auj. 08h12</span><span style="color:#6fa832;font-weight:900">+3,1°C ✓</span></div>
+              <div class="s-history-item"><span style="color:#7A6579">Hier 18h00</span><span style="color:#6fa832;font-weight:900">+3,4°C ✓</span></div>
+              <div class="s-history-item s-history-nc"><span style="color:#7A6579">Mardi 08h</span><span class="s-red" style="font-weight:900">+5,8°C ⚠️</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="screen-label">🌡️ Relevé de température</div>
+      </div>
+
+      <!-- Screen 3 : Plats témoins -->
+      <div class="screen-item">
+        <div class="s-phone">
+          <div class="s-notch"><div class="s-dot"></div></div>
+          <div class="s-hd"><div class="s-hd-label">🍽️ Plats témoins</div></div>
+          <div class="s-body">
+            <div class="s-plat">
+              <div class="s-plat-icon">🍖</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Rôti de bœuf sauce</div>
+                <div class="s-plat-date">Détruire avant le <strong>15/05</strong></div>
+              </div>
+              <div class="s-plat-badge s-badge-ok">4j</div>
+            </div>
+            <div class="s-plat">
+              <div class="s-plat-icon">🥗</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Salade niçoise</div>
+                <div class="s-plat-date">Détruire avant le <strong>13/05</strong></div>
+              </div>
+              <div class="s-plat-badge s-badge-warn">2j</div>
+            </div>
+            <div class="s-plat">
+              <div class="s-plat-icon">🍮</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Crème caramel</div>
+                <div class="s-plat-date s-urgent">⚠️ Détruire AUJOURD'HUI</div>
+              </div>
+              <div class="s-plat-badge s-badge-danger">0j</div>
+            </div>
+            <div class="s-plat">
+              <div class="s-plat-icon">🐟</div>
+              <div class="s-plat-info">
+                <div class="s-plat-name">Cabillaud vapeur</div>
+                <div class="s-plat-date">Détruire avant le <strong>16/05</strong></div>
+              </div>
+              <div class="s-plat-badge s-badge-ok">5j</div>
+            </div>
+            <div class="s-add-btn">+ Enregistrer un plat témoin</div>
+          </div>
+        </div>
+        <div class="screen-label">🍽️ Plats témoins</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── PROBLEM / SOLUTION ── -->
+<section class="problem" aria-labelledby="problem-h2">
+  <div class="problem-inner">
+    <div class="section-header">
+      <div class="section-tag">Le problème</div>
+      <h2 class="section-h2" id="problem-h2">La gestion HACCP sur papier, c'est terminé</h2>
+      <p class="section-sub">Les cahiers de traçabilité se perdent, les relevés de température s'oublient, et les contrôles DDPP deviennent un cauchemar.</p>
+    </div>
+    <div class="problem-grid">
+      <div class="problem-card">
+        <div class="problem-card-before">
+          <div class="problem-label before">✗ Avant HACC.PRO</div>
+          <div class="problem-text">3 heures par semaine à remplir des cahiers papier, chercher des étiquettes de plats témoins et retrouver des relevés de température vieux d'un mois.</div>
+        </div>
+        <div class="problem-card-after">
+          <div class="problem-label after">✓ Avec HACC.PRO</div>
+          <div class="problem-text">10 minutes par jour sur smartphone. Tout est enregistré, tracé et archivé automatiquement. L'historique complet accessible en 2 clics.</div>
+        </div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-card-before">
+          <div class="problem-label before">✗ Avant HACC.PRO</div>
+          <div class="problem-text">Contrôle DDPP : fouiller dans les classeurs pour prouver la traçabilité d'un plat servi il y a 3 semaines. Stress maximal, risque de fermeture.</div>
+        </div>
+        <div class="problem-card-after">
+          <div class="problem-label after">✓ Avec HACC.PRO</div>
+          <div class="problem-text">Toute la traçabilité accessible en temps réel avec historique complet et export PDF pour l'inspecteur. Contrôle DDPP en 5 minutes, zéro sueur.</div>
+        </div>
+      </div>
+      <div class="problem-card">
+        <div class="problem-card-before">
+          <div class="problem-label before">✗ Avant HACC.PRO</div>
+          <div class="problem-text">Créer un Plan de Maîtrise Sanitaire (PMS) complet prend des semaines et coûte des milliers d'euros avec un consultant HACCP externe.</div>
+        </div>
+        <div class="problem-card-after">
+          <div class="problem-label after">✓ Avec HACC.PRO</div>
+          <div class="problem-text">Répondez à notre questionnaire en 20 minutes. Votre PMS est configuré automatiquement selon votre type d'établissement, vos enceintes et vos process.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features" id="features" aria-labelledby="features-h2">
+  <div class="features-inner">
+    <div class="section-header">
+      <div class="section-tag">Fonctionnalités</div>
+      <h2 class="section-h2" id="features-h2">Tout ce dont vous avez besoin pour votre HACCP</h2>
+      <p class="section-sub">6 modules intégrés pour couvrir l'ensemble de vos obligations réglementaires, sans paperasse.</p>
+    </div>
+    <div class="features-grid">
+      <article class="feature-card">
+        <div class="feature-icon" aria-hidden="true">🍽️</div>
+        <h3 class="feature-h3">Plats témoins numériques</h3>
+        <p class="feature-p">Enregistrez, étiquetez et tracez chaque plat témoin depuis votre smartphone. Alertes automatiques avant la date de destruction. Conformité totale pour la restauration collective et commerciale.</p>
+        <div class="feature-tags">
+          <span class="feature-tag">Étiquetage</span>
+          <span class="feature-tag">Alertes</span>
+          <span class="feature-tag">Traçabilité</span>
+        </div>
+      </article>
+      <article class="feature-card">
+        <div class="feature-icon" aria-hidden="true">🌡️</div>
+        <h3 class="feature-h3">Relevés de températures</h3>
+        <p class="feature-p">Enregistrez les températures de toutes vos enceintes (chambres froides, surgélateurs, vitrines) en quelques secondes. Alertes hors-plage, historique complet et graphiques de tendance.</p>
+        <div class="feature-tags">
+          <span class="feature-tag">Multi-enceintes</span>
+          <span class="feature-tag">Alertes NC</span>
+          <span class="feature-tag">Historique</span>
+        </div>
+      </article>
+      <article class="feature-card">
+        <div class="feature-icon" aria-hidden="true">📋</div>
+        <h3 class="feature-h3">Traçabilité alimentaire</h3>
+        <p class="feature-p">Traçabilité bidirectionnelle complète des matières premières aux plats servis. Numéros de lot, DLUO/DDM, fournisseurs. Prêt pour l'inspection DDPP en 5 minutes.</p>
+        <div class="feature-tags">
+          <span class="feature-tag">Lots</span>
+          <span class="feature-tag">DLC/DLUO</span>
+          <span class="feature-tag">Fournisseurs</span>
+        </div>
+      </article>
+      <article class="feature-card">
+        <div class="feature-icon" aria-hidden="true">📄</div>
+        <h3 class="feature-h3">PMS auto-configuré</h3>
+        <p class="feature-p">Répondez à notre questionnaire HACCP guidé : enceintes, menus, équipe, process de production. Votre Plan de Maîtrise Sanitaire complet est créé et configuré en 20 minutes.</p>
+        <div class="feature-tags">
+          <span class="feature-tag">Questionnaire</span>
+          <span class="feature-tag">Config auto</span>
+          <span class="feature-tag">PMS complet</span>
+        </div>
+      </article>
+      <article class="feature-card">
+        <div class="feature-icon" aria-hidden="true">📊</div>
+        <h3 class="feature-h3">Dashboard multi-sites</h3>
+        <p class="feature-p">Vue siège : supervision en temps réel de toutes vos cuisines. Score HACCP par site, alertes non-conformités, taux de couverture. Idéal pour les groupes, franchises et collectivités.</p>
+        <div class="feature-tags">
+          <span class="feature-tag">Multi-sites</span>
+          <span class="feature-tag">Score HACCP</span>
+          <span class="feature-tag">Rapports</span>
+        </div>
+      </article>
+      <article class="feature-card">
+        <div class="feature-icon" aria-hidden="true">🧩</div>
+        <h3 class="feature-h3">Menus &amp; planification</h3>
+        <p class="feature-p">Planifiez vos menus, assignez les profils HACCP (chaud, froid, mixé cuit, mixé cru), gérez les variantes régimes. Interface intuitive conçue pour les cuisiniers, pas pour les informaticiens.</p>
+        <div class="feature-tags">
+          <span class="feature-tag">Profils HACCP</span>
+          <span class="feature-tag">Variantes</span>
+          <span class="feature-tag">Planning</span>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ── HOW IT WORKS ── -->
+<section class="how" id="how" aria-labelledby="how-h2">
+  <div class="how-inner">
+    <div class="section-header">
+      <div class="section-tag">Comment ça marche</div>
+      <h2 class="section-h2" id="how-h2">Opérationnel en 20 minutes chrono</h2>
+      <p class="section-sub">De l'inscription à votre premier relevé de température, tout se passe en moins d'une demi-heure.</p>
+    </div>
+    <div class="how-steps">
+      <div class="how-step">
+        <div class="how-num">1</div>
+        <div class="how-body">
+          <h3 class="how-h3">Créez votre compte en 2 minutes</h3>
+          <p class="how-p">Email, mot de passe, nom de votre établissement. Aucune carte bancaire requise pour l'essai de 14 jours. Choisissez le plan adapté à votre nombre de cuisines.</p>
+        </div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">2</div>
+        <div class="how-body">
+          <h3 class="how-h3">Répondez au questionnaire HACCP</h3>
+          <p class="how-p">Type de cuisine, enceintes réfrigérées, process de production, nombre de services, équipe. En 20 minutes, HACC.PRO configure automatiquement votre Plan de Maîtrise Sanitaire complet.</p>
+        </div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">3</div>
+        <div class="how-body">
+          <h3 class="how-h3">Commencez à tracer dès aujourd'hui</h3>
+          <p class="how-p">Vos cuisiniers accèdent à l'interface depuis leur smartphone. Relevés de températures, plats témoins, menus journaliers : tout se fait en quelques secondes, sans formation particulière.</p>
+        </div>
+      </div>
+      <div class="how-step">
+        <div class="how-num">4</div>
+        <div class="how-body">
+          <h3 class="how-h3">Pilotez depuis le dashboard</h3>
+          <p class="how-p">Responsables et directeurs supervisent toutes les cuisines depuis un seul écran. Score HACCP en temps réel, alertes non-conformités, export PDF pour les contrôles DDPP.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TESTIMONIALS ── -->
+<section class="testimonials" aria-labelledby="testi-h2">
+  <div class="section-header">
+    <div class="section-tag">Témoignages</div>
+    <h2 class="section-h2" id="testi-h2">Ce que disent nos utilisateurs</h2>
+    <p class="section-sub">Restaurateurs et responsables HACCP qui ont adopté HACC.PRO.</p>
+  </div>
+  <div class="testimonials-inner">
+    <div class="testimonials-grid">
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <p class="testi-text">"Avant HACC.PRO, je passais 2 heures par semaine à remplir les cahiers. Maintenant, tout est fait en 10 minutes sur mon téléphone. Le contrôle DDPP a été un jeu d'enfant — l'inspecteur était bluffé."</p>
+        <div class="testi-author">
+          <div class="testi-avatar">ML</div>
+          <div>
+            <div class="testi-name">Marie-Laure D.</div>
+            <div class="testi-role">Chef de cuisine — Restauration collective, 220 couverts/jour</div>
+          </div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <p class="testi-text">"La génération automatique du PMS a tout changé. En 20 minutes de questionnaire, j'avais un PMS complet configuré pour mes 8 cuisines. Ce qui m'aurait pris 3 mois avec un consultant externe."</p>
+        <div class="testi-author">
+          <div class="testi-avatar">PR</div>
+          <div>
+            <div class="testi-name">Pierre R.</div>
+            <div class="testi-role">Directeur opérations — Groupe de restauration, 8 sites</div>
+          </div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <p class="testi-text">"Le dashboard multi-sites me permet de voir en un coup d'œil si toutes mes cuisines sont conformes. Je reçois les alertes dès qu'il y a un écart de température. Indispensable pour mon réseau de 24 restaurants."</p>
+        <div class="testi-author">
+          <div class="testi-avatar">SB</div>
+          <div>
+            <div class="testi-name">Sophie B.</div>
+            <div class="testi-role">Responsable qualité — Réseau de franchises, 24 restaurants</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PRICING ── -->
+<section class="pricing" id="pricing" aria-labelledby="pricing-h2">
+  <div class="section-header">
+    <div class="section-tag">Tarifs</div>
+    <h2 class="section-h2" id="pricing-h2">Simple, transparent, sans surprise</h2>
+    <p class="section-sub">Choisissez le plan adapté à votre établissement. Essai gratuit 14 jours, sans engagement, sans carte bancaire.</p>
+  </div>
+  <div class="pricing-inner">
+    <div class="pricing-grid">
+
+      <!-- Plan Solo -->
+      <div class="price-card">
+        <div class="price-name">Solo</div>
+        <div class="price-amount">
+          <span class="price-eur">29€</span>
+          <span class="price-period">/ mois</span>
+        </div>
+        <p class="price-desc">Pour un restaurant ou une cuisine indépendante. Toutes les fonctionnalités HACCP incluses.</p>
+        <ul class="price-features">
+          <li>1 cuisine / site</li>
+          <li>Plats témoins illimités</li>
+          <li>Relevés de températures</li>
+          <li>Traçabilité alimentaire</li>
+          <li>PMS auto-configuré</li>
+          <li>Accès multi-utilisateurs</li>
+          <li>Dashboard &amp; rapports PDF</li>
+          <li>Support par email</li>
+        </ul>
+        <a href="signup.html?plan=solo" class="price-cta secondary">Commencer l'essai gratuit</a>
+      </div>
+
+      <!-- Plan Multi (featured) -->
+      <div class="price-card featured">
+        <div class="price-badge">Le plus populaire</div>
+        <div class="price-name">Multi</div>
+        <div class="price-amount">
+          <span class="price-eur">49€</span>
+          <span class="price-period">/ mois</span>
+        </div>
+        <div class="price-extra">+ 19€ par cuisine supplémentaire</div>
+        <p class="price-desc">Pour les groupes et collectivités. 3 cuisines incluses — toutes les options sans restriction.</p>
+        <ul class="price-features">
+          <li>Jusqu'à 3 cuisines incluses</li>
+          <li>Plats témoins illimités</li>
+          <li>Relevés de températures</li>
+          <li>Traçabilité alimentaire</li>
+          <li>PMS auto-configuré</li>
+          <li>Accès multi-utilisateurs</li>
+          <li>Dashboard multi-sites</li>
+          <li>Support prioritaire</li>
+        </ul>
+        <a href="signup.html?plan=multi" class="price-cta primary">Commencer l'essai gratuit</a>
+      </div>
+
+      <!-- Plan Entreprise -->
+      <div class="price-card">
+        <div class="price-name">Entreprise</div>
+        <div class="price-amount">
+          <span class="price-eur price-custom">Sur devis</span>
+        </div>
+        <p class="price-desc">Pour les grandes enseignes et groupes multi-territoires. Accompagnement dédié inclus.</p>
+        <ul class="price-features">
+          <li>Cuisines illimitées</li>
+          <li>API &amp; intégrations métier</li>
+          <li>SSO / LDAP</li>
+          <li>SLA garanti 99,9 %</li>
+          <li>Accompagnement HACCP dédié</li>
+          <li>Formation équipes incluse</li>
+          <li>Dashboard personnalisé</li>
+          <li>Contrat sur-mesure</li>
+        </ul>
+        <a href="mailto:contact@hacc.pro" class="price-cta secondary">Nous contacter →</a>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section class="faq" aria-labelledby="faq-h2">
+  <div class="faq-inner">
+    <div class="section-header">
+      <div class="section-tag">Questions fréquentes</div>
+      <h2 class="section-h2" id="faq-h2">Tout savoir sur le HACCP</h2>
+      <p class="section-sub">Les réponses aux questions les plus courantes sur la réglementation HACCP et HACC.PRO.</p>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item open">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="true">
+          <span class="faq-q-text">Le HACCP est-il obligatoire pour les restaurants en France ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Oui, le HACCP est obligatoire pour tous les établissements de restauration commerciale et collective en France depuis le <strong>Règlement (CE) n°852/2004</strong> (dit Paquet Hygiène). Chaque professionnel de l'alimentation doit mettre en place et maintenir des procédures basées sur les 7 principes HACCP et les consigner dans un <strong>Plan de Maîtrise Sanitaire (PMS)</strong>. Le non-respect expose à une mise en demeure, une fermeture administrative ou des poursuites pénales.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Qu'est-ce qu'un Plan de Maîtrise Sanitaire (PMS) ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Le Plan de Maîtrise Sanitaire (PMS) est un <strong>document obligatoire</strong> pour tous les établissements du secteur alimentaire en France. Il regroupe les bonnes pratiques d'hygiène (BPH), les procédures HACCP (analyse des dangers, points critiques) et les procédures de traçabilité. HACC.PRO génère automatiquement votre PMS à partir d'un questionnaire adapté à votre établissement en moins de 20 minutes. <a href="guides/plan-maitrise-sanitaire.html" style="color:var(--plum);font-weight:800">En savoir plus sur le PMS →</a>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Qu'est-ce qu'un plat témoin en HACCP ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Un plat témoin (ou repas témoin) est un <strong>échantillon de chaque plat cuisiné</strong>, conservé et identifié pendant au minimum <strong>5 jours</strong> après le service. Il permet, en cas d'intoxication alimentaire, d'analyser l'aliment suspecté. En restauration collective, la réglementation impose des plats témoins pour chaque repas. HACC.PRO automatise leur gestion : enregistrement, impression d'étiquettes, alertes de destruction et traçabilité complète. <a href="guides/plat-temoin.html" style="color:var(--plum);font-weight:800">Tout savoir sur les plats témoins →</a>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">À quelle fréquence relever les températures HACCP ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          La réglementation HACCP recommande de relever les températures des <strong>enceintes réfrigérées</strong> au minimum <strong>deux fois par jour</strong> (ouverture et fermeture). Pour les <strong>surgélateurs</strong>, un relevé quotidien est requis. À chaque <strong>livraison</strong>, la température des produits froids doit être contrôlée. HACC.PRO permet ces relevés en quelques secondes depuis votre smartphone, avec alertes automatiques en cas de dépassement de seuil. <a href="guides/temperature-haccp.html" style="color:var(--plum);font-weight:800">Guide complet sur les températures HACCP →</a>
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">HACC.PRO est-il adapté à la restauration collective ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Oui, HACC.PRO est conçu aussi bien pour la <strong>restauration collective</strong> (cantines scolaires, restaurants d'entreprise, EHPAD, hôpitaux) que pour la restauration commerciale. Il gère les spécificités de la restauration collective : <strong>plats témoins obligatoires</strong>, menus multi-services, traçabilité des mixés (BF Cuit / BF Cru) et supervision multi-sites pour les responsables de groupes.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Comment fonctionne l'essai gratuit ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          L'essai gratuit dure <strong>14 jours</strong> et donne accès à toutes les fonctionnalités. <strong>Aucune carte bancaire n'est requise</strong> pour commencer. À la fin de l'essai, vous choisissez le plan adapté — ou vous stoppez sans frais. Aucun engagement, résiliation en 1 clic depuis votre espace client.
+        </div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Mes données sont-elles sécurisées et conformes au RGPD ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Oui. HACC.PRO repose sur une infrastructure cloud hébergée en <strong>Europe</strong>, conforme RGPD. Chaque client dispose d'un espace de données isolé (Row Level Security) : vos données ne sont jamais accessibles par d'autres établissements. Les communications sont chiffrées TLS. Vos données de traçabilité sont archivées pendant au moins <strong>3 ans</strong>, conformément aux obligations légales françaises.
+        </div>
+      </div>
+    </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Comment fonctionne la tarification par cuisine ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">
+          Le plan <strong>Solo</strong> (29€/mois) couvre <strong>1 cuisine</strong> avec toutes les fonctionnalités incluses. Le plan <strong>Multi</strong> (49€/mois) inclut jusqu'à <strong>3 cuisines</strong>, puis <strong>+19€/mois par cuisine supplémentaire</strong>. Toutes les options HACCP sont incluses dans les deux plans — aucune fonctionnalité cachée. Pour les groupes multi-territoires, le plan Entreprise est disponible sur devis avec accompagnement dédié.
+        </div>
+      </div>
+    </div>
+    <a href="faq/index.html" class="faq-more-link">Voir toutes les questions HACCP →</a>
+  </div>
+</section>
+
+<!-- ── MULTILINGUE ── -->
+<section class="multilang-section" aria-label="Application multilingue">
+  <div class="multilang-inner">
+    <div class="multilang-icon">🌐</div>
+    <div class="multilang-text">
+      <h3 class="multilang-title">L'application parle la langue de vos équipes</h3>
+      <p class="multilang-sub">HACC.PRO est une web app — Chrome et les navigateurs modernes la traduisent automatiquement dans n'importe quelle langue en un clic. Vos cuisiniers, qu'ils soient francophones, anglophones, hispanophones ou autres, peuvent l'utiliser dans leur propre langue sans aucune configuration. Une même cuisine, plusieurs nationalités : zéro barrière.</p>
+    </div>
+    <div class="multilang-flags">
+      <span title="Français">🇫🇷</span>
+      <span title="English">🇬🇧</span>
+      <span title="Español">🇪🇸</span>
+      <span title="Português">🇵🇹</span>
+      <span title="Italiano">🇮🇹</span>
+      <span title="العربية">🇲🇦</span>
+      <span title="Română">🇷🇴</span>
+      <span title="Polski">🇵🇱</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── CONTACT ── -->
+<section class="contact-section" id="contact" aria-labelledby="contact-h2">
+  <div class="contact-inner">
+    <div class="contact-text">
+      <div class="section-tag">Contact</div>
+      <h2 class="section-h2" id="contact-h2">Une question ?<br>Parlons-en.</h2>
+      <p class="contact-sub">Notre équipe répond sous 24h ouvrées. Vous pouvez aussi démarrer votre essai gratuit directement — aucune carte bancaire requise.</p>
+      <ul class="contact-infos">
+        <li><span>📧</span> <a href="mailto:contact@hacc.pro">contact@hacc.pro</a></li>
+        <li><span>⏱</span> Réponse sous 24h ouvrées</li>
+        <li><span>🇫🇷</span> Équipe basée en France</li>
+      </ul>
+      <div class="contact-reassure">
+        <div class="contact-reassure-item"><span class="contact-reassure-ico">🔒</span>Vos données sont sécurisées et confidentielles</div>
+        <div class="contact-reassure-item"><span class="contact-reassure-ico">🚀</span>Essai gratuit 14 jours sans carte bancaire</div>
+        <div class="contact-reassure-item"><span class="contact-reassure-ico">🌐</span>Compatible Chrome Translate — utilisable dans n'importe quelle langue</div>
+      </div>
+    </div>
+    <div class="contact-form-card">
+      <form class="contact-form" id="contact-form" onsubmit="submitContact(event)">
+        <div class="contact-row">
+          <div class="contact-field">
+            <label class="contact-label" for="c-name">Votre nom</label>
+            <input type="text" id="c-name" class="contact-input" placeholder="Marie Dupont" required maxlength="120">
+          </div>
+          <div class="contact-field">
+            <label class="contact-label" for="c-email">Votre email</label>
+            <input type="email" id="c-email" class="contact-input" placeholder="marie@restaurant.fr" required maxlength="200">
+          </div>
+        </div>
+        <div class="contact-field">
+          <label class="contact-label" for="c-type">Type d'établissement</label>
+          <select id="c-type" class="contact-input">
+            <option value="restaurant">Restaurant</option>
+            <option value="collectivite">Restauration collective</option>
+            <option value="ehpad">EHPAD / Maison de retraite</option>
+            <option value="traiteur">Traiteur</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <div class="contact-field">
+          <label class="contact-label" for="c-message">Votre message</label>
+          <textarea id="c-message" class="contact-input contact-textarea" placeholder="Décrivez votre besoin, votre type d'établissement, vos questions…" required maxlength="3000" rows="5"></textarea>
+        </div>
+        <div id="contact-feedback" style="display:none;padding:12px 16px;border-radius:10px;font-size:.85rem;font-weight:700;"></div>
+        <button type="submit" class="contact-submit" id="contact-btn">
+          <span id="contact-btn-label">Envoyer le message →</span>
+          <span id="contact-btn-spin" style="display:none">⏳</span>
+        </button>
+        <p style="font-size:.72rem;color:var(--muted);text-align:center;margin-top:8px">Un accusé de réception vous sera envoyé par email</p>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ── FINAL CTA ── -->
+<section class="final-cta">
+  <div class="final-cta-inner">
+    <h2>Prêt à numériser votre HACCP ?</h2>
+    <p>Rejoignez les établissements qui ont digitalisé leur traçabilité alimentaire avec HACC.PRO. Démarrez votre essai gratuit de 14 jours en 2 minutes — sans carte bancaire.</p>
+    <div class="final-cta-btns">
+      <a href="signup.html" class="btn-hero-primary">Commencer gratuitement →</a>
+      <a href="#contact" class="btn-hero-secondary">Parler à un expert</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <span class="footer-brand-name">HACC<span>.PRO</span></span>
+        <p>Le logiciel HACCP qui simplifie la traçabilité alimentaire pour les professionnels de la restauration.</p>
+      </div>
+      <div class="footer-col">
+        <h4>Produit</h4>
+        <a href="#features">Fonctionnalités</a>
+        <a href="#pricing">Tarifs</a>
+        <a href="signup.html">Essai gratuit</a>
+        <a href="login.html">Connexion</a>
+      </div>
+      <div class="footer-col">
+        <h4>Ressources HACCP</h4>
+        <a href="mode-emploi.html">Mode d'emploi</a>
+        <a href="faq/index.html">Guide HACCP complet</a>
+        <a href="guides/plan-maitrise-sanitaire.html">Le PMS en détail</a>
+        <a href="guides/plat-temoin.html">Les plats témoins</a>
+        <a href="guides/temperature-haccp.html">Températures HACCP</a>
+        <a href="guides/tracabilite-alimentaire.html">Traçabilité alimentaire</a>
+      </div>
+      <div class="footer-col">
+        <h4>Légal</h4>
+        <a href="mentions-legales.html">Mentions légales</a>
+        <a href="cgu.html">CGU</a>
+        <a href="politique-confidentialite.html">Politique de confidentialité</a>
+        <a href="mailto:contact@hacc.pro">Contact</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2025 HACC.PRO — Tous droits réservés</span>
+      <span>Logiciel HACCP 100% français · Conforme RGPD · Hébergé en Europe</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+async function submitContact(e) {
+  e.preventDefault();
+  var name    = document.getElementById('c-name').value.trim();
+  var email   = document.getElementById('c-email').value.trim();
+  var type    = document.getElementById('c-type').value;
+  var message = document.getElementById('c-message').value.trim();
+  var fb      = document.getElementById('contact-feedback');
+  var btn     = document.getElementById('contact-btn');
+  var lbl     = document.getElementById('contact-btn-label');
+  var spin    = document.getElementById('contact-btn-spin');
+
+  btn.disabled = true; lbl.style.display = 'none'; spin.style.display = 'inline';
+  fb.style.display = 'none';
+
+  try {
+    var r = await fetch('/.netlify/functions/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, message, type })
+    });
+    if (r.ok) {
+      fb.textContent = '✅ Message envoyé ! Nous vous répondrons sous 24h ouvrées.';
+      fb.style.cssText = 'display:block;padding:12px 16px;border-radius:10px;font-size:.85rem;font-weight:700;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;margin-bottom:12px;';
+      document.getElementById('contact-form').reset();
+      btn.disabled = false; lbl.style.display = 'inline'; spin.style.display = 'none';
+    } else {
+      throw new Error('Erreur serveur');
+    }
+  } catch(err) {
+    fb.textContent = '❌ Erreur lors de l\'envoi. Réessayez ou écrivez à contact@hacc.pro';
+    fb.style.cssText = 'display:block;padding:12px 16px;border-radius:10px;font-size:.85rem;font-weight:700;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;margin-bottom:12px;';
+    btn.disabled = false; lbl.style.display = 'inline'; spin.style.display = 'none';
+  }
+}
+
+function toggleFaq(btn){
+  const item=btn.closest('.faq-item');
+  const isOpen=item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(el=>{
+    el.classList.remove('open');
+    el.querySelector('.faq-q').setAttribute('aria-expanded','false');
+  });
+  if(!isOpen){
+    item.classList.add('open');
+    btn.setAttribute('aria-expanded','true');
+  }
+}
+function toggleFab(){
+  const fab=document.getElementById('fab');
+  const sheet=document.getElementById('fabSheet');
+  const open=fab.classList.toggle('open');
+  sheet.classList.toggle('open',open);
+  document.body.style.overflow=open?'hidden':'';
+}
+function closeFab(){
+  document.getElementById('fab').classList.remove('open');
+  document.getElementById('fabSheet').classList.remove('open');
+  document.body.style.overflow='';
+}
+</script>
+
+<!-- ── FAB FLOTTANT (mobile) ── -->
+<button class="fab" id="fab" onclick="toggleFab()" aria-label="Menu navigation">
+  <span></span><span></span><span></span>
+</button>
+<div class="fab-sheet" id="fabSheet">
+  <div class="fab-overlay" onclick="closeFab()"></div>
+  <div class="fab-panel">
+    <div class="fab-handle"></div>
+    <div class="fab-grid">
+      <a href="signup.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🚀</span>Inscription</a>
+      <a href="login.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🔑</span>Connexion</a>
+      <hr class="fab-divider">
+      <a href="#features" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">⚡</span>Fonctionnalités</a>
+      <a href="#pricing" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">💳</span>Tarifs</a>
+      <a href="#contact" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">✉️</span>Contact</a>
+      <a href="mode-emploi.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📖</span>Mode d'emploi</a>
+      <hr class="fab-divider">
+      <a href="faq/index.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📋</span>Guide HACCP</a>
+      <a href="guides/plan-maitrise-sanitaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📄</span>PMS</a>
+      <a href="guides/plat-temoin.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🍽️</span>Plats témoins</a>
+      <a href="guides/temperature-haccp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🌡️</span>Températures</a>
+      <a href="guides/tracabilite-alimentaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🔗</span>Traçabilité</a>
+    </div>
+  </div>
+</div>
+<script src="js/modern.js" defer></script>
+</body>
 </html>
