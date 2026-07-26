@@ -3,8 +3,8 @@
 
   <!-- Pages principales -->
   <url>
-    <loc>https://hacc.pro/landing.html</loc>
-    <lastmod>2025-05-01</lastmod>
+    <loc>https://www.hacc.pro/</loc>
+    <lastmod>2026-07-26</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
@@ -47,20 +47,6 @@
     <lastmod>2025-05-01</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://hacc.pro/guides/registre-haccp.html</loc>
-    <lastmod>2025-05-01</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.8</priority>
-  </url>
-
-  <!-- Comparatifs -->
-  <url>
-    <loc>https://hacc.pro/comparatif/logiciels-haccp.html</loc>
-    <lastmod>2025-05-01</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.85</priority>
   </url>
 
 </urlset>

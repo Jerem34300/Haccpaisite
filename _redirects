@@ -1,0 +1,5 @@
+# Consolidation SEO : l'ancienne URL /landing.html redirige vers la racine
+# indexable (/), qui sert désormais le contenu complet de la landing page
+# via index.html. Le "!" force la règle : sans lui, Netlify laisserait le
+# fichier landing.html (qui existe toujours physiquement) shadower ce redirect.
+/landing.html    /    301!

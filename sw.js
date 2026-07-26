@@ -143,7 +143,7 @@ self.addEventListener('fetch', (event) => {
           const u = new URL(request.url);
           if (u.pathname.includes('dashboard')) return caches.match('/dashboard.html');
           if (u.pathname.includes('cuisine'))   return caches.match('/cuisine.html');
-          return caches.match('/landing.html');
+          return caches.match('/');
         });
       })
     );
