@@ -2,7 +2,7 @@
   "name": "HACCPro — Cuisine",
   "short_name": "HACCPro",
   "description": "Application HACCP terrain pour cuisines collectives",
-  "start_url": "/cuisine.html",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
