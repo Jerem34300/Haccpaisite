@@ -674,6 +674,50 @@ window.generatePMS = async function() {
     } catch(e) { console.warn('[Onboarding] pms_config:', e); }
   }
 
+  /* Valeurs partagées entre l'écriture locale (haccp_v6) et la config cloud (sites.config) */
+  var chefsNames = _data.noms.filter(function(n){ return n.trim(); });
+  var nettRefData = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
+    return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
+  });
+  var distribSvcs = [{ id:'midi', label:'Midi', heure:'12:30' }];
+  if (_data.services === '2' || _data.services === '3+') {
+    distribSvcs.push({ id:'soir', label:'Soir', heure:'19:30' });
+  }
+  if (_data.services === '3+') {
+    distribSvcs.push({ id:'matin', label:'Matin', heure:'08:00' });
+  }
+  var enrActifsData = _buildEnrActifs(_data.processes);
+
+  /* 5. Pousser la config (chefs, thème, nettoyage, fiches ENR actives...) dans
+        sites.config pour chaque site créé. Sans ça, le 1er login sur cuisine.html
+        purge la config locale et la recharge depuis le cloud — qui serait vide. */
+  if (siteCodes.length && tenantId) {
+    var hdrPatch = {
+      'Content-Type':  'application/json',
+      'apikey':        SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + token,
+      'Prefer':        'return=minimal'
+    };
+    var cloudSiteConfig = {
+      config: {
+        themeColor:      _data.couleur,
+        nbServices:      _data.services,
+        distribServices: distribSvcs,
+        enrActifs:       enrActifsData,
+        chefs:           chefsNames,
+        chefs_manuels:   chefsNames,
+        etab:            _data.nom || validSites[0] || ''
+      },
+      nett_ref: nettRefData
+    };
+    siteCodes.forEach(function(code){
+      fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
+        method: 'PATCH', headers: hdrPatch,
+        body: JSON.stringify({ config: cloudSiteConfig })
+      }).catch(function(e){ console.warn('[Onboarding] site config PATCH:', e); });
+    });
+  }
+
   /* 6. Écrire haccp_v6 */
   try {
     var S = {};
@@ -684,27 +728,17 @@ window.generatePMS = async function() {
       .map(function(e, idx){ return _encToConfig(e, idx); });
     S.config.themeColor = _data.couleur;
     S.config.nbServices = _data.services;
-
-    /* Distribution services */
-    var distribSvcs = [{ id:'midi', label:'Midi', heure:'12:30' }];
-    if (_data.services === '2' || _data.services === '3+') {
-      distribSvcs.push({ id:'soir', label:'Soir', heure:'19:30' });
-    }
-    if (_data.services === '3+') {
-      distribSvcs.push({ id:'matin', label:'Matin', heure:'08:00' });
-    }
     S.config.distribServices = distribSvcs;
 
     /* ENRs actifs */
-    S.config.enrActifs = _buildEnrActifs(_data.processes);
+    S.config.enrActifs = enrActifsData;
 
     /* Noms chefs */
-    S.config.chefs = _data.noms.filter(function(n){ return n.trim(); });
+    S.config.chefs = chefsNames;
+    S.config.chefs_manuels = chefsNames;
 
     /* Nettoyage */
-    S.nettoyage = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
-      return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
-    });
+    S.nett_ref = nettRefData;
 
     /* Nom établissement pour l'en-tête */
     S.config.etab        = _data.nom || validSites[0] || '';
