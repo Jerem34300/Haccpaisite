@@ -289,7 +289,7 @@ async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
     } catch(e){ console.error('tenant GET:', e); }
   }
 
-  const _setupRole = plan === 'solo' ? 'cuisinier' : 'directeur';
+  const _setupRole = plan === 'solo' ? 'cuisinier' : 'siege';
   localStorage.setItem('haccpro_session', JSON.stringify({
     token, refreshToken, userId,
     role: _setupRole, tenantId, fullName:company, plan

@@ -88,7 +88,7 @@ exports.handler = async function(event) {
 
   if (existingTenantId) {
     // Déjà configuré → retourner l'existant avec le vrai rôle
-    const existingRole = plan === 'solo' ? 'cuisinier' : 'directeur';
+    const existingRole = plan === 'solo' ? 'cuisinier' : 'siege';
     return {
       statusCode: 200,
       headers: corsHeaders,
@@ -128,7 +128,7 @@ exports.handler = async function(event) {
     const profRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method: 'POST',
       headers: { ...svcHeaders, 'Prefer': 'return=minimal,resolution=merge-duplicates' },
-      body: JSON.stringify({ id: userId, tenant_id: tenantId, role: plan === 'solo' ? 'cuisinier' : 'directeur', full_name: company })
+      body: JSON.stringify({ id: userId, tenant_id: tenantId, role: plan === 'solo' ? 'cuisinier' : 'siege', full_name: company })
     });
     if (!profRes.ok) {
       const profErr = await profRes.text();
@@ -157,6 +157,6 @@ exports.handler = async function(event) {
   return {
     statusCode: 200,
     headers: corsHeaders,
-    body: JSON.stringify({ tenantId, role: 'directeur' })
+    body: JSON.stringify({ tenantId, role: plan === 'solo' ? 'cuisinier' : 'siege' })
   };
 };
