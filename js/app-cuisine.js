@@ -15150,6 +15150,8 @@ function clearSession(){
   // Effacer toute la config Supabase (token + siteId + email)
   try {
     localStorage.removeItem('haccp_supa_cfg_v1');
+    localStorage.removeItem('haccpro_supa_cfg');
+    localStorage.removeItem('haccpro_session');
     localStorage.removeItem('haccp_last_site_id');
     localStorage.removeItem('haccp_last_user_email');
     localStorage.removeItem('haccp_data_purge_ver');
