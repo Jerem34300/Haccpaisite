@@ -515,6 +515,7 @@ window.generatePMS = async function() {
     try {
       var _sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}');
       if (_sess.token) { cfg.token = _sess.token; cfg.userId = _sess.userId || ''; }
+      if (_sess.refreshToken && !cfg.refreshToken) cfg.refreshToken = _sess.refreshToken;
       if (_sess.tenantId && !cfg.tenantId) cfg.tenantId = _sess.tenantId;
     } catch(e){}
   }
@@ -530,6 +531,40 @@ window.generatePMS = async function() {
     if (skip)  skip.style.display  = '';
     return;
   }
+
+  // Le formulaire d'onboarding peut prendre longtemps à remplir : le token
+  // récupéré au chargement de la page a pu expirer entre-temps. On le
+  // rafraîchit ici si besoin, juste avant l'appel à provision-tenant.
+  try {
+    var _b64 = token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/');
+    while (_b64.length % 4) _b64 += '=';
+    var _expPayload = JSON.parse(atob(_b64));
+    var _msLeft = (_expPayload.exp || 0) * 1000 - Date.now();
+    if (_msLeft < 60 * 1000 && cfg.refreshToken) {
+      var _rr = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ refresh_token: cfg.refreshToken })
+      });
+      if (_rr.ok) {
+        var _rd = await _rr.json();
+        if (_rd.access_token) {
+          token = _rd.access_token;
+          ['haccpro_supa_cfg', 'haccp_supa_cfg_v1', 'haccpro_session'].forEach(function(k){
+            try {
+              var raw = localStorage.getItem(k);
+              if (!raw) return;
+              var obj = JSON.parse(raw);
+              if (obj.token)      obj.token      = _rd.access_token;
+              if (obj.userToken)  obj.userToken  = _rd.access_token;
+              if (obj.refreshToken !== undefined) obj.refreshToken = _rd.refresh_token || cfg.refreshToken;
+              localStorage.setItem(k, JSON.stringify(obj));
+            } catch(e){}
+          });
+        }
+      }
+    }
+  } catch(e){ /* décodage/rafraîchissement best-effort — on retente l'appel avec le token existant sinon */ }
 
   var tenantId   = null;
   var siteIds    = [];
