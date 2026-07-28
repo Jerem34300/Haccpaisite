@@ -193,7 +193,9 @@ exports.handler = async function(event) {
         tenant_id: tenantId,
         name:      finalSiteName,
         code:      siteCode,
-        primary_color: color
+        type:      type || 'restaurant',
+        siret:     siret || null,
+        color:     color
       })
     });
     if (siteResp.ok) {
