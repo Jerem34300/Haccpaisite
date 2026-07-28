@@ -191,11 +191,8 @@ exports.handler = async function(event) {
       headers: { ...svcHeaders, 'Prefer': 'return=representation' },
       body:    JSON.stringify({
         tenant_id: tenantId,
-        nom:       finalSiteName,
         name:      finalSiteName,
         code:      siteCode,
-        type:      type || 'restaurant',
-        siret:     siret || null,
         primary_color: color
       })
     });
@@ -203,13 +200,13 @@ exports.handler = async function(event) {
       const sites = await siteResp.json();
       siteId = Array.isArray(sites) ? sites[0]?.id : sites?.id;
     } else {
-      console.warn('[provision-tenant] site POST:', siteResp.status, await siteResp.text());
+      console.error('[provision-tenant] site POST:', siteResp.status, await siteResp.text());
     }
-  } catch(e) { console.warn('[provision-tenant] site:', e.message); }
+  } catch(e) { console.error('[provision-tenant] site:', e.message); }
 
   // ── 7. Créer ou mettre à jour le profil utilisateur ───────────
-  // Solo plan → cuisinier (accès direct PMS), sinon directeur (accès dashboard)
-  const profileRole = plan === 'solo' ? 'cuisinier' : 'directeur';
+  // Solo plan → cuisinier (accès direct PMS), sinon siege (pilotage dashboard multi-cuisines)
+  const profileRole = plan === 'solo' ? 'cuisinier' : 'siege';
   try {
     const profResp = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
       method:  'POST',
