@@ -29,7 +29,7 @@ create table if not exists public.tenants (
   primary_color  text default '#0F2240',
   accent_color   text default '#8DC63F',
   logo_url       text,
-  plan           text not null default 'pro' check (plan in ('starter','pro','enterprise')),
+  plan           text not null default 'pro' check (plan in ('starter','pro','enterprise','solo','multi')),
   is_active      boolean not null default true,
   allowed_enr    jsonb,
   created_at     timestamptz not null default now()
@@ -102,13 +102,30 @@ create index if not exists profiles_role_idx   on public.profiles(role);
 -- 4) SUBSCRIPTIONS
 -- =============================================================
 create table if not exists public.subscriptions (
-  id              uuid primary key default gen_random_uuid(),
-  tenant_id       uuid not null references public.tenants(id) on delete cascade,
-  plan            text,
-  price_per_month numeric(10,2),
-  created_at      timestamptz not null default now()
+  id                       uuid primary key default gen_random_uuid(),
+  tenant_id                uuid not null references public.tenants(id) on delete cascade,
+  plan                     text,
+  price_per_month          numeric(10,2),
+  status                   text default 'trial' check (status in ('trial','active','past_due','cancelled','expired')),
+  trial_ends_at            timestamptz,
+  stripe_customer_id       text,
+  stripe_subscription_id   text,
+  stripe_price_id          text,
+  current_period_end       timestamptz,
+  cancel_at_period_end     boolean default false,
+  created_at               timestamptz not null default now()
 );
-create index if not exists subscriptions_tenant_idx on public.subscriptions(tenant_id);
+create index if not exists subscriptions_tenant_idx      on public.subscriptions(tenant_id);
+create index if not exists subscriptions_stripe_sub_idx  on public.subscriptions(stripe_subscription_id);
+create index if not exists subscriptions_stripe_cust_idx on public.subscriptions(stripe_customer_id);
+-- Colonnes ajoutées idempotent pour bases déjà déployées
+alter table public.subscriptions add column if not exists status                 text default 'trial' check (status in ('trial','active','past_due','cancelled','expired'));
+alter table public.subscriptions add column if not exists trial_ends_at          timestamptz;
+alter table public.subscriptions add column if not exists stripe_customer_id     text;
+alter table public.subscriptions add column if not exists stripe_subscription_id text;
+alter table public.subscriptions add column if not exists stripe_price_id        text;
+alter table public.subscriptions add column if not exists current_period_end     timestamptz;
+alter table public.subscriptions add column if not exists cancel_at_period_end   boolean default false;
 
 -- =============================================================
 -- 5) PMS_RECORDS (table de faits : toutes les saisies ENR)

@@ -184,7 +184,6 @@ function openCuisine(siteId, siteCode, siteName){
 // ════════════════════════════════════════════════════
 // MODE DÉMO — données mockées sans Supabase
 // ════════════════════════════════════════════════════
-const DEMO_PASSWORD = 'demo2025';
 function activerModeDemo() {
   _DEMO_MODE = true;
   _token = 'demo-token';
@@ -384,7 +383,7 @@ async function supa(method,path,body,anon=false,extraHeaders={}){
   if(body&&method!=='GET')opts.body=JSON.stringify(body);
   // Timeout 20s pour éviter le blocage infini (Supabase cold start)
   const _ctrl = new AbortController();
-  const _tid = setTimeout(() => _ctrl.abort(), 5000);
+  const _tid = setTimeout(() => _ctrl.abort(), 12000);
   let r;
   try {
     r = await fetch(SUPA_URL+path, {...opts, signal: _ctrl.signal});
@@ -431,7 +430,7 @@ async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${qu
 async function supaAdmin(method,path,body,extraHeaders={}){
   // Proxy sécurisé — la clé service_role ne quitte jamais le serveur Netlify
   const _ac = new AbortController();
-  const _at = setTimeout(() => _ac.abort(), 5000);
+  const _at = setTimeout(() => _ac.abort(), 12000);
   let r;
   try {
     r = await fetch('/.netlify/functions/admin-proxy', {
@@ -3441,12 +3440,44 @@ async function createTabletAccount(siteId, siteName, siteCode) {
         💡 Notez ce mot de passe maintenant — il ne sera plus affiché.
       </div>
 
+      <button id="cc-send-email-btn" onclick="sendCuisinierCredentials('${email}','${siteName}','${siteCode}','${email}','${pass}')"
+        style="width:100%;padding:12px;background:#f0fdf4;color:#166534;border:1.5px solid #86efac;border-radius:12px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font);margin-bottom:8px">
+        📧 Envoyer les identifiants par email
+      </button>
+
       <button onclick="this.closest('[style*=fixed]').remove()" style="width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:12px;font-size:.88rem;font-weight:800;cursor:pointer;font-family:var(--font)">
         ✅ C'est noté, fermer
       </button>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function sendCuisinierCredentials(toEmail, siteName, siteCode, loginEmail, pass) {
+  const btn = document.getElementById('cc-send-email-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+  try {
+    const senderName = _profile?.full_name || 'Votre responsable';
+    const r = await fetch('/.netlify/functions/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'credentials',
+        to: toEmail,
+        siteName, siteCode,
+        loginEmail: loginEmail || toEmail,
+        password: pass,
+        senderName
+      })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    if (btn) { btn.textContent = '✅ Email envoyé !'; btn.style.background = '#dcfce7'; }
+    showToast('Identifiants envoyés à ' + toEmail, 'success');
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📧 Envoyer les identifiants par email'; }
+    showToast('Erreur envoi email : ' + e.message, 'error');
+  }
 }
 
 async function toggleDataLock(profileId, currentlyLocked) {
@@ -9741,6 +9772,35 @@ document.addEventListener('click', function(e) {
 });
 
 // ════════════════════════════════════════════════════
+// AUTO-AJOUT DE SITE (plan multi/enterprise)
+// ════════════════════════════════════════════════════
+async function selfServiceAddSite() {
+  const name = (document.getElementById('new-site-name')?.value || '').trim();
+  const code = (document.getElementById('new-site-code')?.value || '').trim().toUpperCase();
+  const msg  = document.getElementById('add-site-msg');
+
+  if (!name) { if (msg) { msg.textContent = 'Renseignez le nom de la cuisine.'; msg.style.color = 'var(--danger)'; } return; }
+  const finalCode = code || name.slice(0,6).toUpperCase().replace(/[^A-Z0-9]/g,'') + Math.random().toString(36).slice(2,5).toUpperCase();
+
+  if (msg) { msg.textContent = '⏳ Création en cours…'; msg.style.color = 'var(--muted)'; }
+  try {
+    const tenantId = _profile?.tenant_id;
+    if (!tenantId) throw new Error('Tenant introuvable');
+    await supa('POST', '/rest/v1/sites', {
+      tenant_id: tenantId,
+      name, code: finalCode,
+      sector_id: null
+    }, false, { 'Prefer': 'return=minimal' });
+    if (msg) { msg.textContent = '✅ Cuisine créée !'; msg.style.color = '#166534'; }
+    showToast('Cuisine "' + name + '" ajoutée', 'success');
+    // Rafraîchir la liste des sites
+    setTimeout(() => renderSubscription(), 1200);
+  } catch(e) {
+    if (msg) { msg.textContent = '❌ ' + (e.message || 'Erreur création'); msg.style.color = 'var(--danger)'; }
+  }
+}
+
+// ════════════════════════════════════════════════════
 // MON ABONNEMENT
 // ════════════════════════════════════════════════════
 async function renderSubscription(){
@@ -9856,23 +9916,38 @@ async function renderSubscription(){
         </div>`).join('')
     : '<div style="color:var(--muted);font-size:.82rem;padding:10px 0">Aucune cuisine configurée.</div>';
 
-  const addKitchenHtml = ['multi','enterprise'].includes(planKey)
+  const PLAN_MAX_SITES = { solo:1, multi:3, enterprise:Infinity, starter:1, pro:3 };
+  const maxSites = PLAN_MAX_SITES[planKey] ?? 1;
+  const canAddSite = ['multi','enterprise'].includes(planKey) && sites.length < maxSites;
+  const addKitchenHtml = canAddSite
     ? `<div style="margin-top:8px;padding:14px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px">
-        <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:4px">Ajouter une cuisine</div>
-        <div style="font-size:.75rem;color:#166534;margin-bottom:10px">Contactez-nous pour ajouter un site à votre compte.</div>
-        <a href="mailto:contact@hacc.pro?subject=Ajout%20cuisine%20%E2%80%94%20${encodeURIComponent(tenantData?.name||'')}"
-          style="display:inline-block;padding:7px 16px;background:#166534;color:#fff;border-radius:8px;font-size:.78rem;font-weight:800;text-decoration:none">
-          Demander l'ajout →
-        </a>
+        <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:4px">+ Ajouter une cuisine (${sites.length}/${maxSites})</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px" id="add-site-row">
+          <input id="new-site-name" placeholder="Nom de la cuisine" maxlength="60"
+            style="flex:2;min-width:160px;padding:8px 12px;border:1.5px solid #bbf7d0;border-radius:8px;font-size:.82rem;font-family:var(--font);outline:none">
+          <input id="new-site-code" placeholder="Code (ex: SITE02)" maxlength="12"
+            style="width:120px;padding:8px 12px;border:1.5px solid #bbf7d0;border-radius:8px;font-size:.82rem;font-family:var(--font);outline:none;text-transform:uppercase"
+            oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'')">
+          <button onclick="selfServiceAddSite()"
+            style="padding:8px 16px;background:#166534;color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:800;cursor:pointer;font-family:var(--font);white-space:nowrap">
+            Créer →
+          </button>
+        </div>
+        <div id="add-site-msg" style="font-size:.75rem;margin-top:6px"></div>
       </div>`
-    : `<div style="margin-top:8px;padding:14px;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px">
-        <div style="font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:4px">Passer en plan Multi</div>
-        <div style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Gérez jusqu'à 3 cuisines pour 49€/mois</div>
-        <button onclick="_startCheckout('multi')"
-          style="padding:7px 16px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:800;cursor:pointer;${font}">
-          Passer en Multi →
-        </button>
-      </div>`;
+    : ['multi','enterprise'].includes(planKey)
+      ? `<div style="margin-top:8px;padding:14px;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px">
+          <div style="font-size:.82rem;font-weight:700;color:var(--muted)">Quota atteint (${sites.length}/${maxSites} cuisines)</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:4px">Passez en plan Enterprise pour des cuisines illimitées.</div>
+        </div>`
+      : `<div style="margin-top:8px;padding:14px;background:#f8fafc;border:1.5px solid var(--border);border-radius:12px">
+          <div style="font-size:.82rem;font-weight:800;color:var(--text);margin-bottom:4px">Passer en plan Multi</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:10px">Gérez jusqu'à 3 cuisines pour 49€/mois</div>
+          <button onclick="_startCheckout('multi')"
+            style="padding:7px 16px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:800;cursor:pointer;${font}">
+            Passer en Multi →
+          </button>
+        </div>`;
 
   const html = `
   <div style="max-width:600px;margin:0 auto;padding:24px 16px">

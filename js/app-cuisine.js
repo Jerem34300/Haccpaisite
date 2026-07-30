@@ -138,7 +138,7 @@ function toast(msg,type='success'){
   if(pinOpen) return;
   const t=document.getElementById('toast');
   t.textContent=msg;t.className=`show ${type}`;
-  setTimeout(()=>t.className='',1800);
+  setTimeout(()=>t.className='',4000);
 }
 function escAttr(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
 
@@ -726,7 +726,7 @@ window.addEventListener('popstate',function(e){
 // ════════════════════════════════════════════════════
 // LICENCE SYSTÈME
 // ════════════════════════════════════════════════════
-const LIC_SECRET = 'RSTA2024HACCP_INTERNAL_V1_PMS';
+// LIC_SECRET retiré du client — vérification de signature via /.netlify/functions/verify-license
 const LIC_FEAT = {EXPORT:1, SYNC:2, AUDIT:4, CUSTOM:8};
 const LIC_B32  = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
@@ -734,12 +734,6 @@ function licFNV32(s){
   let h = 0x811c9dc5 >>> 0;
   for(let i=0;i<s.length;i++) h=(Math.imul(h^s.charCodeAt(i),0x01000193))>>>0;
   return h;
-}
-function licToB32(bytes){
-  let r='',bits=0,val=0;
-  for(const b of bytes){val=(val<<8)|b;bits+=8;while(bits>=5){r+=LIC_B32[(val>>>(bits-5))&31];bits-=5;}}
-  if(bits>0) r+=LIC_B32[(val<<(5-bits))&31];
-  return r;
 }
 function licFromB32(s){
   const bytes=[];let bits=0,val=0;
@@ -751,20 +745,14 @@ function licFromB32(s){
   return new Uint8Array(bytes);
 }
 
+// Décode uniquement la structure de la clé (sans vérifier la signature)
+// La signature est vérifiée côté serveur via _licVerifyServer()
 function parseLicKey(rawKey){
   try{
     const clean=rawKey.replace(/^RSTA[-\s]*/i,'').replace(/[^A-Z2-7]/gi,'').toUpperCase();
-    if(clean.length<24) return{valid:false,reason:'Clé incomplète ('+clean.length+'/24 car.)'};
+    if(clean.length<24) return{valid:false,structure:false,reason:'Clé incomplète ('+clean.length+'/24 car.)'};
     const bytes=licFromB32(clean.slice(0,24));
-    if(bytes.length<15) return{valid:false,reason:'Décodage échoué'};
-    const payArr=Array.from(bytes.slice(0,10));
-    const payStr=payArr.join(',');
-    const h1=licFNV32(payStr+LIC_SECRET)>>>0;
-    const h2=licFNV32(LIC_SECRET+payStr)>>>0;
-    const sigOk=bytes[10]===((h1>>24)&0xFF)&&bytes[11]===((h1>>16)&0xFF)&&
-                bytes[12]===((h1>>8)&0xFF)&&bytes[13]===(h1&0xFF)&&
-                bytes[14]===((h2>>24)&0xFF);
-    if(!sigOk) return{valid:false,reason:'Signature invalide — clé incorrecte'};
+    if(bytes.length<15) return{valid:false,structure:false,reason:'Décodage échoué'};
     const expCode=(bytes[0]<<8)|bytes[1];
     const year=2020+Math.floor(expCode/12);
     const month=(expCode%12)+1;
@@ -776,11 +764,11 @@ function parseLicKey(rawKey){
     const now=new Date();
     const expired=now>expEnd;
     const daysLeft=Math.ceil((expEnd-now)/86400000);
-    return{valid:true,expired,daysLeft,
+    return{valid:false,structure:true,expired,daysLeft,
       exp:`${year}-${String(month).padStart(2,'0')}`,
       expDisplay:`${String(month).padStart(2,'0')}/${year}`,
       seats,features,siteHash,uid};
-  }catch(e){return{valid:false,reason:'Erreur de décodage'};}
+  }catch(e){return{valid:false,structure:false,reason:'Erreur de décodage'};}
 }
 
 function isRO(){
@@ -793,7 +781,7 @@ function hasLicFeat(bit){
 function featCheck(bit,name){ return false; }
 
 function licSiteMatch(parsed){
-  if(!parsed||!parsed.valid) return false;
+  if(!parsed||!parsed.structure) return false;
   const site=(S.config?.etab||'').toLowerCase().trim();
   if(!site) return true;
   return (licFNV32(site)>>>0)===parsed.siteHash;
@@ -821,12 +809,13 @@ function closeLicModal(){
   document.getElementById('lic-ov').classList.remove('open');
 }
 
+let _licTimer=null;
+
 function licKeyInput(raw){
   const inp=document.getElementById('lic-key-inp');
   const stat=document.getElementById('lic-status');
   const info=document.getElementById('lic-info-panel');
   const btn=document.getElementById('lic-save-btn');
-  // Normaliser : uppercase, garder tirets
   const norm=raw.toUpperCase().replace(/[^A-Z2-7\-]/g,'');
   if(inp.value!==norm) inp.value=norm;
   if(norm.replace(/-/g,'').length<8){
@@ -834,20 +823,13 @@ function licKeyInput(raw){
     btn.style.opacity='.4';btn.style.pointerEvents='none';return;
   }
   const parsed=parseLicKey(norm);
-  if(!parsed.valid){
+  if(!parsed.structure){
     inp.className='lic-key-input err';
-    stat.className='lic-status err';stat.innerHTML='❌ '+parsed.reason;
+    stat.className='lic-status err';stat.innerHTML='❌ '+(parsed.reason||'Clé invalide');
     info.style.display='none';btn.style.opacity='.4';btn.style.pointerEvents='none';return;
   }
+  // Afficher les métadonnées décodées localement en attendant la vérification serveur
   const site=(S.config?.etab||'').trim()||'Non configuré';
-  const siteOk=licSiteMatch(parsed);
-  if(!siteOk){
-    inp.className='lic-key-input err';
-    stat.className='lic-status err';
-    stat.innerHTML=`❌ Clé délivrée pour un autre établissement.<br><small>Site actuel : <strong>${site}</strong></small>`;
-    info.style.display='none';btn.style.opacity='.4';btn.style.pointerEvents='none';return;
-  }
-  // Infos
   const feats=[];
   if(parsed.features&LIC_FEAT.EXPORT) feats.push('📊 Export');
   if(parsed.features&LIC_FEAT.SYNC)   feats.push('☁️ Sync');
@@ -859,23 +841,68 @@ function licKeyInput(raw){
   document.getElementById('li-feats').textContent=feats.join(' ')||'Saisie seule';
   document.getElementById('li-uid').textContent='#'+parsed.uid;
   info.style.display='block';
-  if(parsed.expired){
-    inp.className='lic-key-input err';
+  inp.className='lic-key-input';
+  stat.className='lic-status';stat.innerHTML='⏳ Vérification en cours…';
+  btn.style.opacity='.4';btn.style.pointerEvents='none';
+  clearTimeout(_licTimer);
+  _licTimer=setTimeout(()=>_licVerifyServer(norm,parsed),600);
+}
+
+async function _licVerifyServer(norm,parsed){
+  const inp=document.getElementById('lic-key-inp');
+  const stat=document.getElementById('lic-status');
+  const info=document.getElementById('lic-info-panel');
+  const btn=document.getElementById('lic-save-btn');
+  try{
+    const r=await fetch('/.netlify/functions/verify-license',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:norm})
+    });
+    const res=await r.json();
+    if(!res.valid){
+      inp.className='lic-key-input err';
+      stat.className='lic-status err';stat.innerHTML='❌ '+(res.reason||'Clé invalide');
+      info.style.display='none';btn.style.opacity='.4';btn.style.pointerEvents='none';return;
+    }
+    Object.assign(parsed,res,{valid:true,structure:true});
+    const site=(S.config?.etab||'').trim()||'Non configuré';
+    if(!licSiteMatch(parsed)){
+      inp.className='lic-key-input err';
+      stat.className='lic-status err';
+      stat.innerHTML=`❌ Clé délivrée pour un autre établissement.<br><small>Site actuel : <strong>${escH(site)}</strong></small>`;
+      info.style.display='none';btn.style.opacity='.4';btn.style.pointerEvents='none';return;
+    }
+    if(parsed.expired){
+      inp.className='lic-key-input err';
+      stat.className='lic-status warn';
+      stat.innerHTML='⚠️ Licence expirée. Mode lecture seule actif. Renouvelez auprès de votre prestataire.';
+      btn.style.opacity='.4';btn.style.pointerEvents='none';
+    }else{
+      inp.className='lic-key-input ok';
+      stat.className='lic-status ok';
+      stat.innerHTML='✅ Clé valide — expire le '+parsed.expDisplay+(parsed.daysLeft<=30?' (<strong>'+parsed.daysLeft+' jours</strong>)':'');
+      btn.style.opacity='1';btn.style.pointerEvents='auto';
+    }
+  }catch(e){
     stat.className='lic-status warn';
-    stat.innerHTML='⚠️ Licence expirée. Mode lecture seule actif. Renouvelez auprès de votre prestataire.';
-    btn.style.opacity='.4';btn.style.pointerEvents='none';
-  } else {
-    inp.className='lic-key-input ok';
-    stat.className='lic-status ok';
-    stat.innerHTML='✅ Clé valide — expire le '+parsed.expDisplay+(parsed.daysLeft<=30?' (<strong>'+parsed.daysLeft+' jours</strong>)':'');
-    btn.style.opacity='1';btn.style.pointerEvents='auto';
+    stat.innerHTML='⚠️ Vérification impossible (hors ligne ?)';
   }
 }
 
-function saveLicense(){
+async function saveLicense(){
   const raw=document.getElementById('lic-key-inp').value;
   const parsed=parseLicKey(raw);
-  if(!parsed.valid||parsed.expired){toast('❌ Clé invalide ou expirée','warning');return;}
+  if(!parsed.structure){toast('❌ Clé invalide','warning');return;}
+  let res;
+  try{
+    const r=await fetch('/.netlify/functions/verify-license',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:raw})
+    });
+    res=await r.json();
+  }catch(e){toast('⚠️ Vérification impossible (hors ligne)','warning');return;}
+  if(!res.valid||res.expired){toast('❌ Clé invalide ou expirée','warning');return;}
+  Object.assign(parsed,res,{valid:true,structure:true});
   if(!S.license) S.license={};
   S.license.key=raw.toUpperCase();
   S.license.parsed=parsed;
