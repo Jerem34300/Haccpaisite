@@ -685,6 +685,7 @@ const SupaEngine = (() => {
     el.dataset.psrcDone = '1';
     const raw = el.dataset.psrc;
     if (!raw) return;
+    if (raw.startsWith('data:image/')) { el.src = raw; return; }
     SupaEngine.getSignedPhotoUrl(raw).then(function(signed){
       if (signed) el.src = signed; else el.style.display = 'none';
     }).catch(function(){ el.style.display = 'none'; });

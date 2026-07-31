@@ -428,6 +428,66 @@ async function supa(method,path,body,anon=false,extraHeaders={}){
   return data||[];
 }
 async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${query}`,null);}
+
+// ── Résolution d'URL signée pms-photos (bucket privé) ──
+// dashboard.html ne charge pas js/supabaseservice.js (page-per-app, session
+// et client Supabase distincts de cuisine.html) : implémentation locale
+// équivalente à SupaEngine.getSignedPhotoUrl(), réutilisant supa() pour
+// l'auth/le refresh de token déjà gérés par ce fichier.
+const _photoSignCache = new Map(); // path -> { url, expiresAt }
+function _pmsPhotoPath(u) {
+  if (!u || typeof u !== 'string') return '';
+  const m = u.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/pms-photos\/([^?]+)/);
+  if (m) return decodeURIComponent(m[1]);
+  if (/^data:/.test(u) || /^https?:\/\//.test(u)) return ''; // base64 local ou URL externe non reconnue
+  return u.replace(/^\/+/, '');
+}
+async function getSignedPhotoUrl(u, expiresIn) {
+  expiresIn = expiresIn || 3600;
+  const path = _pmsPhotoPath(u);
+  if (!path) return '';
+  const cached = _photoSignCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  try {
+    const d = await supa('POST', '/storage/v1/object/sign/pms-photos/' + path, { expiresIn });
+    if (!d || !d.signedURL) return '';
+    const full = d.signedURL.startsWith('http') ? d.signedURL : `${SUPA_URL}${d.signedURL}`;
+    _photoSignCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
+    return full;
+  } catch(e) { console.warn('[getSignedPhotoUrl]', e.message); return ''; }
+}
+
+// Hydratation paresseuse des <img data-psrc="…"> (chemin/URL pms-photos à
+// résoudre) — les data: URLs (signatures, base64 local) passent directement
+// en src, le reste est résolu via getSignedPhotoUrl() ci-dessus.
+function _hydratePhotoImg(el) {
+  if (!el || el.dataset.psrcDone) return;
+  el.dataset.psrcDone = '1';
+  const raw = el.dataset.psrc;
+  if (!raw) return;
+  if (raw.startsWith('data:image/')) { el.src = raw; return; }
+  getSignedPhotoUrl(raw).then(function(signed){
+    if (signed) el.src = signed; else el.style.display = 'none';
+  }).catch(function(){ el.style.display = 'none'; });
+}
+(function initPhotoLazyHydration(){
+  function scan(root){
+    if (!root) return;
+    if (root.nodeType === 1 && root.matches && root.matches('img[data-psrc]:not([data-psrc-done])')) _hydratePhotoImg(root);
+    if (root.querySelectorAll) root.querySelectorAll('img[data-psrc]:not([data-psrc-done])').forEach(_hydratePhotoImg);
+  }
+  function start(){
+    scan(document);
+    const mo = new MutationObserver(function(mutations){
+      mutations.forEach(function(m){
+        m.addedNodes.forEach(function(n){ if (n.nodeType === 1) scan(n); });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) start(); else window.addEventListener('DOMContentLoaded', start);
+})();
+
 async function supaAdmin(method,path,body,extraHeaders={}){
   // Proxy sécurisé — la clé service_role ne quitte jamais le serveur Netlify
   const _ac = new AbortController();
@@ -4999,12 +5059,9 @@ async function clotureNCDash(recordId) {
 }
 function _openLightboxResolved(url){
   const img=document.getElementById('lightbox-img');
+  if (url && url.startsWith('data:image/')) { img.src = url; return; }
   img.removeAttribute('src');
-  if (typeof SupaEngine!=='undefined' && SupaEngine.getSignedPhotoUrl) {
-    SupaEngine.getSignedPhotoUrl(url).then(function(signed){ img.src = signed || url; }).catch(function(){ img.src = url; });
-  } else {
-    img.src = url;
-  }
+  getSignedPhotoUrl(url).then(function(signed){ img.src = signed || url; }).catch(function(){ img.src = url; });
 }
 function openLightbox(url){_openLightboxResolved(url);document.getElementById('lightbox').classList.add('open');}
 function closeLightbox(){document.getElementById('lightbox').classList.remove('open');document.getElementById('lightbox-img').src='';}

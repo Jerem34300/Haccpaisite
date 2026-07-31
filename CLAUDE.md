@@ -24,7 +24,7 @@ Supabase credentials are hardcoded in `js/supabaseconfig.js` (anon key — inten
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
 - `RESEND_API_KEY`, Stripe keys (`stripe-checkout.js`, `stripe-portal.js`, `stripe-webhook.js`)
 
-**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v388'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
+**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v389'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
 
 ---
 
@@ -218,7 +218,7 @@ Supported on Chrome (Android/Desktop), Edge, Samsung Internet. Each category has
 
 ## PWA / Service Worker (`sw.js`)
 
-Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v388'`/`'haccpro-cdn-v388'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
+Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v389'`/`'haccpro-cdn-v389'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
 
 ---
 
