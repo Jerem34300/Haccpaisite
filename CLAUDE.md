@@ -24,7 +24,7 @@ Supabase credentials are hardcoded in `js/supabaseconfig.js` (anon key — inten
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
 - `RESEND_API_KEY`, Stripe keys (`stripe-checkout.js`, `stripe-portal.js`, `stripe-webhook.js`)
 
-**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v387'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
+**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v388'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
 
 ---
 
@@ -44,7 +44,7 @@ Ce projet est un monolithe front-end sans tests automatisés, sans bundler, et �
 
 3. **Try/catch partout, y compris autour de code qui « ne peut pas échouer ».**
    - Convention du projet (117 `try{` / 125 `catch` rien que dans `app-cuisine.js`) : chaque accès à `localStorage`, `history.pushState`, parsing JSON, ou API navigateur optionnelle (vibration, audio, dictée vocale) est enveloppé individuellement, souvent avec un fallback silencieux (`catch(e){}`). C'est nécessaire car l'app tourne offline, sur des navigateurs tablette hétérogènes (Chrome Android, Safari iOS, Samsung Internet), et une exception non rattrapée bloque toute la SPA (pas de router qui isole les erreurs). Ne pas retirer ces `try/catch` sous prétexte de « code plus propre ».
-   - Attention : ce style produit aussi des échecs avalés silencieusement qui masquent de vrais bugs (voir ex. `app-signup.js:302`, `superadmin.html` fallback couleur ci-dessous) — ne pas ajouter de nouveaux `catch` vides sans au moins un `console.warn`.
+   - Attention : ce style produit aussi des échecs avalés silencieusement qui masquent de vrais bugs (voir ex. `superadmin.html` fallback couleur ci-dessous — l'ancien exemple `app-signup.js:302` a été corrigé, voir Audit Bugs §6) — ne pas ajouter de nouveaux `catch` vides sans au moins un `console.warn`.
 
 4. **Modifications minimales, jamais de réécriture large.**
    - Aucun test automatisé, aucun typage, aucun CI. La seule protection contre les régressions est la revue manuelle du diff. Un correctif doit toucher le minimum de lignes nécessaires — ne pas « profiter » d'un correctif pour refactoriser une fonction adjacente, renommer des variables, ou réorganiser un fichier.
@@ -218,7 +218,7 @@ Supported on Chrome (Android/Desktop), Edge, Samsung Internet. Each category has
 
 ## PWA / Service Worker (`sw.js`)
 
-Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v387'`/`'haccpro-cdn-v387'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
+Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v388'`/`'haccpro-cdn-v388'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
 
 ---
 
@@ -243,12 +243,13 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 5. **Alertes audio NC — PARTIEL**
    `appBeep()` (`js/app-cuisine.js:1444-1461`) est fonctionnel et respecte le toggle `S.config.soundOn`. Mais il n'est câblé qu'à 2 cas de dépassement de minuterie CCP (`:14381`, `:14605`) — **pas** à `autoCreateNC()` (`:2639`), qui est le point central de création de NC appelé à ~10 endroits (ENR19/20/21/28/30/36, distribution, nettoyage) et ne fait qu'un `toast()` (`:2678`). La grande majorité des NC créées (température hors seuil, réception, nettoyage, nuisibles) ne déclenchent **aucune** alerte sonore.
 
-6. **Onboarding wizard vs `provision-tenant.js` — PARTIEL (3 chemins incohérents, un flux cassé)**
-   Trois chemins de création tenant/profil coexistent :
-   - `js/app-login.js:257` (`_completeSignupSetup`) → `signup-setup.js` (tenant + profil, sans site)
-   - `js/app-onboarding.js:589` (`generatePMS`) → `provision-tenant.js` (idempotent, crée le site, upsert du profil selon le plan) — **le seul chemin robuste**
-   - `js/app-signup.js:286-334` → insertion cliente directe sur `/rest/v1/tenants` avec la clé anon, rôle codé en dur `'directeur'` (`:315`) — **bloquée par la RLS** `tenants_admin_write` (`schema.sql:263-266`) car l'utilisateur n'a pas encore de tenant/rôle admin ; l'échec est avalé par un `catch` au commentaire trompeur ("tenant creation may be handled by DB trigger", `:302`) — **aucun trigger ne le fait**.
-   Bug plus grave : le trigger DB `handle_new_user()` (`schema.sql:482-497`) crée un profil (`role='cuisinier'`, `tenant_id=NULL`) dès l'inscription Supabase Auth, avant toute action client. Résultat : la condition `if(!profile)` dans `app-login.js:83` est quasiment toujours fausse, donc `_completeSignupSetup`/`signup-setup.js` ne se déclenche presque jamais via un login manuel — l'utilisateur atterrit sur `cuisine.html` avec `tenantId`/`siteId` vides, **sans passer par l'onboarding**. Seul le chemin où `_handleEmailConfirmCallback` (`app-login.js:305-341`) intercepte le lien de confirmation email fonctionne de façon fiable.
+6. **Onboarding wizard vs `provision-tenant.js` — FAIT (corrigé)**
+   Trois chemins de création tenant/profil coexistaient, désormais unifiés :
+   - `js/app-login.js:257` (`_completeSignupSetup`) → `signup-setup.js` (tenant + profil, sans site) — inchangé.
+   - `js/app-onboarding.js:589` (`generatePMS`) → `provision-tenant.js` (idempotent, crée le site, upsert du profil selon le plan) — inchangé, reste le chemin final commun.
+   - `js/app-signup.js` : l'ancienne insertion cliente directe sur `/rest/v1/tenants` (bloquée par la RLS `tenants_admin_write`, échec avalé, rôle `'directeur'` codé en dur) a été **remplacée par un appel à `/.netlify/functions/signup-setup`** — la même fonction service_role qu'`app-login.js`, qui assigne le rôle selon le plan (`solo→cuisinier`, sinon `→siege`) au lieu de `'directeur'` en dur.
+   - `js/app-login.js:83` : la condition de déclenchement de la finalisation de compte teste désormais `!profile || !profile.tenant_id` (au lieu de `!profile` seul), pour couvrir le profil orphelin créé par le trigger `handle_new_user()` (`role='cuisinier'`, `tenant_id=NULL`, `schema.sql:482-497`). Si aucune donnée d'inscription n'est en attente en `localStorage` (autre appareil, cache vidé), l'utilisateur est redirigé vers `onboarding.html` (qui dégrade proprement sur des champs vides) au lieu d'atterrir sur `cuisine.html`/`dashboard.html` avec un `tenantId`/`siteId` vides.
+   Les deux chemins convergent maintenant vers `onboarding.html` → `provision-tenant.js`, qui applique déjà correctement la règle produit (`app-onboarding.js:785-787`) : plan solo → rôle `cuisinier` + `cuisine.html` ; plan multi/entreprise → rôle `siege` + `dashboard.html`.
 
 7. **Dashboard superadmin — PARTIEL**
    - **Color pickers** : présents et câblés (`superadmin.html:797,941`) mais écrivent sur des colonnes **inexistantes** (`tenants.color`, `sites.color` — le schéma définit `tenants.primary_color` et pas de colonne couleur sur `sites`, `schema.sql:29,64-73`). Un fallback masque l'échec PostgREST et affiche quand même "Entreprise mise à jour ✓". `js/branding.js:17,28` lit `primary_color`, donc même en cas de succès la couleur ne serait jamais utilisée pour le thème réel.
@@ -263,20 +264,20 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 
 ### Sécurité
 
-1. **Isolation multi-tenant du proxy admin — À FAIRE**
-   `netlify/functions/admin-proxy.js` autorise `ALLOWED_ROLES = ['super_admin','siege','directeur']` (`:24`) — pas seulement `super_admin`. Le check de chemin (`:114-119`) n'est qu'une whitelist de préfixes (`/rest/v1/profiles`, `/rest/v1/tenants`, `/rest/v1/pms_records`, …) : **aucun filtrage sur `tenant_id`/`site_id`** n'est appliqué, et la requête part avec la clé `service_role` qui bypasse toutes les RLS (commentaire `:92`). Un `directeur` ou `siege` du tenant A peut appeler la fonction avec un `tenant_id`/`site_id` d'un autre tenant dans le path/query et lire/modifier ses données. Utilisé par `js/app-dashboard.js:437` et `superadmin.html:399`.
+1. **Isolation multi-tenant du proxy admin — FAIT (corrigé)**
+   `netlify/functions/admin-proxy.js` autorise toujours `ALLOWED_ROLES = ['super_admin','siege','directeur']` (`:24`, `/auth/v1/admin/users` reste accessible aux 3 rôles — nécessaire à `createUser()`/`createTabletAccount()`, pas de colonne tenant à cloisonner côté Supabase Auth Admin API). Mais pour toute table cloisonnée (`profiles`, `sites`, `sectors`, `territories`, `subscriptions`, `pms_records`, `gmo`, `tenants`), le proxy force désormais côté serveur la colonne de cloisonnement (`tenant_id`, ou `id` pour `tenants`) à la valeur réelle du JWT de l'appelant — en lecture (query string réécrite) et en écriture (body, y compris insert groupé) — quel que soit ce que le client envoie. La création de nouveaux tenants (POST `/rest/v1/tenants`) est bloquée pour `siege`/`directeur`, cohérent avec la RLS `tenants_admin_write` existante. `super_admin` conserve un accès global inchangé. `corrective_actions`/`nc_action_mapping` restent hors cloisonnement (catalogues globaux, déjà protégés par leur propre RLS).
 
-2. **Bucket `pms-photos` public — À FAIRE**
-   `netlify/sql/schema.sql:456-465` : `insert into storage.buckets (id, name, public) values ('pms-photos','pms-photos', true)` + policy de lecture publique sans restriction `to authenticated`. Le client génère des URLs publiques directes (`js/supabaseservice.js:208`, `js/app-cuisine.js:219`), chemin prévisible `${siteId}/${enrType}/${date}/${key}_${qShort}.jpg` (`supabaseservice.js:233`). Toute photo HACCP est accessible sans authentification à qui devine/connaît l'URL.
+2. **Bucket `pms-photos` public — FAIT (corrigé)**
+   `netlify/sql/schema.sql` déclare maintenant le bucket `public = false` avec une policy de lecture `to authenticated` uniquement (`fix-pms-photos-private.sql` pour les bases déjà déployées). Les points d'upload (`js/supabaseservice.js:_uploadToStorage`, `js/app-cuisine.js`, `js/app-dashboard.js:sendTabletAlert`, `netlify/functions/haccp-hub.mjs:uploadToStorage`) stockent désormais le chemin de stockage brut au lieu d'une URL publique. L'affichage passe par `SupaEngine.getSignedPhotoUrl()` (nouveau, `js/supabaseservice.js`), qui génère une URL signée temporaire à la demande et reconnaît aussi bien le nouveau format (chemin brut) que l'ancien (URL publique historique déjà stockée en base) — les photos synchronisées avant la migration restent donc affichables. Tous les points de rendu existants (galeries alertes, détail NC, lightbox, photo ENR30) ont été basculés sur ce mécanisme.
 
-3. **XSS noms admin — PARTIEL**
-   La majorité passe par `escH()`/un `_esc()` local correct, mais :
-   - `superadmin.html:505` — `co.color` et `initials` (dérivé de `co.name`) injectés **sans échappement** dans un attribut `style` (contrairement à la ligne 466 voisine qui échappe bien).
-   - `superadmin.html:511` — le `_esc()` local (`:1031-1033`) n'échappe pas l'apostrophe, contrairement à `escH()` de `js/utils.js:9` — `co.name` (saisi au signup tenant) avec une apostrophe casse le contexte JS d'un attribut `onclick` → XSS stockée exploitable.
-   - `js/app-dashboard.js:901,906,936,949,951,1034,1042,1054` — options de `<select>` construites par concaténation avec `t.name`/`s.name`/`s.code` **sans `escH()`**, alors que 147 autres endroits du même fichier l'utilisent correctement.
+3. **XSS noms admin — FAIT (corrigé aux emplacements identifiés)**
+   - `superadmin.html:505` — `co.color` et `initials` passent maintenant par `_esc()`.
+   - `_esc()` local (`superadmin.html:1031-1033`) échappe désormais aussi l'apostrophe, aligné sur `escH()` de `js/utils.js:9` — corrige la XSS stockée exploitable via `co.name` dans l'attribut `onclick` de `viewTenantData()` (`:511`).
+   - `js/app-dashboard.js` (anciennement lignes 901,906,936,949,951,1034,1042,1054) — toutes les options de `<select>` (territoires/secteurs/sites) passent désormais par `escH()`.
+   *(Périmètre limité aux emplacements identifiés par l'audit — pas une revue XSS exhaustive de tout le repo.)*
 
-4. **Paywall contournable via `localStorage` — À FAIRE**
-   `js/subscriptionguard.js` est un contrôle **purement client** : lit rôle/tenant depuis `localStorage` (falsifiable, `:31-52`), cache le résultat 1h, et est **fail-open** de façon assumée et commentée (`:118,141-142` : "erreur réseau → on laisse l'utilisateur accéder"). Aucune policy RLS ne référence `subscriptions.status`/`trial_ends_at` (vérifié sur toutes les policies de `schema.sql:347-391` et au-delà — elles ne filtrent que sur `tenant_id`/`site_id`/`role`). Un abonnement expiré n'empêche donc pas l'accès à l'API Supabase REST directe (JWT valide) — le blocage n'existe que dans l'UI.
+4. **Paywall contournable via `localStorage` — FAIT (filet serveur ajouté)**
+   `js/subscriptionguard.js` reste un contrôle client fail-open par conception pour les cas offline-first (pas de tenantId/token, pas de ligne subscriptions, erreur réseau — inchangé, assumé). Nouveau : `public.tenant_subscription_active(tenant_id)` (`schema.sql`, section 8 — helpers RLS) est maintenant exigée par les policies `pms_records_insert`/`pms_records_update` (`schema.sql:392-427`, `fix-paywall-rls-subscription.sql` pour les bases déjà déployées) — un tenant dont l'abonnement n'est plus `active`/`trial` valide ne peut plus écrire de nouvelles données HACCP via l'API Supabase REST directe, même avec un JWT valide contournant l'UI du paywall (`super_admin` exempté). Le filet ne couvre que `pms_records` (le point d'écriture central des saisies) — pas les autres tables ; fail-open uniquement si aucune ligne `subscriptions` n'existe pour le tenant (onboarding non terminé), pas sur un statut expiré/annulé connu.
 
 ### Légal
 
@@ -319,14 +320,18 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 
 ## 🎯 Chantiers restants, classés par priorité
 
-**P0 — Sécurité, à traiter avant tout nouveau développement produit :**
-1. Restreindre `admin-proxy.js` à `super_admin` uniquement, ou ajouter un filtrage explicite `tenant_id`/`site_id` cohérent avec l'appelant (isolation multi-tenant cassée, Audit Sécurité §1).
-2. Passer le bucket `pms-photos` en privé + URLs signées (photos HACCP actuellement publiques sans auth, Audit Sécurité §2).
-3. Corriger les XSS non échappées (`superadmin.html:505,511`, `js/app-dashboard.js` options `<select>`) — passer partout par `escH()` (Audit Sécurité §3).
-4. Décider explicitement si le paywall doit avoir un filet serveur (RLS sur `subscriptions.status`) ou rester UI-only assumé — actuellement contournable sans que ce soit documenté comme acceptable (Audit Sécurité §4).
+**✅ Corrigés (ex-P0 Sécurité + P1 §5 inscription) :**
+1. ~~Isolation multi-tenant `admin-proxy.js`~~ — cloisonnement serveur par `tenant_id` pour `siege`/`directeur` (Audit Sécurité §1).
+2. ~~Bucket `pms-photos` public~~ — bucket privé + URLs signées (Audit Sécurité §2).
+3. ~~XSS `superadmin.html`/`app-dashboard.js`~~ — corrigées aux emplacements identifiés par l'audit (Audit Sécurité §3, pas une revue exhaustive).
+4. ~~Paywall sans filet serveur~~ — RLS `tenant_subscription_active()` sur `pms_records` insert/update (Audit Sécurité §4, périmètre limité à cette table).
+5. ~~3 chemins de création tenant incohérents~~ — unifiés sur `signup-setup.js`/`provision-tenant.js` (Audit Bugs §6).
+
+**P0 — Sécurité résiduelle :**
+- Le filet paywall (point 4 ci-dessus) ne couvre que `pms_records` — évaluer si d'autres tables écrites directement par le client (`sites.config`, `pms_config`) doivent aussi être cloisonnées par abonnement.
+- Le fallback "dev local" de `_completeSignupSetup()` dans `app-login.js` (insert direct `/rest/v1/tenants` si le proxy Netlify Functions est indisponible) a la même faiblesse RLS que l'ancien code d'`app-signup.js` — sans impact en production (Netlify Functions toujours disponibles), à surveiller si ce fallback est un jour exercé en prod.
 
 **P1 — Bugs qui cassent des parcours utilisateurs réels :**
-5. Fiabiliser le flux d'inscription/onboarding : unifier les 3 chemins de création tenant (`app-signup.js`, `app-login.js`→`signup-setup.js`, `app-onboarding.js`→`provision-tenant.js`), corriger l'insert client bloqué par RLS dans `app-signup.js:289-296`, et le court-circuit du trigger `handle_new_user()` qui empêche l'onboarding de se déclencher au login normal (Audit Bugs §6).
 6. Corriger les color pickers et la résolution de nom de site dans `superadmin.html` (colonnes `color`/`nom` inexistantes vs `primary_color`/`name` réelles) — actuellement un no-op silencieux qui affiche un faux succès (Audit Bugs §7).
 7. Câbler `appBeep()`/vibration sur `autoCreateNC()` pour toutes les NC, pas seulement les 2 cas de dépassement de minuterie (Audit Bugs §5).
 8. Corriger le garde-fou de `doExportXLSX()` pour qu'il vérifie les données de la période sélectionnée, pas "toutes périodes confondues" (Audit Bugs §3).
@@ -343,3 +348,10 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 15. Intégration menus ↔ PMS dashboard (actuellement disjoints, Audit Fonctionnalités §8).
 16. Purge guidée sous forme de wizard séquencé plutôt que boutons indépendants (Audit Fonctionnalités §1).
 17. Vraie messagerie bidirectionnelle tablette ↔ dashboard, au-delà du système d'alertes à sens unique actuel (Audit Fonctionnalités §4).
+
+## 📦 Migrations SQL à appliquer en production (après ce correctif)
+
+Ces fichiers doivent être exécutés dans Supabase SQL Editor sur la base de prod existante (schema.sql seul ne suffit pas — il ne s'auto-applique pas) :
+1. `netlify/sql/fix-pms-photos-private.sql` — bucket `pms-photos` privé.
+2. `netlify/sql/fix-paywall-rls-subscription.sql` — filet RLS paywall sur `pms_records`.
+3. Si `netlify/sql/fix-pms-records-rls-site-id.sql` a déjà été appliqué sur cette base, le ré-exécuter après le point 2 (il recrée `pms_records_insert` et inclut désormais aussi le filet paywall).
