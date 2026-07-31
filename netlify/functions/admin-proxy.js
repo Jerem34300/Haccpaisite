@@ -38,6 +38,53 @@ const ALLOWED_PATH_PREFIXES = [
   '/rest/v1/gmo',
 ];
 
+// Note : /auth/v1/admin/users (Supabase Auth Admin API) n'a pas de colonne
+// tenant_id — il reste accessible à siege/directeur car c'est le mécanisme
+// utilisé par createUser()/createTabletAccount() (app-dashboard.js) pour
+// créer les comptes de leur propre personnel. Ce n'est pas une donnée
+// cloisonnable ici ; le cloisonnement réel se fait ensuite sur l'écriture
+// du profil (table profiles, ci-dessous), qui, elle, est bien restreinte
+// au tenant de l'appelant.
+
+// Tables cloisonnées par tenant : colonne de filtrage (query ET body) à
+// forcer côté serveur pour siege/directeur — jamais faire confiance au
+// tenant_id/id fourni par le client, toujours utiliser celui de son JWT.
+// (corrective_actions / nc_action_mapping ne figurent pas ici : ce sont des
+// catalogues globaux partagés entre tenants, déjà restreints par leur RLS
+// propre — voir netlify/sql/corrective_actions.sql.)
+const TENANT_SCOPE = {
+  tenants:       { col: 'id',        allowInsert: false },
+  profiles:      { col: 'tenant_id', allowInsert: true  },
+  sites:         { col: 'tenant_id', allowInsert: true  },
+  sectors:       { col: 'tenant_id', allowInsert: true  },
+  territories:   { col: 'tenant_id', allowInsert: true  },
+  subscriptions: { col: 'tenant_id', allowInsert: true  },
+  pms_records:   { col: 'tenant_id', allowInsert: true  },
+  gmo:           { col: 'tenant_id', allowInsert: true  },
+};
+
+// Force `${col}=eq.${value}` dans la query string d'un path, en écrasant
+// toute valeur fournie par le client pour cette colonne.
+function forceQueryFilter(path, col, value) {
+  const [base, qs = ''] = path.split('?');
+  const params = new URLSearchParams(qs);
+  params.delete(col);
+  params.set(col, `eq.${value}`);
+  return `${base}?${params.toString()}`;
+}
+
+// Force la colonne de cloisonnement dans le body (objet ou tableau d'objets
+// pour les inserts groupés) à la valeur du tenant de l'appelant.
+function stampTenantColumn(body, col, value) {
+  if (Array.isArray(body)) {
+    return body.map(o => (o && typeof o === 'object') ? { ...o, [col]: value } : o);
+  }
+  if (body && typeof body === 'object') {
+    return { ...body, [col]: value };
+  }
+  return body;
+}
+
 exports.handler = async function(event) {
   // CORS preflight
   const headers = {
@@ -86,16 +133,26 @@ exports.handler = async function(event) {
   // ── 4. Vérifier le rôle admin dans profiles ───────────────
   // Utilise la service_role key pour bypasser les politiques RLS
   // (nécessaire pour les super_admin qui n'ont pas de tenant_id dans leur JWT)
+  let role = '';
+  let callerTenantId = null;
+  let isSuperAdmin = false;
   try {
     const profileRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role&limit=1`,
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role,tenant_id&limit=1`,
       { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}` } }
     );
     if (!profileRes.ok) throw new Error('Profil inaccessible');
     const profiles = await profileRes.json();
-    const role = profiles?.[0]?.role || '';
+    role = profiles?.[0]?.role || '';
+    callerTenantId = profiles?.[0]?.tenant_id || null;
     if (!ALLOWED_ROLES.includes(role)) {
       return { statusCode: 403, headers, body: JSON.stringify({ error: `Rôle insuffisant : ${role}` }) };
+    }
+    isSuperAdmin = role === 'super_admin';
+    // siege/directeur sans tenant_id (profil pas encore rattaché) ne peuvent
+    // requêter aucune donnée cloisonnée via ce proxy.
+    if (!isSuperAdmin && !callerTenantId) {
+      return { statusCode: 403, headers, body: JSON.stringify({ error: 'Aucun tenant associé à ce compte' }) };
     }
   } catch(e) {
     return { statusCode: 403, headers, body: JSON.stringify({ error: 'Vérification rôle échouée' }) };
@@ -109,13 +166,35 @@ exports.handler = async function(event) {
     return { statusCode: 400, headers, body: JSON.stringify({ error: 'Corps JSON invalide' }) };
   }
 
-  const { method = 'GET', path = '', body: reqBody = null, extraHeaders = {} } = payload;
+  const { method = 'GET', extraHeaders = {} } = payload;
+  let path = payload.path || '';
+  let reqBody = payload.body ?? null;
 
   // ── 6. Whitelist des chemins ──────────────────────────────
   const pathOk = ALLOWED_PATH_PREFIXES.some(p => path.startsWith(p));
   if (!pathOk) {
     console.warn('[admin-proxy] Chemin refusé :', path);
     return { statusCode: 403, headers, body: JSON.stringify({ error: `Chemin non autorisé : ${path}` }) };
+  }
+
+  // ── 6bis. Isolation multi-tenant pour siege/directeur ──────
+  // super_admin garde un accès global (nécessaire pour la console superadmin).
+  // Pour tout autre rôle, on ignore complètement le tenant_id/site_id fourni
+  // par le client et on force celui de son propre JWT, aussi bien en lecture
+  // (query string) qu'en écriture (body, y compris insert groupé).
+  if (!isSuperAdmin) {
+    const tableMatch = path.match(/^\/rest\/v1\/([a-zA-Z_]+)/);
+    const table = tableMatch ? tableMatch[1] : null;
+    const scope = table ? TENANT_SCOPE[table] : null;
+    if (scope) {
+      if (method === 'POST' && !scope.allowInsert) {
+        return { statusCode: 403, headers, body: JSON.stringify({ error: `Création non autorisée sur ${table}` }) };
+      }
+      path = forceQueryFilter(path, scope.col, callerTenantId);
+      if (reqBody != null && method !== 'GET') {
+        reqBody = stampTenantColumn(reqBody, scope.col, callerTenantId);
+      }
+    }
   }
 
   // ── 7. Exécuter la requête Supabase avec service_role ─────
