@@ -898,12 +898,12 @@ function populateFilters(){
     const terrSel=document.getElementById('filter-territoire');
     if(terrSel){
       terrSel.innerHTML='<option value="">Tous les territoires</option>';
-      _territories.forEach(t=>terrSel.innerHTML+=`<option value="${t.id}">${t.name}</option>`);
+      _territories.forEach(t=>terrSel.innerHTML+=`<option value="${escH(t.id)}">${escH(t.name)}</option>`);
     }
     const sectSel=document.getElementById('filter-secteur');
     if(sectSel){
       sectSel.innerHTML='<option value="">Tous les secteurs</option>';
-      _sectors.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+      _sectors.forEach(s=>sectSel.innerHTML+=`<option value="${escH(s.id)}">${escH(s.name)}</option>`);
     }
   } else {
     // Masquer territoire et secteur pour chef_secteur
@@ -933,7 +933,7 @@ function cascadeFilters(unknownCodes){
   if(sectSel&&terrId){
     const visibleSects=_sectors.filter(s=>s.territory_id===terrId);
     sectSel.innerHTML='<option value="">Tous les secteurs</option>';
-    visibleSects.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+    visibleSects.forEach(s=>sectSel.innerHTML+=`<option value="${escH(s.id)}">${escH(s.name)}</option>`);
   }
   // Filtrer les sites selon secteur (ou territoire)
   let visibleSites=_sites;
@@ -946,9 +946,9 @@ function cascadeFilters(unknownCodes){
   [document.getElementById('filter-site'),document.getElementById('filter-site-m')].forEach(el=>{
     if(!el)return;
     el.innerHTML='<option value="">Tous les sites</option>';
-    visibleSites.forEach(s=>el.innerHTML+=`<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s=>el.innerHTML+=`<option value="${escH(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     // Ajouter sites inconnus (code seul, pas encore dans la table sites)
-    extra.forEach(code=>el.innerHTML+=`<option value="${code}">⚠️ ${code} (non enregistré)</option>`);
+    extra.forEach(code=>el.innerHTML+=`<option value="${escH(code)}">⚠️ ${escH(code)} (non enregistré)</option>`);
   });
 }
 
@@ -1031,7 +1031,7 @@ function onComboTerrChange() {
   if (sectSel) {
     const visibleSects = terrId ? _sectors.filter(s=>s.territory_id===terrId) : _sectors;
     sectSel.innerHTML = '<option value="">Tous les secteurs</option>';
-    visibleSects.forEach(s => sectSel.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+    visibleSects.forEach(s => sectSel.innerHTML += `<option value="${escH(s.id)}">${escH(s.name)}</option>`);
     sectSel.value = '';
   }
   if (siteSel) {
@@ -1039,7 +1039,7 @@ function onComboTerrChange() {
       ? _sites.filter(s => { const sec=_sectors.find(x=>x.id===s.sector_id); return sec?.territory_id===terrId; })
       : _sites;
     siteSel.innerHTML = '<option value="">Tous les sites</option>';
-    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${escH(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     siteSel.value = '';
   }
   updateComboLabel();
@@ -1051,7 +1051,7 @@ function onComboSectChange() {
   if (siteSel) {
     const visibleSites = sectId ? _sites.filter(s=>s.sector_id===sectId) : _sites;
     siteSel.innerHTML = '<option value="">Tous les sites</option>';
-    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${escH(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     siteSel.value = '';
   }
   updateComboLabel();
