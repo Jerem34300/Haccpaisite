@@ -202,7 +202,9 @@ async function acknowledgeTabletAlert(alertId, response, extra = {}){
       const t=await ackRes.text().catch(()=>'');
       throw new Error('HTTP '+ackRes.status+' '+t.slice(0,80));
     }
-    // Upload photo si présente → stocker l'URL publique dans l'ack
+    // Upload photo si présente → stocker le chemin de stockage dans l'ack
+    // (bucket pms-photos privé : la résolution en URL affichable se fait à
+    // la lecture via SupaEngine.getSignedPhotoUrl(), pas au moment de l'upload)
     if(extra.photo_data_url && extra.photo_data_url.startsWith('data:image/')){
       try{
         const [meta,b64]=extra.photo_data_url.split(',');
@@ -215,10 +217,9 @@ async function acknowledgeTabletAlert(alertId, response, extra = {}){
           body:bytes
         });
         if(uploadRes.ok){
-          // Mettre à jour l'ack avec l'URL publique de la photo
-          const photoUrl=`${_ac.url}/storage/v1/object/public/pms-photos/${path}`;
-          ackRow.data.photo_url = photoUrl;
-          // Patch le record qu'on vient d'insérer avec l'URL
+          // Mettre à jour l'ack avec le chemin de stockage de la photo
+          ackRow.data.photo_url = path;
+          // Patch le record qu'on vient d'insérer avec le chemin
           await fetch(`${_ac.url}/rest/v1/pms_records?client_id=eq.${encodeURIComponent(ackRow.client_id)}`,{
             method:'PATCH',
             headers:{apikey:_ac.anonKey,Authorization:`Bearer ${_ac.userToken}`,'Content-Type':'application/json','Prefer':'return=minimal'},
@@ -5271,10 +5272,14 @@ function renderENR30(){
         ${(()=>{
           const stored = g('photo_nc');
           if (stored) {
-            let src = stored;
-            try { const o = JSON.parse(stored); src = o.thumb || o.url || stored; } catch(e) {}
+            // Base64 local (pas encore synchronisé) → src direct.
+            // Chemin de stockage pms-photos (déjà synchronisé, bucket privé) →
+            // hydratation différée via data-psrc (js/supabaseservice.js).
+            let thumb = '', url = '';
+            try { const o = JSON.parse(stored); thumb = o.thumb || ''; url = o.url || ''; } catch(e) { thumb = stored; }
+            const imgAttr = thumb ? `src="${escAttr(thumb)}"` : `data-psrc="${escAttr(url || stored)}"`;
             return `<div style="position:relative">
-              <img src="${src}" style="height:80px;width:80px;object-fit:cover;border-radius:10px;border:2px solid #fca5a5">
+              <img ${imgAttr} style="height:80px;width:80px;object-fit:cover;border-radius:10px;border:2px solid #fca5a5" onerror="this.style.display='none'">
               <button onclick="nc30('photo_nc','');renderMain()" style="position:absolute;top:-6px;right:-6px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0">✕</button>
             </div>`;
           }

@@ -453,15 +453,20 @@ create policy gmo_write on public.gmo
   );
 
 -- =============================================================
--- 10) STORAGE — bucket pms-photos (public en lecture)
+-- 10) STORAGE — bucket pms-photos (privé — lecture authentifiée uniquement)
+--     Les photos HACCP (réception, plats témoins, NC, alertes) contiennent
+--     potentiellement des données sensibles/identifiantes ; le bucket est
+--     privé et la lecture nécessite une URL signée générée à la demande
+--     par un utilisateur authentifié (js/supabaseservice.js:getSignedPhotoUrl).
 -- =============================================================
 insert into storage.buckets (id, name, public)
-values ('pms-photos', 'pms-photos', true)
+values ('pms-photos', 'pms-photos', false)
 on conflict (id) do update set public = excluded.public;
 
 drop policy if exists pms_photos_public_read on storage.objects;
-create policy pms_photos_public_read on storage.objects
-  for select
+drop policy if exists pms_photos_auth_read on storage.objects;
+create policy pms_photos_auth_read on storage.objects
+  for select to authenticated
   using (bucket_id = 'pms-photos');
 
 drop policy if exists pms_photos_auth_insert on storage.objects;

@@ -183,6 +183,9 @@ const SupaEngine = (() => {
   }
 
   // ── Upload vers Supabase Storage ───────────────────
+  // Le bucket pms-photos est privé (voir netlify/sql/schema.sql) : on ne
+  // renvoie plus d'URL publique, seulement le chemin de stockage. L'accès
+  // en lecture passe systématiquement par getSignedPhotoUrl() ci-dessous.
   async function _uploadToStorage(b64, storagePath, c, authToken) {
     if (!b64 || !b64.startsWith('data:image/')) throw new Error('Données image invalides');
     const [meta, data] = b64.split(',');
@@ -205,11 +208,48 @@ const SupaEngine = (() => {
       const t = await r.text().catch(()=>'');
       throw new Error(`Storage HTTP ${r.status} — ${t.slice(0,60)}`);
     }
-    return `${c.url}/storage/v1/object/public/pms-photos/${storagePath}`;
+    return storagePath;
+  }
+
+  // ── Résolution d'URL signée (bucket pms-photos privé) ──
+  // Accepte soit un chemin brut ("SITE/enr19/2026-07-31/x.jpg", format
+  // stocké depuis la privatisation du bucket), soit une ancienne URL
+  // publique stockée avant (".../object/public/pms-photos/…") — les deux
+  // sont résolues vers une URL signée temporaire fraîchement générée.
+  const _signedUrlCache = new Map(); // path -> { url, expiresAt }
+  function _pmsPhotoPath(u) {
+    if (!u || typeof u !== 'string') return '';
+    const m = u.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/pms-photos\/([^?]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    if (/^https?:\/\//.test(u)) return ''; // URL externe non reconnue
+    return u.replace(/^\/+/, '');
+  }
+  async function getSignedPhotoUrl(u, expiresIn) {
+    expiresIn = expiresIn || 3600;
+    const path = _pmsPhotoPath(u);
+    if (!path) return '';
+    const cached = _signedUrlCache.get(path);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+    const c = cfg();
+    try {
+      const token = await _ensureFreshToken(c);
+      const r = await fetch(`${c.url}/storage/v1/object/sign/pms-photos/${path}`, {
+        method: 'POST',
+        headers: { 'apikey': c.anonKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn }),
+      });
+      if (!r.ok) { _supaLog(`⚠️ Signature photo échouée (${r.status}) : ${path}`); return ''; }
+      const d = await r.json();
+      if (!d.signedURL) return '';
+      const full = d.signedURL.startsWith('http') ? d.signedURL : `${c.url}${d.signedURL}`;
+      _signedUrlCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
+      return full;
+    } catch(e) { _supaLog('⚠️ Erreur signature photo : ' + e.message); return ''; }
   }
 
   // ── Traitement des photos d'une entrée avant POST ──
-  // Modifie entry.data en place, remplace base64 par URLs publiques
+  // Modifie entry.data en place, remplace base64 par le chemin de stockage
+  // (bucket privé — voir getSignedPhotoUrl() pour la résolution à l'affichage)
   async function _processEntryPhotos(entry, c, authToken) {
     const date = (entry.recorded_at||'').slice(0,10) || 'nodate';
     const siteId = (entry.site_id||'SITE').toUpperCase();
@@ -231,10 +271,10 @@ const SupaEngine = (() => {
         const sourceB64 = parsed.full || parsed.thumb;
         if (!sourceB64 || !sourceB64.startsWith('data:image/')) throw new Error('no b64');
         const storagePath = `${siteId}/${enrType}/${date}/${key}_${qShort}.jpg`;
-        const publicUrl = await _uploadToStorage(sourceB64, storagePath, c, authToken);
+        const savedPath = await _uploadToStorage(sourceB64, storagePath, c, authToken);
         entry.data[key] = JSON.stringify({
-          url: publicUrl,
-          thumb_url: publicUrl,
+          url: savedPath,
+          thumb_url: savedPath,
           file: parsed.file || storagePath.split('/').pop(),
           date,
           storage: 'supabase',
@@ -631,7 +671,39 @@ const SupaEngine = (() => {
     }
   }
 
-  return { init, enqueue, flush, testConnection, isEnabled, cfg, saveCfgLocal, qStats, _updateBadge, _refreshModalStats, _supaLog };
+  return { init, enqueue, flush, testConnection, isEnabled, cfg, saveCfgLocal, qStats, _updateBadge, _refreshModalStats, _supaLog, getSignedPhotoUrl };
+})();
+
+// ── Hydratation paresseuse des photos pms-photos (bucket privé) ──
+// Les points d'affichage posent <img data-psrc="…"> (chemin ou ancienne
+// URL publique) au lieu de src. Cet observateur les hydrate dès qu'ils
+// apparaissent dans le DOM en résolvant une URL signée fraîche, quel que
+// soit l'écran/la fonction de rendu qui les a insérés.
+(function initPhotoLazyHydration(){
+  function hydrate(el){
+    if (!el || el.dataset.psrcDone) return;
+    el.dataset.psrcDone = '1';
+    const raw = el.dataset.psrc;
+    if (!raw) return;
+    SupaEngine.getSignedPhotoUrl(raw).then(function(signed){
+      if (signed) el.src = signed; else el.style.display = 'none';
+    }).catch(function(){ el.style.display = 'none'; });
+  }
+  function scan(root){
+    if (!root) return;
+    if (root.nodeType === 1 && root.matches && root.matches('img[data-psrc]:not([data-psrc-done])')) hydrate(root);
+    if (root.querySelectorAll) root.querySelectorAll('img[data-psrc]:not([data-psrc-done])').forEach(hydrate);
+  }
+  function start(){
+    scan(document);
+    const mo = new MutationObserver(function(mutations){
+      mutations.forEach(function(m){
+        m.addedNodes.forEach(function(n){ if (n.nodeType === 1) scan(n); });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) start(); else window.addEventListener('DOMContentLoaded', start);
 })();
 
 // ── Fonctions UI Supabase Modal ────────────────────────────
