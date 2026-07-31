@@ -22,9 +22,36 @@ python3 -m http.server 8080
 
 Supabase credentials are hardcoded in `js/supabaseconfig.js` (anon key — intentionally public; security enforced by RLS policies). Netlify Functions require these env vars set in Netlify UI or `.env` for local dev:
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
-- `RESEND_API_KEY`
+- `RESEND_API_KEY`, Stripe keys (`stripe-checkout.js`, `stripe-portal.js`, `stripe-webhook.js`)
 
-**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy.
+**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v387'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
+
+---
+
+## ⚠️ Règles absolues (à respecter avant toute modification)
+
+Ce projet est un monolithe front-end sans tests automatisés, sans bundler, et à très forte densité fonctionnelle (`app-cuisine.js` fait **16 600 lignes**, `app-dashboard.js` **9 968 lignes**). Une régression n'est détectée qu'en prod, sur tablette, en cuisine. En conséquence :
+
+1. **Ne jamais renommer, déplacer ou changer la signature de `sd()`, `r23s()` ou `renderNav()`.**
+   - `sd(id, val, sec)` (`js/app-cuisine.js:126`) écrit dans le brouillon `S[sec].draft[id]` et appelle `save()`. C'est le setter générique utilisé par la quasi-totalité des formulaires ENR.
+   - `r23s(id, val)` (`js/app-cuisine.js:7752`) est l'équivalent spécifique à ENR23 (liaison froide).
+   - `renderNav()` (`js/app-cuisine.js:688`) reconstruit le menu de navigation principal (`#main-nav`) à partir de `navOrder()`/`ALL` et des badges de NC (`navBadge()`). Toute page cuisine dépend de son bon fonctionnement pour rester navigable.
+   - Ces trois fonctions sont appelées depuis des dizaines/centaines de sites d'appel dispersés dans tout `app-cuisine.js` — une modification de signature casse silencieusement des écrans entiers sans erreur JS visible avant test manuel.
+
+2. **`WG_VER` (widgets d'accueil) : ne jamais décrémenter, ne jamais réutiliser un numéro déjà passé.**
+   - Valeur actuelle réelle constatée dans le code : **`WG_VER = 5`** (`js/app-cuisine.js:16094`). *(Note : la demande d'audit mentionnait `WG_VER=4` — ce n'est plus la valeur en vigueur ; ne pas la restaurer.)*
+   - `wgGet()` (`js/app-cuisine.js:16095-16129`) compare `S.config.homeWidgetsVer` à `WG_VER` pour décider s'il régénère la disposition par défaut des widgets d'accueil ou respecte la personnalisation utilisateur. Incrémenter ce compteur force une migration pour tous les utilisateurs (à faire uniquement si la structure des widgets change) ; le décrémenter ou réutiliser un ancien numéro ferait perdre le mécanisme anti-doublon.
+
+3. **Try/catch partout, y compris autour de code qui « ne peut pas échouer ».**
+   - Convention du projet (117 `try{` / 125 `catch` rien que dans `app-cuisine.js`) : chaque accès à `localStorage`, `history.pushState`, parsing JSON, ou API navigateur optionnelle (vibration, audio, dictée vocale) est enveloppé individuellement, souvent avec un fallback silencieux (`catch(e){}`). C'est nécessaire car l'app tourne offline, sur des navigateurs tablette hétérogènes (Chrome Android, Safari iOS, Samsung Internet), et une exception non rattrapée bloque toute la SPA (pas de router qui isole les erreurs). Ne pas retirer ces `try/catch` sous prétexte de « code plus propre ».
+   - Attention : ce style produit aussi des échecs avalés silencieusement qui masquent de vrais bugs (voir ex. `app-signup.js:302`, `superadmin.html` fallback couleur ci-dessous) — ne pas ajouter de nouveaux `catch` vides sans au moins un `console.warn`.
+
+4. **Modifications minimales, jamais de réécriture large.**
+   - Aucun test automatisé, aucun typage, aucun CI. La seule protection contre les régressions est la revue manuelle du diff. Un correctif doit toucher le minimum de lignes nécessaires — ne pas « profiter » d'un correctif pour refactoriser une fonction adjacente, renommer des variables, ou réorganiser un fichier.
+   - Respecter l'ordre de chargement des scripts (voir plus bas) — aucun bundler ne le vérifie, une erreur d'ordre casse la page sans message clair.
+   - Le `localStorage` est la source de vérité offline (`S`, clé `haccp_v6`) ; toute modification doit rester compatible avec des données existantes déjà stockées chez des utilisateurs réels (pas de migration destructive sans garde de version).
+
+---
 
 ## Architecture
 
@@ -35,10 +62,18 @@ Each HTML page is a self-contained SPA with its own JS module loaded via `<scrip
 | Page | JS Module | Purpose |
 |------|-----------|---------|
 | `cuisine.html` | `app-cuisine.js` + `app-menu-cuisine.js` | Kitchen tablet — HACCP record entry |
-| `dashboard.html` | `app-dashboard.js` + `app-menu-dashboard.js` | Admin supervision & reporting |
+| `dashboard.html` | `app-dashboard.js` + `app-menu-dashboard.js` | Admin supervision & reporting (also embeds a legacy superadmin view, see below) |
+| `superadmin.html` | inline `<script>` in the page | Standalone superadmin console (tenants, sites, users, subscriptions) |
 | `pms-setup.html` | `app-pms.js` | Sanitary control plan (PMS) generation |
 | `onboarding.html` | `app-onboarding.js` | Tenant/site setup wizard |
 | `login.html` / `signup.html` | `app-login.js` / `app-signup.js` | Auth flows |
+| `paywall.html` | inline `<script>` | Subscription paywall / Stripe Checkout entry point |
+| `reset-password.html` | inline `<script>` | Password reset flow |
+| `mentions-legales.html`, `cgu.html`, `politique-confidentialite.html` | static | Legal pages |
+| `faq/index.html`, `guides/*.html` | static | SEO/support content |
+| `index.html`, `landing.html` | static | Public marketing pages |
+
+There are **three separate, inconsistent tenant-creation code paths** (see Audit §Bugs 6) — be aware when touching signup/onboarding that `app-signup.js`, `app-login.js`, and `app-onboarding.js` each independently call into tenant/profile creation.
 
 ### Global State Pattern
 
@@ -52,7 +87,7 @@ let S = JSON.parse(localStorage.getItem(SK) || '{}');
 save(); // persists to localStorage + debounces cloud sync (10 sec)
 ```
 
-`save()` in `app-cuisine.js` handles `QuotaExceededError` by async-compressing embedded base64 photos. Always call `save()` after mutating `S`.
+`save()` in `app-cuisine.js` (`js/app-cuisine.js:29`) handles `QuotaExceededError` by async-compressing embedded base64 photos. Always call `save()` after mutating `S`.
 
 ### Offline-First Sync (`supabaseservice.js`)
 
@@ -65,7 +100,7 @@ User action → enqueue(record) → scheduleFlush() → [10 sec debounce] → PO
 - Queue key: `haccp_supa_queue_v1` in localStorage
 - Force flush: `supaFlushNow()`
 - Records use `_uuid` (via `stampEntry()`) for server-side deduplication (`ON CONFLICT DO NOTHING`)
-- Photos are compressed async then uploaded to Supabase Storage separately
+- Photos are compressed async then uploaded to Supabase Storage separately, to the `pms-photos` bucket (⚠️ this bucket is currently **public**, see Audit §Sécurité 2)
 
 ### Authentication (`authguard.js`)
 
@@ -77,14 +112,19 @@ Every protected page calls `runAuthGuard({ sessionKey, onSuccess })` before rend
 
 **Session key hierarchy:** `haccp_supa_cfg_v1` (canonical) ← migrated from legacy `haccpro_supa_cfg`. Never use the legacy key for new code.
 
+`js/subscriptionguard.js` runs after `authguard.js` on `cuisine.html`/`dashboard.html` and enforces the subscription paywall — see Audit §Sécurité 4 for its known fail-open design.
+
 ### Script Load Order (required)
 
 Pages must load scripts in this order (no module bundler enforces this):
 1. `supabaseconfig.js` — defines `SUPABASE_URL`, `SUPABASE_ANON_KEY`
 2. `authguard.js` — depends on supabaseconfig globals
 3. `utils.js` — shared helpers (`escH`, `newUUID`, `stampEntry`, `fmtDateFr`, `today`, `nowT`, `nowDT`)
-4. `supabaseservice.js` — depends on supabaseconfig + utils
-5. `app-*.js` — page-specific app logic
+4. `subscriptionguard.js` — paywall check (protected pages only)
+5. `supabaseservice.js` — depends on supabaseconfig + utils
+6. `app-*.js` — page-specific app logic
+
+`escH()` (`js/utils.js:9`) is the only sanctioned HTML-escaping helper and correctly escapes `& < > " '`. Any DOM injection of DB-sourced text (names, colors, labels) **must** go through it — several call sites currently don't (see Audit §Sécurité 3).
 
 ### Netlify Functions (`netlify/functions/`)
 
@@ -92,34 +132,46 @@ All functions receive `Authorization: Bearer <JWT>` from the client and validate
 
 | Function | Trigger | Key behavior |
 |----------|---------|-------------|
-| `signup-setup.js` | POST `/signup-setup` | Creates tenant/site/profile/subscription using service role |
+| `signup-setup.js` | POST `/signup-setup` | Creates tenant/profile/subscription (no site) using service role |
+| `provision-tenant.js` | called from `app-onboarding.js` | Idempotent — creates/reuses tenant, creates site, upserts profile with plan-based role |
 | `send-email.js` | POST `/send-email` | Sends transactional emails via Resend |
-| `haccp-hub.mjs` | GET/POST/DELETE `/haccp-hub` | Alert hub CRUD |
-| `admin-proxy.js` | POST `/admin-proxy` | Superadmin-only proxied queries |
+| `haccp-hub.mjs` | GET/POST/DELETE `/haccp-hub` | Alert hub CRUD (dashboard → tablet one-way alerts + ack) |
+| `admin-proxy.js` | POST `/admin-proxy` | Proxied queries using the Supabase **service role** key — ⚠️ allowed for `super_admin`, `siege`, AND `directeur`, with no tenant/site filtering (see Audit §Sécurité 1) |
+| `superadmin-login.js` | POST | Superadmin auth |
+| `stripe-checkout.js` / `stripe-portal.js` / `stripe-webhook.js` | Stripe integration | Checkout session, billing portal, webhook → writes `subscriptions.status` |
 | `contact.js` | POST `/contact` | Public contact form → Resend |
 
 ### Database (Supabase / PostgreSQL)
 
 Schemas in `netlify/sql/`:
-- `schema.sql` — core tables: `tenants`, `territories`, `sectors`, `sites`, `profiles`, `subscriptions`, `pms_records`, `pms_config`, `gmo`, `alert_hub`, `photos_storage`
+- `schema.sql` — core tables: `tenants`, `territories`, `sectors`, `sites`, `profiles`, `subscriptions`, `pms_records`, `pms_config`, `gmo`, `alert_hub`, `photos_storage`, `storage.buckets`/`storage.objects` policies
+- `fix-pms-records-rls-site-id.sql` — a standalone RLS tightening patch for `pms_records` INSERT, **not merged into `schema.sql`** — its actual applied state in the live DB cannot be verified from the repo alone
 - `menu_feature.sql` — `menu`, `menu_dishes`, `menu_variants`
-- `corrective_actions.sql` — corrective action records
+- `corrective_actions.sql` — corrective action records, actively used (see Audit §Fonctionnalités 6)
+- `stripe-migration.sql` — subscription/Stripe columns
 
-**Tenant isolation:** All tables have RLS policies filtering by `site_id` or `tenant_id` extracted from the JWT. Never bypass RLS in client code.
+**Tenant isolation:** All tables have RLS policies filtering by `site_id` or `tenant_id` extracted from the JWT. Never bypass RLS in client code. **`netlify/functions/admin-proxy.js` bypasses RLS server-side with the service role key and is currently under-restricted — see Audit §Sécurité 1 before touching it.**
 
 **Role hierarchy:** `super_admin` > `siege` (HQ) > `directeur` > `chef_secteur` > `cuisinier` — stored in `profiles.role`.
+
+**Column-naming pitfall (live bug, see Audit §Bugs 7):** `sites` table has a `name` column, but several `superadmin.html` queries request `nom` and `tenants`/`sites` `.color` (PostgREST 400s silently swallowed by `.catch()`). The real columns are `sites.name` and `tenants.primary_color`. Check `schema.sql` column names before writing new queries against these tables — don't assume the French/English naming matches what other buggy call sites use.
 
 ## HACCP Domain Concepts
 
 ### ENR Records (Enregistrements)
 
-The core data model. ENR01–ENR34 are numbered regulatory forms:
-- **ENR01** — Cooling (refroidissement)
+The core data model. ENR01–ENR36+ are numbered regulatory forms:
+- **ENR01** — Cooling (refroidissement) — has a real history view, `renderENR01Histo()` (`js/app-cuisine.js:3163`)
 - **ENR03/07** — Temperature monitoring
 - **ENR08** — Reception / raw product (BF Cru)
+- **ENR14/15/16** — Legacy distribution fiches (plateaux/SAM/Self), kept for backward compatibility alongside the newer unified per-service distribution system (`enr_distrib_{svcId}`, `js/app-cuisine.js:7031-7130`)
+- **ENR19** — Cold storage (enceintes) temperature — stored generically in `pms_records` with `enr_type='enr19'`, no dedicated table
+- **ENR20** — Cold storage, "canicule" (heatwave) mode — real toggle, see Audit §Fonctionnalités 3
 - **ENR23** — Frozen liaison
+- **ENR30** — Corrective actions / NC (non-conformité) register
 - **ENR33** — Witness plate sampling (plat témoin) — each dish requires one
 - **ENR34** — Labeling (étiquette)
+- **ENR36** — Excédents (leftovers)
 
 Each ENR line is stamped with `_uuid`, `_created`, `_ts`, and optionally linked to a menu dish via `_plat_id`, `_menu_id`, `_plat_nom`, `_plat_profil`.
 
@@ -143,6 +195,12 @@ Links all ENR records to a dish to reconstruct a complete HACCP timeline (recept
 
 Daily menus are organized by category: potages, entrées, plats, garnitures, fromages, desserts, pains. Each dish can have variants (Mixé, Sans sel, HP). "Générer plats témoins" auto-creates ENR33 entries for every dish + checked variants. "Imprimer étiquettes" opens a printable A4 label sheet. Menu history is stored in `S.menu_history` and synced to Supabase.
 
+**Note:** the menu system (`app-menu-cuisine.js`/`app-menu-dashboard.js`) and the PMS generator (`app-pms.js`/`pms-setup.html`) are **completely disjoint** — see Audit §Fonctionnalités 8.
+
+### Non-conformité (NC) / Corrective Actions Workflow
+
+`autoCreateNC()` (`js/app-cuisine.js:2639`) is called from ~10 sites across the ENR forms (ENR19/20/21/28/30/36, distribution, nettoyage) whenever a reading is out of spec. It only shows a `toast()` — it does **not** trigger `appBeep()`/`appVibrate()` (see Audit §Bugs 5). NCs are then resolved through a catalog of corrective actions loaded from the `corrective_actions`/`nc_action_mapping` SQL tables, assigned via `S.corrective_actions_catalog`, and closed via `nc30cf()` (`js/app-cuisine.js:5354`). Dashboard side: `renderNC()` (`js/app-dashboard.js:5650`).
+
 ### Voice Dictation
 
 Supported on Chrome (Android/Desktop), Edge, Samsung Internet. Each category has its own mic button. Parser uses all keyword positions as delimiters (max 80 chars/dish). Not supported on Firefox; partial on Safari iOS.
@@ -156,7 +214,132 @@ Supported on Chrome (Android/Desktop), Edge, Samsung Internet. Each category has
 | `haccp_supa_queue_v1` | Offline sync queue (array of pending records) |
 | `haccp_patterns_v1` | Learned dish-to-ENR linking patterns |
 | `haccp_lifecycle_v1` | Dish HACCP timeline history |
+| `haccp_sub_cache_v1` (name approx., see `subscriptionguard.js`) | 1h cache of subscription check result — client-controlled, part of the paywall fail-open design |
 
 ## PWA / Service Worker (`sw.js`)
 
-Cache-first strategy for all JS/CSS assets. Network-first for API calls. After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
+Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v387'`/`'haccpro-cdn-v387'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
+
+---
+
+## 📋 État de l'audit (vérifié dans le code réel — juillet 2026)
+
+Chaque point a été vérifié directement dans le code (fichier + ligne), pas supposé. Statuts : **FAIT** / **PARTIEL** / **À FAIRE**.
+
+### Bugs
+
+1. **RLS 403 sur enr19 — À FAIRE (non confirmé)**
+   `enr19` n'est pas une table dédiée : c'est `pms_records` avec `enr_type='enr19'` (`js/supabaseservice.js:330-334,390`). Les policies RLS de `pms_records` (`netlify/sql/schema.sql:347-395`, `netlify/sql/fix-pms-records-rls-site-id.sql`) sont génériques à tous les `enr_type` — rien ne cible `enr19` spécifiquement, aucun TODO/workaround trouvé. Un indice périphérique existe : `resyncEnr19()` (`js/app-cuisine.js:3686-3705`) permet de "resynchroniser les températures vers le cloud" pour des relevés faits "via le widget accueil avant la v10" — ça sent un bug de queue non vidée historique, pas un 403 RLS. `fix-pms-records-rls-site-id.sql` n'est pas fusionné dans `schema.sql`, donc son application réelle en base n'est pas vérifiable depuis le repo seul. **Aucune preuve d'un 403 actif** — à reproduire/tracer en prod avant de coder un correctif.
+
+2. **Pages `tarifs.html` / `account.html` — n'existent pas dans le repo (constat, pas un bug de lien cassé)**
+   `find` ne trouve ni l'un ni l'autre. Toutes les occurrences de "tarifs" sont des ancres `#pricing` (`index.html`, `landing.html`, `mode-emploi.html`). La gestion de compte/abonnement vit dans `dashboard.html` (`js/app-dashboard.js:9879-9906`, bloc "Mon abonnement"/"Mon compte"), et le paywall est `paywall.html`, piloté par `js/subscriptionguard.js:70`. Aucun lien mort trouvé vers ces deux noms de fichiers.
+
+3. **Export Excel vide — PARTIEL (bug réel identifié)**
+   `doExportXLSX()` (`js/app-cuisine.js:13501`, via SheetJS). Le garde-fou initial (`:13516-13519`) teste s'il existe des données **toutes périodes confondues**, mais le remplissage réel des feuilles filtre ensuite par période sélectionnée via `_pFilter` (`:13802-13803`). Si la période active (par défaut le mois courant) ne contient aucune saisie alors que des données existent ailleurs, l'export démarre mais produit un classeur quasi vide (seule la feuille "Tableau de bord" à zéro), sans message d'erreur. *(Aucun export Excel équivalent n'existe côté `app-dashboard.js`/`app-menu-dashboard.js` — seul `exportAlertResponses()` en CSV y existe et fonctionne.)*
+
+4. **Widget Midi — FAIT**
+   Catalogue dans `wgGetCatalog()` (`js/app-cuisine.js:16072`), rendu par `_wgRenderOne()` (`:16287-16369`), versionné par `WG_VER=5` avec migration/dédoublonnage automatique (`wgGet()`, `:16095-16129`). Historique git montre des correctifs déjà mergés (`22894a4`, `528b3d7`, `1f1ecda`). Aucun bug ouvert identifié.
+
+5. **Alertes audio NC — PARTIEL**
+   `appBeep()` (`js/app-cuisine.js:1444-1461`) est fonctionnel et respecte le toggle `S.config.soundOn`. Mais il n'est câblé qu'à 2 cas de dépassement de minuterie CCP (`:14381`, `:14605`) — **pas** à `autoCreateNC()` (`:2639`), qui est le point central de création de NC appelé à ~10 endroits (ENR19/20/21/28/30/36, distribution, nettoyage) et ne fait qu'un `toast()` (`:2678`). La grande majorité des NC créées (température hors seuil, réception, nettoyage, nuisibles) ne déclenchent **aucune** alerte sonore.
+
+6. **Onboarding wizard vs `provision-tenant.js` — PARTIEL (3 chemins incohérents, un flux cassé)**
+   Trois chemins de création tenant/profil coexistent :
+   - `js/app-login.js:257` (`_completeSignupSetup`) → `signup-setup.js` (tenant + profil, sans site)
+   - `js/app-onboarding.js:589` (`generatePMS`) → `provision-tenant.js` (idempotent, crée le site, upsert du profil selon le plan) — **le seul chemin robuste**
+   - `js/app-signup.js:286-334` → insertion cliente directe sur `/rest/v1/tenants` avec la clé anon, rôle codé en dur `'directeur'` (`:315`) — **bloquée par la RLS** `tenants_admin_write` (`schema.sql:263-266`) car l'utilisateur n'a pas encore de tenant/rôle admin ; l'échec est avalé par un `catch` au commentaire trompeur ("tenant creation may be handled by DB trigger", `:302`) — **aucun trigger ne le fait**.
+   Bug plus grave : le trigger DB `handle_new_user()` (`schema.sql:482-497`) crée un profil (`role='cuisinier'`, `tenant_id=NULL`) dès l'inscription Supabase Auth, avant toute action client. Résultat : la condition `if(!profile)` dans `app-login.js:83` est quasiment toujours fausse, donc `_completeSignupSetup`/`signup-setup.js` ne se déclenche presque jamais via un login manuel — l'utilisateur atterrit sur `cuisine.html` avec `tenantId`/`siteId` vides, **sans passer par l'onboarding**. Seul le chemin où `_handleEmailConfirmCallback` (`app-login.js:305-341`) intercepte le lien de confirmation email fonctionne de façon fiable.
+
+7. **Dashboard superadmin — PARTIEL**
+   - **Color pickers** : présents et câblés (`superadmin.html:797,941`) mais écrivent sur des colonnes **inexistantes** (`tenants.color`, `sites.color` — le schéma définit `tenants.primary_color` et pas de colonne couleur sur `sites`, `schema.sql:29,64-73`). Un fallback masque l'échec PostgREST et affiche quand même "Entreprise mise à jour ✓". `js/branding.js:17,28` lit `primary_color`, donc même en cas de succès la couleur ne serait jamais utilisée pour le thème réel.
+   - **site_id** : la liaison `profiles.site_id → sites.id` fonctionne, mais les requêtes de résolution de nom utilisent `select=id,nom` alors que la colonne réelle est `sites.name` (`superadmin.html:584,727,883-884` vs `schema.sql:68`). Erreurs PostgREST avalées par `.catch(()=>[])` → colonne "Site" toujours à `—`, menu déroulant d'assignation de site toujours vide dans le modal d'ajout d'utilisateur.
+   - **Statut abonnement** : correctement branché, cohérent avec `stripe-webhook.js:141,163,173,180,191-194`. Seule lacune (pas un bug) : pas d'action superadmin pour forcer manuellement un statut, seulement `extendTrial()` (`superadmin.html:1248-1275`).
+
+8. **Branding "Restalliance" en dur — À FAIRE**
+   Seule occurrence dans tout le repo : `js/app-dashboard.js:8889-8914`, vue superadmin **legacy** dupliquée dans `dashboard.html` (`renderSuperAdmin()`, distincte de `superadmin.html`). L'identifiant technique `co_restalliance` (variable `restalliance`) est utilisé comme tenant de secours quand Supabase ne renvoie rien — résidu client réel codé en dur, à généraliser (`co_default` ou UUID) et idéalement à fusionner avec `superadmin.html`.
+
+9. **Mur post-inscription (paywall) — FAIT, avec réserve connue**
+   `js/subscriptionguard.js` chargé après `authguard.js` sur `cuisine.html:33`/`dashboard.html:29`, redirige vers `paywall.html?reason=...` si `checkStatus()` (`:73-84`) refuse. Mécanisme complet et fonctionnel côté UI, mais **volontairement fail-open** (pas de tenantId/token → passe, pas de ligne subscriptions → passe, erreur réseau → passe, `:107,122-126,140-143`) — cohérent avec l'offline-first mais voir Audit §Sécurité 4 pour l'absence de filet serveur.
+
+### Sécurité
+
+1. **Isolation multi-tenant du proxy admin — À FAIRE**
+   `netlify/functions/admin-proxy.js` autorise `ALLOWED_ROLES = ['super_admin','siege','directeur']` (`:24`) — pas seulement `super_admin`. Le check de chemin (`:114-119`) n'est qu'une whitelist de préfixes (`/rest/v1/profiles`, `/rest/v1/tenants`, `/rest/v1/pms_records`, …) : **aucun filtrage sur `tenant_id`/`site_id`** n'est appliqué, et la requête part avec la clé `service_role` qui bypasse toutes les RLS (commentaire `:92`). Un `directeur` ou `siege` du tenant A peut appeler la fonction avec un `tenant_id`/`site_id` d'un autre tenant dans le path/query et lire/modifier ses données. Utilisé par `js/app-dashboard.js:437` et `superadmin.html:399`.
+
+2. **Bucket `pms-photos` public — À FAIRE**
+   `netlify/sql/schema.sql:456-465` : `insert into storage.buckets (id, name, public) values ('pms-photos','pms-photos', true)` + policy de lecture publique sans restriction `to authenticated`. Le client génère des URLs publiques directes (`js/supabaseservice.js:208`, `js/app-cuisine.js:219`), chemin prévisible `${siteId}/${enrType}/${date}/${key}_${qShort}.jpg` (`supabaseservice.js:233`). Toute photo HACCP est accessible sans authentification à qui devine/connaît l'URL.
+
+3. **XSS noms admin — PARTIEL**
+   La majorité passe par `escH()`/un `_esc()` local correct, mais :
+   - `superadmin.html:505` — `co.color` et `initials` (dérivé de `co.name`) injectés **sans échappement** dans un attribut `style` (contrairement à la ligne 466 voisine qui échappe bien).
+   - `superadmin.html:511` — le `_esc()` local (`:1031-1033`) n'échappe pas l'apostrophe, contrairement à `escH()` de `js/utils.js:9` — `co.name` (saisi au signup tenant) avec une apostrophe casse le contexte JS d'un attribut `onclick` → XSS stockée exploitable.
+   - `js/app-dashboard.js:901,906,936,949,951,1034,1042,1054` — options de `<select>` construites par concaténation avec `t.name`/`s.name`/`s.code` **sans `escH()`**, alors que 147 autres endroits du même fichier l'utilisent correctement.
+
+4. **Paywall contournable via `localStorage` — À FAIRE**
+   `js/subscriptionguard.js` est un contrôle **purement client** : lit rôle/tenant depuis `localStorage` (falsifiable, `:31-52`), cache le résultat 1h, et est **fail-open** de façon assumée et commentée (`:118,141-142` : "erreur réseau → on laisse l'utilisateur accéder"). Aucune policy RLS ne référence `subscriptions.status`/`trial_ends_at` (vérifié sur toutes les policies de `schema.sql:347-391` et au-delà — elles ne filtrent que sur `tenant_id`/`site_id`/`role`). Un abonnement expiré n'empêche donc pas l'accès à l'API Supabase REST directe (JWT valide) — le blocage n'existe que dans l'UI.
+
+### Légal
+
+1. **Mentions légales complètes — À FAIRE**
+   `mentions-legales.html` (72 lignes) : **SIRET/SIREN absent**, **adresse postale de l'éditeur absente**, **directeur de publication absent**, **forme juridique/capital social absents** (`:48`, "Raison sociale : HACC.PRO" seul). Hébergeur **présent et correct** (`:54`, Netlify + Supabase). Contact **présent** (`contact@hacc.pro`, `:49,60,69`). Aucun placeholder visible type "[À compléter]" — les champs sont simplement absents, ce qui ne satisfait pas l'art. 6-III LCEN.
+
+2. **Rétention 30 jours vs 5 ans — PARTIEL**
+   Pas de contradiction textuelle directe "30 jours" vs "5 ans" entre `cgu.html:79` et `politique-confidentialite.html:110,215` — les deux s'accordent sur **30 jours** après résiliation pour les données HACCP métier (facturation → 10 ans, analytics → 2 ans, exceptions cohérentes). **Incohérence réelle trouvée ailleurs** : `faq/index.html:485` affirme que HACC.PRO "archive automatiquement toutes les données pendant au moins **3 ans**", ce qui contredit frontalement la suppression à 30 jours des CGU/Polconf. Par ailleurs, **aucun des deux documents légaux ne mentionne la durée réglementaire de conservation des registres HACCP** (les propres guides du site citent 5 ans pour les produits secs, `guides/tracabilite-alimentaire.html:47,285,352`) ni comment l'utilisateur doit archiver ses données avant suppression à J+30 pour rester conforme à ses propres obligations.
+
+3. **DPA — À FAIRE**
+   Aucun document DPA/accord de sous-traitance dans le repo, ni en pièce jointe ni en lien référencé. `politique-confidentialite.html:143-173` liste bien les sous-traitants (Supabase, Netlify, Stripe, Resend) et affirme ligne 175 que "des contrats de sous-traitance conformes au RGPD sont conclus" — mais c'est une déclaration non sourcée, aucun document n'est produit ni accessible.
+
+### Fonctionnalités
+
+1. **Purge guidée — PARTIEL**
+   Fonctionnalité réelle (export JSON conforme CE 178/2002, purge miniatures >6 mois, alerte proactive `purgeCheckAlerte()` `:15687`) mais **pas un wizard séquencé** : panneau de 4 boutons indépendants (`purgeCheckStatus()` `:15600`, `purgeExportJSON()` `:15628`, `purgeMiniatures()` `:15658`, + `resetCompleteLocal()` séparé), actionnables dans n'importe quel ordre.
+
+2. **Fiche température distribution unifiée — FAIT** (avec coexistence legacy)
+   Système unifié réel et paramétrable par service (`enr_distrib_{svcId}`, `js/app-cuisine.js:7031-7130`, `getDistribServices()` `:6727`). Les anciennes fiches ENR14/15/16 restent en parallèle pour rétro-compatibilité (`:3442-3459`, `:8644`).
+
+3. **Toggle canicule — FAIT**
+   Toggle réel des deux côtés : dashboard (`toggleCanicule()` `js/app-dashboard.js:1285`, bulk `setCaniculeBulk()` `:1248`) et cuisine (`caniculeActive()` `js/app-cuisine.js:3662`, poll 10 min `checkCaniculeMode()` `:3664`), avec bascule UI réelle 2↔3 relevés obligatoires (`renderENR20()` `:3971-4046`) et NC auto si hors seuil.
+
+4. **Messagerie tablette — PARTIEL**
+   Pas de chat libre bidirectionnel. Système d'alertes broadcast à sens unique avec accusé de réception structuré : `haccp-hub.mjs` (types `ALERT`/`ACK`, `:280-698`) pousse une alerte, la tablette répond via boutons prédéfinis (`showTabletRecallModal`, `js/app-cuisine.js:354-385`) + `acknowledgeTabletAlert()` (`:152`).
+
+5. **Historique refroidissement (ENR01) — FAIT**
+   `renderENR01Histo()` (`js/app-cuisine.js:3163-3188`) affiche l'historique complet trié/groupé avec badges de statut et de liaison traçabilité. Côté dashboard, filtrable via `renderSaisies()`/`_setEnrFilter()` (`js/app-dashboard.js:5083,5157`).
+
+6. **Workflow NC / actions correctives — FAIT**
+   Bout en bout, pas un schéma mort : création auto (`autoCreateNC()` `:2639`), catalogue chargé depuis `corrective_actions`/`nc_action_mapping` SQL, assignation (`:2308-2309,5374-5378`), clôture (`nc30cf()` `:5354`). Dashboard : gestion catalogue (`loadAdminCorrectiveData()` `js/app-dashboard.js:2005`) + vue filtrable (`renderNC()` `:5650-5739`).
+
+7. **Import Excel/CSV utilisateurs — À FAIRE (absent)**
+   Aucune fonction `importUsers`/`importCsv`/`importExcel` n'existe. Les seuls `FileReader` du dashboard/onboarding servent à des aperçus d'image (logo, photo d'alerte). Aucune fonction Netlify d'import en masse. Création de comptes uniquement un par un via formulaire (`js/app-dashboard.js:3386`).
+
+8. **Menus PMS dashboard — À FAIRE (systèmes disjoints)**
+   Zéro résultat pour "menu" dans `app-pms.js`/`pms-setup.html`, et zéro lien fonctionnel réciproque (seule mention isolée de `pms_records` comme source de données générique, `js/app-menu-dashboard.js:14`). Le système de menus et la génération PMS sont deux systèmes complètement séparés.
+
+---
+
+## 🎯 Chantiers restants, classés par priorité
+
+**P0 — Sécurité, à traiter avant tout nouveau développement produit :**
+1. Restreindre `admin-proxy.js` à `super_admin` uniquement, ou ajouter un filtrage explicite `tenant_id`/`site_id` cohérent avec l'appelant (isolation multi-tenant cassée, Audit Sécurité §1).
+2. Passer le bucket `pms-photos` en privé + URLs signées (photos HACCP actuellement publiques sans auth, Audit Sécurité §2).
+3. Corriger les XSS non échappées (`superadmin.html:505,511`, `js/app-dashboard.js` options `<select>`) — passer partout par `escH()` (Audit Sécurité §3).
+4. Décider explicitement si le paywall doit avoir un filet serveur (RLS sur `subscriptions.status`) ou rester UI-only assumé — actuellement contournable sans que ce soit documenté comme acceptable (Audit Sécurité §4).
+
+**P1 — Bugs qui cassent des parcours utilisateurs réels :**
+5. Fiabiliser le flux d'inscription/onboarding : unifier les 3 chemins de création tenant (`app-signup.js`, `app-login.js`→`signup-setup.js`, `app-onboarding.js`→`provision-tenant.js`), corriger l'insert client bloqué par RLS dans `app-signup.js:289-296`, et le court-circuit du trigger `handle_new_user()` qui empêche l'onboarding de se déclencher au login normal (Audit Bugs §6).
+6. Corriger les color pickers et la résolution de nom de site dans `superadmin.html` (colonnes `color`/`nom` inexistantes vs `primary_color`/`name` réelles) — actuellement un no-op silencieux qui affiche un faux succès (Audit Bugs §7).
+7. Câbler `appBeep()`/vibration sur `autoCreateNC()` pour toutes les NC, pas seulement les 2 cas de dépassement de minuterie (Audit Bugs §5).
+8. Corriger le garde-fou de `doExportXLSX()` pour qu'il vérifie les données de la période sélectionnée, pas "toutes périodes confondues" (Audit Bugs §3).
+9. Retirer l'identifiant en dur `co_restalliance` de la vue superadmin legacy dans `app-dashboard.js:8889-8914` (Audit Bugs §8).
+10. Investiguer/reproduire le 403 RLS sur enr19 en prod (non reproductible depuis le code seul) — vérifier si `fix-pms-records-rls-site-id.sql` est réellement appliqué en base (Audit Bugs §1).
+
+**P2 — Conformité légale (risque juridique, pas de deadline technique) :**
+11. Compléter `mentions-legales.html` : SIRET, adresse, directeur de publication, forme juridique/capital (Audit Légal §1).
+12. Résoudre l'incohérence 30 jours (CGU/Polconf) vs 3 ans (FAQ) sur la rétention des données, et documenter la durée réglementaire de conservation HACCP + le parcours d'export avant suppression (Audit Légal §2).
+13. Rédiger et publier un DPA réel, référencé depuis la politique de confidentialité (Audit Légal §3).
+
+**P3 — Fonctionnalités incomplètes ou manquantes (roadmap produit) :**
+14. Import Excel/CSV en masse des utilisateurs (absent, Audit Fonctionnalités §7).
+15. Intégration menus ↔ PMS dashboard (actuellement disjoints, Audit Fonctionnalités §8).
+16. Purge guidée sous forme de wizard séquencé plutôt que boutons indépendants (Audit Fonctionnalités §1).
+17. Vraie messagerie bidirectionnelle tablette ↔ dashboard, au-delà du système d'alertes à sens unique actuel (Audit Fonctionnalités §4).
