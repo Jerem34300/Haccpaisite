@@ -273,7 +273,9 @@ async function doSignup(){
       if(!token){ _showSuccessEmailConfirm(); return; }
     }
 
-    // Confirmation email requise
+    // Confirmation email requise (_showSuccessEmailConfirm persiste
+    // haccpro_pending_signup, relu par _completeSignupSetup() dans
+    // app-login.js après le clic sur le lien de confirmation)
     if(isPending){
       _showSuccessEmailConfirm();
       return;
@@ -283,60 +285,33 @@ async function doSignup(){
 
     const fullName = (_data.firstName + ' ' + _data.lastName).trim() || _data.company;
 
-    // 2. Créer le tenant
+    // 2-4. Créer tenant + profil + abonnement via le chemin serveur robuste
+    // (netlify/functions/signup-setup.js, service_role) — même fonction que
+    // _completeSignupSetup() dans app-login.js. L'ancien insert client direct
+    // sur /rest/v1/tenants était bloqué par la RLS tenants_admin_write (un
+    // utilisateur tout juste créé n'a ni tenant ni rôle admin) et échouait
+    // silencieusement (catch vide) : le rôle restait 'directeur' en dur côté
+    // client sans qu'aucun tenant/profil ne soit réellement créé.
     let tenantId = null;
+    let assignedRole = _data.plan === 'solo' ? 'cuisinier' : 'siege';
     try {
-      const r2 = await fetch(`${_SU}/rest/v1/tenants`, {
+      const r2 = await fetch('/.netlify/functions/signup-setup', {
         method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_SK,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=representation'
-        },
-        body:JSON.stringify({ name:_data.company, type:_data.type, primary_color:_data.couleur })
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ userJwt:token, company:_data.company, type:_data.type, plan:_data.plan })
       });
       if(r2.ok){
-        const tenants = await r2.json();
-        tenantId = Array.isArray(tenants) ? tenants[0]?.id : tenants?.id;
+        const d2 = await r2.json();
+        tenantId = d2.tenantId || null;
+        assignedRole = d2.role || assignedRole;
+      } else {
+        console.error('signup-setup:', r2.status, await r2.text().catch(()=>''));
       }
-    } catch(e){ /* tenant creation may be handled by DB trigger */ }
-
-    // 3. Créer/mettre à jour le profil
-    if(tenantId){
-      await fetch(`${_SU}/rest/v1/profiles`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_SK,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=minimal,resolution=merge-duplicates'
-        },
-        body:JSON.stringify({
-          id:userId, tenant_id:tenantId,
-          role:'directeur', full_name:fullName
-        })
-      }).catch(()=>{});
-
-      // 4. Créer l'abonnement (essai)
-      const planPrices = { solo:29, multi:49, enterprise:0 };
-      const trialEnd = new Date(Date.now() + 14*24*60*60*1000).toISOString();
-      await fetch(`${_SU}/rest/v1/subscriptions`, {
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json','apikey':_SK,
-          'Authorization':`Bearer ${token}`,
-          'Prefer':'return=minimal'
-        },
-        body:JSON.stringify({
-          tenant_id:tenantId, plan:_data.plan,
-          price_per_month:planPrices[_data.plan] ?? 49,
-          status:'trial', trial_ends_at:trialEnd
-        })
-      }).catch(()=>{});
-    }
+    } catch(e){ console.error('signup-setup:', e); }
 
     // 5. Sauvegarder la session
     localStorage.setItem('haccpro_session', JSON.stringify({
-      token, userId, role:'directeur',
+      token, userId, role:assignedRole,
       tenantId, fullName, plan:_data.plan
     }));
     localStorage.setItem('haccpro_signup_data', JSON.stringify({

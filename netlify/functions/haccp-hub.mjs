@@ -315,7 +315,10 @@ async function uploadToStorage(token, { bucket, path, dataUrl }) {
       body: bytes,
     });
     if (!res.ok) return null;
-    return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${fullPath}`;
+    // Bucket pms-photos privé : on retourne le chemin de stockage, pas une
+    // URL publique — la résolution en URL signée se fait côté client à
+    // l'affichage (SupaEngine.getSignedPhotoUrl(), js/supabaseservice.js).
+    return fullPath;
   } catch (_) { return null; }
 }
 

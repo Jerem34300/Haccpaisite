@@ -230,12 +230,41 @@ as $$
   );
 $$;
 
+-- Filet serveur paywall : un tenant sans abonnement actif (ou en essai
+-- expiré) ne peut plus écrire de nouvelles données HACCP, même avec un
+-- JWT valide et en contournant subscriptionguard.js côté client.
+-- Fail-open volontaire (renvoie true) uniquement quand aucune ligne
+-- subscriptions n'existe pour ce tenant — cohérent avec le comportement
+-- fail-open déjà documenté de subscriptionguard.js pour ce même cas
+-- (onboarding pas encore terminé). Une erreur réseau côté client reste
+-- fail-open dans l'UI ; ce filet ne couvre que les statuts connus en base.
+create or replace function public.tenant_subscription_active(p_tenant_id uuid)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select coalesce(
+    (
+      select case
+        when s.status = 'active'  then true
+        when s.status = 'trial'   then (s.trial_ends_at is null or s.trial_ends_at > now())
+        else false
+      end
+      from public.subscriptions s
+      where s.tenant_id = p_tenant_id
+      order by s.created_at desc
+      limit 1
+    ),
+    true
+  );
+$$;
+
 grant execute on function public.current_role_text() to authenticated;
 grant execute on function public.current_tenant_id() to authenticated;
 grant execute on function public.current_site_id()   to authenticated;
 grant execute on function public.current_site_code() to authenticated;
 grant execute on function public.is_admin()          to authenticated;
 grant execute on function public.is_super_admin()    to authenticated;
+grant execute on function public.tenant_subscription_active(uuid) to authenticated;
 
 -- =============================================================
 -- 9) RLS
@@ -360,15 +389,22 @@ create policy pms_records_select on public.pms_records
     )
   );
 
--- Écriture : cuisinier sur son site ; admins sur leur tenant
+-- Écriture : cuisinier sur son site ; admins sur leur tenant.
+-- Filet paywall : bloqué si l'abonnement du tenant n'est plus actif
+-- (super_admin toujours exempté — support/maintenance interne).
 drop policy if exists pms_records_insert on public.pms_records;
 create policy pms_records_insert on public.pms_records
   for insert to authenticated
   with check (
     public.is_super_admin()
-    or ((tenant_id)::text = (public.current_tenant_id())::text and public.is_admin())
-    or (upper(site_id) = public.current_site_code()
-        and (tenant_id)::text = (public.current_tenant_id())::text)
+    or (
+      public.tenant_subscription_active(tenant_id)
+      and (
+        ((tenant_id)::text = (public.current_tenant_id())::text and public.is_admin())
+        or (upper(site_id) = public.current_site_code()
+            and (tenant_id)::text = (public.current_tenant_id())::text)
+      )
+    )
   );
 
 drop policy if exists pms_records_update on public.pms_records;
@@ -381,8 +417,13 @@ create policy pms_records_update on public.pms_records
   )
   with check (
     public.is_super_admin()
-    or (tenant_id = public.current_tenant_id() and public.is_admin())
-    or (upper(site_id) = public.current_site_code())
+    or (
+      public.tenant_subscription_active(tenant_id)
+      and (
+        (tenant_id = public.current_tenant_id() and public.is_admin())
+        or (upper(site_id) = public.current_site_code())
+      )
+    )
   );
 
 drop policy if exists pms_records_delete on public.pms_records;
@@ -453,15 +494,20 @@ create policy gmo_write on public.gmo
   );
 
 -- =============================================================
--- 10) STORAGE — bucket pms-photos (public en lecture)
+-- 10) STORAGE — bucket pms-photos (privé — lecture authentifiée uniquement)
+--     Les photos HACCP (réception, plats témoins, NC, alertes) contiennent
+--     potentiellement des données sensibles/identifiantes ; le bucket est
+--     privé et la lecture nécessite une URL signée générée à la demande
+--     par un utilisateur authentifié (js/supabaseservice.js:getSignedPhotoUrl).
 -- =============================================================
 insert into storage.buckets (id, name, public)
-values ('pms-photos', 'pms-photos', true)
+values ('pms-photos', 'pms-photos', false)
 on conflict (id) do update set public = excluded.public;
 
 drop policy if exists pms_photos_public_read on storage.objects;
-create policy pms_photos_public_read on storage.objects
-  for select
+drop policy if exists pms_photos_auth_read on storage.objects;
+create policy pms_photos_auth_read on storage.objects
+  for select to authenticated
   using (bucket_id = 'pms-photos');
 
 drop policy if exists pms_photos_auth_insert on storage.objects;

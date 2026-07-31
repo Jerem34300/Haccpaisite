@@ -428,6 +428,66 @@ async function supa(method,path,body,anon=false,extraHeaders={}){
   return data||[];
 }
 async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${query}`,null);}
+
+// ── Résolution d'URL signée pms-photos (bucket privé) ──
+// dashboard.html ne charge pas js/supabaseservice.js (page-per-app, session
+// et client Supabase distincts de cuisine.html) : implémentation locale
+// équivalente à SupaEngine.getSignedPhotoUrl(), réutilisant supa() pour
+// l'auth/le refresh de token déjà gérés par ce fichier.
+const _photoSignCache = new Map(); // path -> { url, expiresAt }
+function _pmsPhotoPath(u) {
+  if (!u || typeof u !== 'string') return '';
+  const m = u.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/pms-photos\/([^?]+)/);
+  if (m) return decodeURIComponent(m[1]);
+  if (/^data:/.test(u) || /^https?:\/\//.test(u)) return ''; // base64 local ou URL externe non reconnue
+  return u.replace(/^\/+/, '');
+}
+async function getSignedPhotoUrl(u, expiresIn) {
+  expiresIn = expiresIn || 3600;
+  const path = _pmsPhotoPath(u);
+  if (!path) return '';
+  const cached = _photoSignCache.get(path);
+  if (cached && cached.expiresAt > Date.now()) return cached.url;
+  try {
+    const d = await supa('POST', '/storage/v1/object/sign/pms-photos/' + path, { expiresIn });
+    if (!d || !d.signedURL) return '';
+    const full = d.signedURL.startsWith('http') ? d.signedURL : `${SUPA_URL}${d.signedURL}`;
+    _photoSignCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
+    return full;
+  } catch(e) { console.warn('[getSignedPhotoUrl]', e.message); return ''; }
+}
+
+// Hydratation paresseuse des <img data-psrc="…"> (chemin/URL pms-photos à
+// résoudre) — les data: URLs (signatures, base64 local) passent directement
+// en src, le reste est résolu via getSignedPhotoUrl() ci-dessus.
+function _hydratePhotoImg(el) {
+  if (!el || el.dataset.psrcDone) return;
+  el.dataset.psrcDone = '1';
+  const raw = el.dataset.psrc;
+  if (!raw) return;
+  if (raw.startsWith('data:image/')) { el.src = raw; return; }
+  getSignedPhotoUrl(raw).then(function(signed){
+    if (signed) el.src = signed; else el.style.display = 'none';
+  }).catch(function(){ el.style.display = 'none'; });
+}
+(function initPhotoLazyHydration(){
+  function scan(root){
+    if (!root) return;
+    if (root.nodeType === 1 && root.matches && root.matches('img[data-psrc]:not([data-psrc-done])')) _hydratePhotoImg(root);
+    if (root.querySelectorAll) root.querySelectorAll('img[data-psrc]:not([data-psrc-done])').forEach(_hydratePhotoImg);
+  }
+  function start(){
+    scan(document);
+    const mo = new MutationObserver(function(mutations){
+      mutations.forEach(function(m){
+        m.addedNodes.forEach(function(n){ if (n.nodeType === 1) scan(n); });
+      });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+  if (document.body) start(); else window.addEventListener('DOMContentLoaded', start);
+})();
+
 async function supaAdmin(method,path,body,extraHeaders={}){
   // Proxy sécurisé — la clé service_role ne quitte jamais le serveur Netlify
   const _ac = new AbortController();
@@ -898,12 +958,12 @@ function populateFilters(){
     const terrSel=document.getElementById('filter-territoire');
     if(terrSel){
       terrSel.innerHTML='<option value="">Tous les territoires</option>';
-      _territories.forEach(t=>terrSel.innerHTML+=`<option value="${t.id}">${t.name}</option>`);
+      _territories.forEach(t=>terrSel.innerHTML+=`<option value="${escH(t.id)}">${escH(t.name)}</option>`);
     }
     const sectSel=document.getElementById('filter-secteur');
     if(sectSel){
       sectSel.innerHTML='<option value="">Tous les secteurs</option>';
-      _sectors.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+      _sectors.forEach(s=>sectSel.innerHTML+=`<option value="${escH(s.id)}">${escH(s.name)}</option>`);
     }
   } else {
     // Masquer territoire et secteur pour chef_secteur
@@ -933,7 +993,7 @@ function cascadeFilters(unknownCodes){
   if(sectSel&&terrId){
     const visibleSects=_sectors.filter(s=>s.territory_id===terrId);
     sectSel.innerHTML='<option value="">Tous les secteurs</option>';
-    visibleSects.forEach(s=>sectSel.innerHTML+=`<option value="${s.id}">${s.name}</option>`);
+    visibleSects.forEach(s=>sectSel.innerHTML+=`<option value="${escH(s.id)}">${escH(s.name)}</option>`);
   }
   // Filtrer les sites selon secteur (ou territoire)
   let visibleSites=_sites;
@@ -946,9 +1006,9 @@ function cascadeFilters(unknownCodes){
   [document.getElementById('filter-site'),document.getElementById('filter-site-m')].forEach(el=>{
     if(!el)return;
     el.innerHTML='<option value="">Tous les sites</option>';
-    visibleSites.forEach(s=>el.innerHTML+=`<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s=>el.innerHTML+=`<option value="${escH(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     // Ajouter sites inconnus (code seul, pas encore dans la table sites)
-    extra.forEach(code=>el.innerHTML+=`<option value="${code}">⚠️ ${code} (non enregistré)</option>`);
+    extra.forEach(code=>el.innerHTML+=`<option value="${escH(code)}">⚠️ ${escH(code)} (non enregistré)</option>`);
   });
 }
 
@@ -1031,7 +1091,7 @@ function onComboTerrChange() {
   if (sectSel) {
     const visibleSects = terrId ? _sectors.filter(s=>s.territory_id===terrId) : _sectors;
     sectSel.innerHTML = '<option value="">Tous les secteurs</option>';
-    visibleSects.forEach(s => sectSel.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+    visibleSects.forEach(s => sectSel.innerHTML += `<option value="${escH(s.id)}">${escH(s.name)}</option>`);
     sectSel.value = '';
   }
   if (siteSel) {
@@ -1039,7 +1099,7 @@ function onComboTerrChange() {
       ? _sites.filter(s => { const sec=_sectors.find(x=>x.id===s.sector_id); return sec?.territory_id===terrId; })
       : _sites;
     siteSel.innerHTML = '<option value="">Tous les sites</option>';
-    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${escH(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     siteSel.value = '';
   }
   updateComboLabel();
@@ -1051,7 +1111,7 @@ function onComboSectChange() {
   if (siteSel) {
     const visibleSites = sectId ? _sites.filter(s=>s.sector_id===sectId) : _sites;
     siteSel.innerHTML = '<option value="">Tous les sites</option>';
-    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${s.code}">${s.name} (${s.code})</option>`);
+    visibleSites.forEach(s => siteSel.innerHTML += `<option value="${escH(s.code)}">${escH(s.name)} (${escH(s.code)})</option>`);
     siteSel.value = '';
   }
   updateComboLabel();
@@ -2766,7 +2826,7 @@ function _renderAlertCard(a) {
   if(photosThumbs.length){
     const cols = Math.min(4, photosThumbs.length) + (allPhotos.length>4 ? 1 : 0);
     photoHtml = `<div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;margin-top:8px">
-      ${photosThumbs.map(p=>{const u=escAttr(p.photo_url||p.photo_data_url);return `<img src="${u}" onclick="event.stopPropagation();openLightbox('${u}')" style="width:100%;height:72px;object-fit:cover;border-radius:8px;border:1px solid #c7d2fe;cursor:pointer" onerror="this.style.display='none'">`;}).join('')}
+      ${photosThumbs.map(p=>{const u=escAttr(p.photo_url||p.photo_data_url);return `<img data-psrc="${u}" onclick="event.stopPropagation();openLightbox('${u}')" style="width:100%;height:72px;object-fit:cover;border-radius:8px;border:1px solid #c7d2fe;cursor:pointer" onerror="this.style.display='none'">`;}).join('')}
       ${allPhotos.length>4 ? `<div onclick="event.stopPropagation();openAlertDetail('${escAttr(a.id)}','photos')" style="height:72px;background:#1e3a8a;color:#fff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;cursor:pointer">+${allPhotos.length-4}</div>` : ''}
     </div>`;
   }
@@ -2960,7 +3020,7 @@ function _renderAlertDetailModal() {
         const dt  = k.acked_at ? new Date(k.acked_at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
         const photoUrl = k.photo_url||k.photo_data_url;
         return `<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:${bg};border:1px solid ${col}33;border-radius:10px">
-          ${photoUrl?`<img src="${escAttr(photoUrl)}" onclick="openLightbox('${escAttr(photoUrl)}')" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #c7d2fe;cursor:pointer;flex-shrink:0" onerror="this.style.display='none'">`:''}
+          ${photoUrl?`<img data-psrc="${escAttr(photoUrl)}" onclick="openLightbox('${escAttr(photoUrl)}')" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #c7d2fe;cursor:pointer;flex-shrink:0" onerror="this.style.display='none'">`:''}
           <div style="flex:1;min-width:0">
             <div style="display:flex;justify-content:space-between;gap:6px;align-items:baseline;flex-wrap:wrap">
               <div style="font-size:.76rem;font-weight:800;color:${col}">${escH(k.site_code||'—')} · ${lbl}</div>
@@ -3005,7 +3065,7 @@ function _renderAlertDetailModal() {
         const r = k.response||'ok';
         const col = _RESP_COLORS[r]||'#1e3a8a';
         return `<div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-          <img src="${escAttr(u)}" onclick="openLightbox('${escAttr(u)}')" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;display:block" onerror="this.style.display='none'">
+          <img data-psrc="${escAttr(u)}" onclick="openLightbox('${escAttr(u)}')" style="width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer;display:block" onerror="this.style.display='none'">
           <div style="padding:6px 8px">
             <div style="font-size:.68rem;font-weight:800;color:${col}">${escH(k.site_code||'—')}</div>
             ${k.note?`<div style="font-size:.62rem;color:#334155;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${escH(k.note)}</div>`:''}
@@ -3262,7 +3322,8 @@ async function sendTabletAlert(){
     const alertId=_supaAlertId();
     const now=new Date().toISOString();
     const tenantId=_profile?.tenant_id||null;
-    // Upload photo si présente
+    // Upload photo si présente → on stocke le chemin (bucket privé), pas
+    // une URL publique ; la résolution se fait à la lecture via getSignedPhotoUrl()
     let imageUrl='';
     if(_alertDraftImageDataUrl&&_alertDraftImageDataUrl.startsWith('data:image/')){
       try{
@@ -3272,7 +3333,7 @@ async function sendTabletAlert(){
         const path=`alerts/${tenantId}/${alertId}.${ext}`;
         const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
         await supa('POST',`/storage/v1/object/pms-photos/${path}`,bytes,false,{'Content-Type':mime,'x-upsert':'true'});
-        imageUrl=`${SUPA_URL||_SUPA_URL_DEFAULT}/storage/v1/object/public/pms-photos/${path}`;
+        imageUrl=path;
       }catch(imgE){console.warn('[alert img]',imgE);}
     }
     const alertData={id:alertId,tenant_id:tenantId,title:title||'Alerte retrait de lot',message,product_name,lot_number,product_dlc,image_url:imageUrl,site_codes:targetCodes,created_at:now,created_by:_profile?.id,created_by_name:_profile?.full_name||'',kind:'product_recall',closed_at:null,severity:'critical'};
@@ -4996,7 +5057,13 @@ async function clotureNCDash(recordId) {
     if(btn){btn.textContent='✅ Clôturer';btn.disabled=false;}
   }
 }
-function openLightbox(url){document.getElementById('lightbox-img').src=url;document.getElementById('lightbox').classList.add('open');}
+function _openLightboxResolved(url){
+  const img=document.getElementById('lightbox-img');
+  if (url && url.startsWith('data:image/')) { img.src = url; return; }
+  img.removeAttribute('src');
+  getSignedPhotoUrl(url).then(function(signed){ img.src = signed || url; }).catch(function(){ img.src = url; });
+}
+function openLightbox(url){_openLightboxResolved(url);document.getElementById('lightbox').classList.add('open');}
 function closeLightbox(){document.getElementById('lightbox').classList.remove('open');document.getElementById('lightbox-img').src='';}
 
 
@@ -5325,7 +5392,7 @@ function openDetail(id) {
       if (!url) return '';
       const lbl = (typeof PHOTO_LABELS!=='undefined'&&PHOTO_LABELS[k]) ? PHOTO_LABELS[k] : ('📷 '+k);
       const isnc = k==='photo_nc';
-      return `<div style="margin-bottom:10px"><div style="font-size:.66rem;font-weight:700;color:${isnc?'#dc2626':'var(--muted)'};margin-bottom:4px">${lbl}</div><img src="${url}" class="detail-photo" onclick="openLightbox('${url}')" loading="lazy" style="${isnc?'border:2px solid #fca5a5;border-radius:10px':''}" onerror="this.style.display='none'"></div>`;
+      return `<div style="margin-bottom:10px"><div style="font-size:.66rem;font-weight:700;color:${isnc?'#dc2626':'var(--muted)'};margin-bottom:4px">${lbl}</div><img data-psrc="${url}" class="detail-photo" onclick="openLightbox('${url}')" loading="lazy" style="${isnc?'border:2px solid #fca5a5;border-radius:10px':''}" onerror="this.style.display='none'"></div>`;
     }).join('');
     if (pHtml) body += `<div class="detail-section"><div class="detail-section-title">📷 Photos</div>${pHtml}</div>`;
   }
@@ -5454,7 +5521,7 @@ function renderRequestedPhotosSection(items){
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px">
         ${g.items.map(it=>`<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-          <img src="${escAttr(it.url)}" onclick="openLightbox('${escAttr(it.url)}')" style="width:100%;height:90px;object-fit:cover;cursor:pointer">
+          <img data-psrc="${escAttr(it.url)}" onclick="openLightbox('${escAttr(it.url)}')" style="width:100%;height:90px;object-fit:cover;cursor:pointer">
           <div style="padding:6px">
             <div style="font-size:.6rem;color:#1f2937;font-weight:700">${it.shotView==='detail'?'🔎 Détail':'🏠 De face'}</div>
             <div style="font-size:.58rem;color:#64748b">${escH(it.periodMode==='monthly' ? it.monthKey : it.weekKey)}</div>
@@ -5595,7 +5662,7 @@ function renderPhotos() {
               ' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.12)\'"'+ 
               ' onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+ 
               '<div style="position:relative">'+ 
-              '<img src="'+p.url+'" style="width:100%;height:'+imgH+';object-fit:'+( isSig?'contain':'cover')+';display:block;background:'+bgCard+'" loading="lazy"'+ 
+              '<img data-psrc="'+p.url+'" style="width:100%;height:'+imgH+';object-fit:'+( isSig?'contain':'cover')+';display:block;background:'+bgCard+'" loading="lazy"'+
               ' onerror="this.style.display=\'none\'" onclick="event.stopPropagation();openLightbox(\''+p.url+'\')">'+ 
               '<div style="position:absolute;top:5px;left:5px;background:'+lblBg+';color:#fff;font-size:.54rem;font-weight:800;padding:2px 5px;border-radius:7px">'+p.lbl+'</div>'+ 
               '</div>'+ 
@@ -6946,7 +7013,7 @@ function openPhotoFromRecord(id) {
 }
 
 function openLightbox(url) {
-  document.getElementById('lightbox-img').src = url;
+  _openLightboxResolved(url);
   document.getElementById('lightbox').classList.add('open');
 }
 function closeLightbox() {
@@ -8078,7 +8145,7 @@ function _renderCardsStandard(cfg, recs) {
       catch{if(typeof d[pf]==='string'&&d[pf].startsWith('http'))photoUrls.push(d[pf]);}
     });
     if(photoUrls.length){
-      photosHtml='<div class="rec-photos">'+photoUrls.map(u=>`<img src="${u}" class="rec-photo-thumb" onclick="event.stopPropagation();openLightbox('${u}')" loading="lazy" onerror="this.style.display='none'">`).join('')+'</div>';
+      photosHtml='<div class="rec-photos">'+photoUrls.map(u=>`<img data-psrc="${u}" class="rec-photo-thumb" onclick="event.stopPropagation();openLightbox('${u}')" loading="lazy" onerror="this.style.display='none'">`).join('')+'</div>';
     }
 
     // Pour nuisibles, la logique est inversée : presence='OUI' = NC, pas 'NON'

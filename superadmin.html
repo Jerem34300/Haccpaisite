@@ -502,7 +502,7 @@ function renderCompanyDetail() {
 
   document.getElementById('co-detail').innerHTML =
     '<div class="co-header">'
-      +'<div class="co-hd-avatar" style="background:'+(co.color||'var(--navy2)')+'">'+initials+'</div>'
+      +'<div class="co-hd-avatar" style="background:'+_esc(co.color||'var(--navy2)')+'">'+_esc(initials)+'</div>'
       +'<div><div class="co-hd-name">'+_esc(co.name||'—')+'</div>'
         +'<div class="co-hd-meta">Inscrit le '+since+'</div></div>'
       +'<div class="co-hd-right">'
@@ -1029,7 +1029,7 @@ function closeSidebar() {
 
 /* ── Helpers ── */
 function _esc(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 /* ══════════════════════════════════════════════════════════════
