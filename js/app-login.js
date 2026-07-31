@@ -79,15 +79,38 @@ async function doLogin() {
     const profiles = await pr.json();
     const profile  = profiles?.[0] || null;
 
-    // Premier login après confirmation email : profil pas encore créé
-    if(!profile){
+    // Deux cas à finaliser avant d'accéder à l'app :
+    //  - profil pas encore créé (rare : le trigger handle_new_user() en crée
+    //    un dès l'inscription Supabase Auth, avant toute action client) ;
+    //  - profil existant mais sans tenant_id (cas normal : le trigger crée
+    //    systématiquement un profil orphelin role='cuisinier'/tenant_id=NULL,
+    //    donc `!profile` est presque toujours faux et l'onboarding ne se
+    //    déclenchait jamais via un login manuel classique).
+    if(!profile || !profile.tenant_id){
       let pending = null;
       try { pending = JSON.parse(localStorage.getItem('haccpro_pending_signup') || 'null'); } catch(e){}
       if(pending){
         await _completeSignupSetup(data.access_token, data.refresh_token || '', data.user?.id, pending, url, key);
         return;
       }
-      throw new Error('Aucun profil trouvé. Contactez le support.');
+      if(!profile){
+        throw new Error('Aucun profil trouvé. Contactez le support.');
+      }
+      // Compte orphelin (profil créé par le trigger, onboarding jamais
+      // terminé) et aucune donnée d'inscription en attente localement
+      // (autre appareil/navigateur, cache vidé…) → reprendre l'onboarding
+      // plutôt que d'atterrir sur cuisine.html/dashboard.html avec un
+      // tenantId/siteId vides.
+      localStorage.setItem('haccpro_session', JSON.stringify({
+        token: data.access_token,
+        refreshToken: data.refresh_token || '',
+        userId: data.user?.id,
+        role: profile.role || 'cuisinier',
+        tenantId: null,
+        fullName: profile.full_name || '',
+      }));
+      window.location.href = 'onboarding.html';
+      return;
     }
 
     const role = profile.role || 'cuisinier';
