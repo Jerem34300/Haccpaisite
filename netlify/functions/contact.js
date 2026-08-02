@@ -40,7 +40,7 @@ exports.handler = async function(event) {
   const typeLabel  = typeLabels[type] || 'Non précisé';
   const now        = new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris' });
 
-  /* ── Email de notification interne → contact@hacc.pro ── */
+  /* ── Email de notification interne → jeremie.hacc.pro@gmail.com ── */
   const notifHtml = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"></head>
 <body style="margin:0;padding:0;background:#F7F2F7;font-family:'Helvetica Neue',Arial,sans-serif;">
 <div style="max-width:560px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.08);">
@@ -111,7 +111,7 @@ exports.handler = async function(event) {
   try {
     await sendViaResend(
       'HACC.PRO <bonjour@hacc.pro>',
-      'contact@hacc.pro',
+      'jeremie.hacc.pro@gmail.com',
       `[Contact] Message de ${name}`,
       notifHtml
     );

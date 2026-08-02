@@ -57,3 +57,54 @@
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+/* Offre de lancement (code HACCBETA) — masque automatiquement le bandeau et
+   les prix promo une fois les 20 rédemptions Stripe épuisées. Le HTML est
+   déjà rendu en état "offre active" par défaut : si l'appel échoue ou est
+   lent, rien ne change (fail-open), pas de flash de contenu. */
+(function(){
+  'use strict';
+  try{
+    function apply(active){
+      document.querySelectorAll('.beta-offer').forEach(function(el){
+        el.style.display = active ? '' : 'none';
+      });
+      document.querySelectorAll('.beta-fallback').forEach(function(el){
+        el.style.display = active ? 'none' : 'flex';
+      });
+    }
+    fetch('/.netlify/functions/beta-offer-status')
+      .then(function(r){ return r.ok ? r.json() : { active: true }; })
+      .then(function(data){ apply(!data || data.active !== false); })
+      .catch(function(){ /* offline / erreur réseau : on garde l'affichage par défaut */ });
+  }catch(e){}
+})();
+
+/* Apparition progressive des blocs au scroll — dégrade en gracieux si
+   IntersectionObserver est absent ou si l'utilisateur préfère moins d'animations. */
+(function(){
+  'use strict';
+  try{
+    function init(){
+      var els = document.querySelectorAll('.feature-card,.problem-card,.price-card,.testi-card,.how-step,.stat-card,.section-header');
+      if(!els.length) return;
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      els.forEach(function(el, i){
+        el.classList.add('reveal-init');
+        el.style.transitionDelay = (Math.min(i % 4, 3) * 80) + 'ms';
+      });
+      if(reduce || !('IntersectionObserver' in window)){
+        els.forEach(function(el){ el.classList.add('is-visible'); });
+        return;
+      }
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if(entry.isIntersecting){ entry.target.classList.add('is-visible'); io.unobserve(entry.target); }
+        });
+      }, { threshold:.15, rootMargin:'0px 0px -40px 0px' });
+      els.forEach(function(el){ io.observe(el); });
+    }
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  }catch(e){}
+})();

@@ -184,11 +184,21 @@
 
 /* ── Responsive : la jauge centrée sur mobile ── */
 @media (max-width:880px){
+  .hero{padding-top:56px}                    /* la règle desktop (104px) laissait un gros vide en haut sur mobile/tablette */
   .hero-visual{display:flex!important}      /* l'ancien mockup était masqué ; la jauge, elle, mérite d'être vue */
   .hero-gauge{margin:32px auto 0;max-width:380px}
   .hero::after{-webkit-mask-image:radial-gradient(ellipse 120% 50% at 50% 20%,#000,transparent 80%);mask-image:radial-gradient(ellipse 120% 50% at 50% 20%,#000,transparent 80%)}
+  .hero-ctas{flex-direction:column}
+  .btn-hero-primary,.btn-hero-secondary{width:100%;text-align:center}
 }
 @media (max-width:480px){
   .hero-gauge{padding:24px 20px 22px}
   .gauge-val{font-size:2.6rem}
+}
+
+/* ── Apparition au scroll ── */
+.reveal-init{opacity:0;transform:translateY(18px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+.reveal-init.is-visible{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){
+  .reveal-init{opacity:1!important;transform:none!important;transition:none!important}
 }
