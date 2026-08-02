@@ -18,15 +18,45 @@ let _supaAuth = null;
 let _supaAuthEmail = '';
 
 // ── Init ──────────────────────────────────────────────────────
+let _isOAuthSignup = false;
+
 (function init(){
-  const urlPlan = new URLSearchParams(location.search).get('plan');
+  const params = new URLSearchParams(location.search);
+  const urlPlan = params.get('plan');
   if(urlPlan && ['solo','multi','enterprise'].includes(urlPlan)){
     _data.plan = urlPlan;
     document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
     const card = document.getElementById('plan-'+urlPlan);
     if(card) card.classList.add('selected');
   }
+
+  // Mode OAuth : l'utilisateur a déjà un compte via Google/Apple/Microsoft
+  if(params.get('oauth') === 'true'){
+    try {
+      const od = JSON.parse(localStorage.getItem('haccpro_pending_oauth') || '{}');
+      if(od.token){
+        _isOAuthSignup = true;
+        _data.email     = od.email     || '';
+        _data.firstName = od.firstName || '';
+        _data.lastName  = od.lastName  || '';
+        _supaAuth      = { token: od.token, userId: od.userId, pending: false };
+        _supaAuthEmail = _data.email;
+        // Masquer l'étape 1 et afficher directement l'étape 2
+        _showStep(2);
+        // Afficher un bandeau de bienvenue
+        const sub = document.querySelector('#step-2 .step-sub');
+        if(sub) sub.textContent = 'Bienvenue' + (_data.firstName ? ' ' + _data.firstName : '') + ' — complétez votre profil pour activer votre essai.';
+      }
+    } catch(e){}
+  }
 })();
+
+// Redirige vers OAuth (depuis signup page)
+function doOAuthSignup(provider){
+  const callbackUrl = window.location.origin + '/login.html';
+  window.location.href = _SU + '/auth/v1/authorize?provider=' + provider
+    + '&redirect_to=' + encodeURIComponent(callbackUrl);
+}
 
 // ── Stepper navigation ────────────────────────────────────────
 function goStep(to){

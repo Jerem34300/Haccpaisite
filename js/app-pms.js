@@ -18,6 +18,15 @@ var _data = {
 var SECTIONS = 5;
 var _current = 1;
 
+/* Redirection post-PMS : cuisine.html pour plan solo, dashboard.html sinon */
+function _goNext() {
+  var plan = '';
+  try { plan = JSON.parse(localStorage.getItem('haccpro_session') || '{}').plan || ''; } catch(e) {}
+  if (!plan) { try { plan = JSON.parse(localStorage.getItem('haccpro_signup_data') || '{}').plan || ''; } catch(e) {} }
+  window.location.href = (plan === 'solo') ? 'cuisine.html' : 'dashboard.html';
+}
+window.pmsGoNext = _goNext;
+
 var ENC_TYPES = [
   { key: 'frigo_positif', label: 'Chambre froide positive',   icon: '❄️',  min: 0,   max: 4  },
   { key: 'frigo_negatif', label: 'Congélateur / CF négative', icon: '🧊',  min: -25, max: -18 },
@@ -280,8 +289,7 @@ window.generatePMS = async function() {
 
   } catch(err) {
     console.error('[PMS] generatePMS:', err);
-    // En cas d'erreur, on redirige quand même
-    window.location.href = 'dashboard.html';
+    _goNext();
   } finally {
     btn.disabled = false;
     label.style.display = '';

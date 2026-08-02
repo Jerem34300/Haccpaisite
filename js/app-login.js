@@ -324,43 +324,113 @@ async function _completeSignupSetup(token, refreshToken, userId, sd, url, key){
   window.location.href = 'onboarding.html';
 }
 
-// ── Callback hash Supabase (fallback si token passé dans l'URL) ─
+// ── Callback hash Supabase — gère email-confirm ET retour OAuth ─
 async function _handleEmailConfirmCallback(){
   const hash = window.location.hash.slice(1);
   if(!hash) return;
   const params = new URLSearchParams(hash);
-  if(params.get('type') !== 'signup' || !params.get('access_token')) return;
+  if(!params.get('access_token')) return;
 
   const token        = params.get('access_token');
   const refreshToken = params.get('refresh_token') || '';
+  const type         = params.get('type') || '';
   history.replaceState(null, '', window.location.pathname + window.location.search);
 
   const statusEl = document.getElementById('login-err');
-  if(statusEl){
-    statusEl.textContent    = 'Email confirmé — finalisation de votre compte…';
-    statusEl.style.display  = 'block';
-    statusEl.style.color    = '#166534';
-    statusEl.style.background = '#f0fdf4';
-    statusEl.style.border   = '1px solid #bbf7d0';
-  }
+  const _setStatus = (msg, ok) => {
+    if(!statusEl) return;
+    statusEl.textContent   = msg;
+    statusEl.style.display = 'block';
+    statusEl.style.color   = ok ? '#166534' : '#991b1b';
+    statusEl.style.background = ok ? '#f0fdf4' : '#fef2f2';
+    statusEl.style.border  = ok ? '1px solid #bbf7d0' : '1px solid #fecaca';
+  };
+  _setStatus('Connexion en cours…', true);
+
   try {
+    // 1. Récupérer les infos utilisateur
     const userRes = await fetch(`${_DEFAULT_URL}/auth/v1/user`, {
       headers:{ 'apikey':_DEFAULT_KEY, 'Authorization':`Bearer ${token}` }
     });
     const user = await userRes.json();
     if(!user.id) throw new Error('Utilisateur introuvable');
-    let sd = {};
-    try { sd = JSON.parse(localStorage.getItem('haccpro_pending_signup') || '{}'); } catch(e){}
-    await _completeSignupSetup(token, refreshToken, user.id, sd, _DEFAULT_URL, _DEFAULT_KEY);
+
+    // 2. Vérifier si un profil existe déjà
+    const pr = await fetch(
+      `${_DEFAULT_URL}/rest/v1/profiles?id=eq.${user.id}&select=role,tenant_id,site_id,full_name,plan&limit=1`,
+      { headers:{ 'apikey':_DEFAULT_KEY, 'Authorization':`Bearer ${token}`, 'Accept':'application/json' } }
+    );
+    const profiles = await pr.json();
+    const profile  = profiles?.[0] || null;
+
+    if(profile) {
+      // Utilisateur existant → rediriger selon le rôle
+      const role = profile.role || 'cuisinier';
+      const ROLES_DASHBOARD = ['super_admin','siege','directeur','chef_secteur'];
+      if(ROLES_DASHBOARD.includes(role)){
+        localStorage.setItem('haccpro_session', JSON.stringify({
+          token, refreshToken, userId:user.id,
+          role, tenantId:profile.tenant_id, fullName:profile.full_name
+        }));
+        window.location.href = 'dashboard.html';
+      } else {
+        let siteCode='', siteNom='';
+        if(profile.site_id){
+          try {
+            const sr = await fetch(`${_DEFAULT_URL}/rest/v1/sites?id=eq.${profile.site_id}&select=code,name&limit=1`,
+              { headers:{ 'apikey':_DEFAULT_KEY, 'Authorization':`Bearer ${token}`, 'Accept':'application/json' } });
+            const sites = await sr.json();
+            siteCode = sites?.[0]?.code || '';
+            siteNom  = sites?.[0]?.name || '';
+          } catch(e){}
+        }
+        const supaCfg = {
+          userToken:token, token, refreshToken,
+          userEmail:user.email, email:user.email,
+          siteId:siteCode, siteNom,
+          tenantId:profile.tenant_id||'',
+          userRole:role, role,
+          plan:profile.plan||'solo',
+          url:_DEFAULT_URL, anonKey:_DEFAULT_KEY
+        };
+        localStorage.setItem('haccpro_supa_cfg', JSON.stringify(supaCfg));
+        localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(supaCfg));
+        window.location.href = 'cuisine.html';
+      }
+      return;
+    }
+
+    // 3. Pas de profil → nouvel utilisateur
+    if(type === 'signup'){
+      // Confirmation d'email classique
+      let sd = {};
+      try { sd = JSON.parse(localStorage.getItem('haccpro_pending_signup') || '{}'); } catch(e){}
+      await _completeSignupSetup(token, refreshToken, user.id, sd, _DEFAULT_URL, _DEFAULT_KEY);
+    } else {
+      // Nouvel utilisateur OAuth → compléter le profil
+      const meta = user.user_metadata || {};
+      const fullName = meta.full_name || meta.name || '';
+      const parts = fullName.trim().split(' ');
+      localStorage.setItem('haccpro_pending_oauth', JSON.stringify({
+        token, refreshToken, userId:user.id,
+        email: user.email || '',
+        firstName: parts[0] || '',
+        lastName:  parts.slice(1).join(' ') || '',
+      }));
+      window.location.href = 'signup.html?oauth=true';
+    }
+
   } catch(e){
     console.error('_handleEmailConfirmCallback:', e);
-    if(statusEl){
-      statusEl.textContent    = 'Erreur lors de la finalisation. Connectez-vous ci-dessous.';
-      statusEl.style.color    = '#991b1b';
-      statusEl.style.background = '#fef2f2';
-      statusEl.style.border   = '1px solid #fecaca';
-    }
+    _setStatus('Erreur lors de la connexion. Essayez ci-dessous ou contactez le support.', false);
   }
+}
+
+// ── Connexion OAuth (Google / Apple / Microsoft) ──────────────
+function doOAuthLogin(provider) {
+  const callbackUrl = window.location.origin + '/login.html';
+  window.location.href = _DEFAULT_URL + '/auth/v1/authorize?provider=' + provider
+    + '&redirect_to=' + encodeURIComponent(callbackUrl);
 }
 
 loadCfg();
