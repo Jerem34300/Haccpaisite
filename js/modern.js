@@ -57,3 +57,32 @@
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+/* Apparition progressive des blocs au scroll — dégrade en gracieux si
+   IntersectionObserver est absent ou si l'utilisateur préfère moins d'animations. */
+(function(){
+  'use strict';
+  try{
+    function init(){
+      var els = document.querySelectorAll('.feature-card,.problem-card,.price-card,.testi-card,.how-step,.stat-card,.section-header');
+      if(!els.length) return;
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      els.forEach(function(el, i){
+        el.classList.add('reveal-init');
+        el.style.transitionDelay = (Math.min(i % 4, 3) * 80) + 'ms';
+      });
+      if(reduce || !('IntersectionObserver' in window)){
+        els.forEach(function(el){ el.classList.add('is-visible'); });
+        return;
+      }
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if(entry.isIntersecting){ entry.target.classList.add('is-visible'); io.unobserve(entry.target); }
+        });
+      }, { threshold:.15, rootMargin:'0px 0px -40px 0px' });
+      els.forEach(function(el){ io.observe(el); });
+    }
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  }catch(e){}
+})();
