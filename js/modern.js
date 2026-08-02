@@ -58,6 +58,28 @@
   else init();
 })();
 
+/* Offre de lancement (code HACCBETA) — masque automatiquement le bandeau et
+   les prix promo une fois les 20 rédemptions Stripe épuisées. Le HTML est
+   déjà rendu en état "offre active" par défaut : si l'appel échoue ou est
+   lent, rien ne change (fail-open), pas de flash de contenu. */
+(function(){
+  'use strict';
+  try{
+    function apply(active){
+      document.querySelectorAll('.beta-offer').forEach(function(el){
+        el.style.display = active ? '' : 'none';
+      });
+      document.querySelectorAll('.beta-fallback').forEach(function(el){
+        el.style.display = active ? 'none' : 'flex';
+      });
+    }
+    fetch('/.netlify/functions/beta-offer-status')
+      .then(function(r){ return r.ok ? r.json() : { active: true }; })
+      .then(function(data){ apply(!data || data.active !== false); })
+      .catch(function(){ /* offline / erreur réseau : on garde l'affichage par défaut */ });
+  }catch(e){}
+})();
+
 /* Apparition progressive des blocs au scroll — dégrade en gracieux si
    IntersectionObserver est absent ou si l'utilisateur préfère moins d'animations. */
 (function(){
