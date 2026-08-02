@@ -55,14 +55,21 @@ exports.handler = async function (event) {
     const couponId = typeof promo.coupon === 'string' ? promo.coupon : promo.coupon?.id;
     const coupon = couponId ? await stripe.coupons.retrieve(couponId) : promo.coupon;
 
-    const maxRedemptions = coupon?.max_redemptions ?? null;
-    const timesRedeemed  = coupon?.times_redeemed ?? 0;
+    // La limite de rédemptions peut être posée sur le code promo lui-même
+    // ET/OU sur le coupon sous-jacent — Stripe les traite indépendamment.
+    // On prend la plus restrictive des deux quand les deux sont définies.
+    const promoRemaining  = (promo.max_redemptions  != null) ? Math.max(0, promo.max_redemptions  - (promo.times_redeemed  || 0)) : null;
+    const couponRemaining = (coupon?.max_redemptions != null) ? Math.max(0, coupon.max_redemptions - (coupon.times_redeemed || 0)) : null;
 
-    if (maxRedemptions == null) {
+    let remaining = null;
+    if (promoRemaining != null && couponRemaining != null) remaining = Math.min(promoRemaining, couponRemaining);
+    else if (promoRemaining != null) remaining = promoRemaining;
+    else if (couponRemaining != null) remaining = couponRemaining;
+
+    if (remaining == null) {
       return { statusCode: 200, headers: cors, body: JSON.stringify({ active: true, remaining: null }) };
     }
 
-    const remaining = Math.max(0, maxRedemptions - timesRedeemed);
     return { statusCode: 200, headers: cors, body: JSON.stringify({ active: remaining > 0, remaining }) };
   } catch (e) {
     console.error('[beta-offer-status]', e.message);
