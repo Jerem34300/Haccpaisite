@@ -500,9 +500,11 @@ create policy gmo_write on public.gmo
 --     privé et la lecture nécessite une URL signée générée à la demande
 --     par un utilisateur authentifié (js/supabaseservice.js:getSignedPhotoUrl).
 -- =============================================================
-insert into storage.buckets (id, name, public)
-values ('pms-photos', 'pms-photos', false)
-on conflict (id) do update set public = excluded.public;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('pms-photos', 'pms-photos', false, 8388608, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 drop policy if exists pms_photos_public_read on storage.objects;
 drop policy if exists pms_photos_auth_read on storage.objects;

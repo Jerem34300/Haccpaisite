@@ -263,6 +263,11 @@ function onPhotoRequestFileSelected(input){
     if(preview) preview.innerHTML = '';
     return;
   }
+  if(file.size > 20*1024*1024){
+    toast('⚠️ Photo trop lourde (max 20 Mo)','warning');
+    if(input) input.value = '';
+    return;
+  }
   const fr = new FileReader();
   fr.onload = async ()=>{
     try{
@@ -1966,9 +1971,11 @@ function cpPhotoEl(fid, sec, label){
 
 function cpPhotoCapture(inp, fid, sec){
   const file = inp.files[0]; if(!file) return;
+  if(file.size > 20*1024*1024){ toast('⚠️ Photo trop lourde (max 20 Mo)','warning'); inp.value=''; return; }
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
+    img.onerror = () => toast('⚠️ Image invalide','warning');
     img.onload = () => {
       // Compression : max 1200px, 0.78 qualité
       const c = document.createElement('canvas');
@@ -1979,12 +1986,12 @@ function cpPhotoCapture(inp, fid, sec){
       c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
       const full = c.toDataURL('image/jpeg',0.78);
-      // Miniature
-      const ct=document.createElement('canvas'); const maxT=200;
+      // Miniature — stockée comme photo officielle du dossier (voir _parsePhotoField) : assez grande pour rester lisible en preuve HACCP
+      const ct=document.createElement('canvas'); const maxT=640;
       let tw=img.width,th=img.height;
       if(tw>maxT){th=Math.round(th*maxT/tw);tw=maxT;}
       ct.width=tw;ct.height=th;ct.getContext('2d').drawImage(img,0,0,tw,th);
-      const thumb=ct.toDataURL('image/jpeg',0.55);
+      const thumb=ct.toDataURL('image/jpeg',0.72);
       // Nom de fichier
       const d=today(); const df=d.slice(8,10)+'-'+d.slice(5,7)+'-'+d.slice(0,4);
       const secClean=(sec||'page').replace(/[^a-z0-9]/gi,'_').slice(0,12);
@@ -4964,9 +4971,11 @@ let _nettNCPhoto = null;
 
 function nettNCHandlePhoto(input){
   const file = input.files[0]; if(!file) return;
+  if(file.size > 20*1024*1024){ toast('⚠️ Photo trop lourde (max 20 Mo)','warning'); input.value=''; return; }
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
+    img.onerror = () => toast('⚠️ Image invalide','warning');
     img.onload = () => {
       // Pleine résolution compressée → téléchargement tablette
       const c = document.createElement('canvas');
@@ -4982,13 +4991,13 @@ function nettNCHandlePhoto(input){
       const fname='HACCP_NC_Nettoyage_'+df+'.jpg';
       const a=document.createElement('a'); a.href=full; a.download=fname;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      // Miniature pour stockage localStorage
-      const ct=document.createElement('canvas'); const maxT=280;
+      // Miniature — stockée comme photo officielle du dossier (voir _parsePhotoField) : assez grande pour rester lisible en preuve HACCP
+      const ct=document.createElement('canvas'); const maxT=640;
       let tw=img.width,th=img.height;
       if(tw>maxT){th=Math.round(th*maxT/tw);tw=maxT;}
       ct.width=tw; ct.height=th;
       ct.getContext('2d').drawImage(img,0,0,tw,th);
-      const thumb=ct.toDataURL('image/jpeg', 0.6);
+      const thumb=ct.toDataURL('image/jpeg', 0.72);
       _nettNCPhoto = JSON.stringify({thumb, file:fname, date:d});
       const prev = document.getElementById('nett-photo-preview');
       if(prev) prev.innerHTML = '<img src="'+thumb+'" style="max-width:100%;max-height:160px;border-radius:8px;border:1.5px solid #86efac;margin-top:4px">'
@@ -7591,10 +7600,12 @@ function ocrTriggerCamera() {
 function photoHandleFile(input) {
   const file = input.files[0];
   if (!file) return;
+  if (file.size > 20*1024*1024) { toast('⚠️ Photo trop lourde (max 20 Mo)','warning'); input.value=''; return; }
   const reader = new FileReader();
   reader.onload = e => {
     _photoB64 = e.target.result; // data:image/jpeg;base64,…
     const img = document.getElementById('ocr-img');
+    img.onerror = () => toast('⚠️ Image invalide','warning');
     img.src = _photoB64;
     img.style.display = 'block';
     document.getElementById('ocr-placeholder').style.display = 'none';
@@ -7629,17 +7640,17 @@ function photoSave() {
     _pendingPhotos[pfx] = c.toDataURL('image/jpeg', 0.88);
   } catch(e){ _pendingPhotos[pfx] = _photoB64; }
 
-  // ── 2. Miniature légère → stockage localStorage (~3-8 Ko) ──────────────────
+  // ── 2. Miniature → stockage localStorage, c'est elle qui devient la photo officielle du dossier (voir _parsePhotoField) : assez grande pour rester lisible en preuve HACCP ──
   let thumbData = '';
   try {
     if(img && img.naturalWidth > 0){
       const c = document.createElement('canvas');
-      const maxW=200;
+      const maxW=640;
       let w=img.naturalWidth, h=img.naturalHeight;
       if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
       c.width=w; c.height=h;
       c.getContext('2d').drawImage(img,0,0,w,h);
-      thumbData = c.toDataURL('image/jpeg', 0.55);
+      thumbData = c.toDataURL('image/jpeg', 0.72);
     }
   } catch(e){ thumbData = ''; }
 
