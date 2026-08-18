@@ -45,6 +45,22 @@ async function verifyJwt(token) {
   return u;
 }
 
+// Vérifie que l'utilisateur authentifié appartient au tenant demandé (sinon il
+// pourrait ouvrir le portail de facturation Stripe d'un autre tenant).
+async function assertTenantMembership(userId, tenantId) {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=tenant_id&limit=1`,
+    { headers: { 'apikey': SERVICE_KEY, 'Authorization': `Bearer ${SERVICE_KEY}`, 'Accept': 'application/json' } }
+  );
+  if (!r.ok) throw new Error('Profil inaccessible');
+  const rows = await r.json();
+  if (!rows?.[0] || rows[0].tenant_id !== tenantId) {
+    const err = new Error('Accès refusé à ce tenant');
+    err.forbidden = true;
+    throw err;
+  }
+}
+
 exports.handler = async function (event) {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: cors, body: '' };
   if (event.httpMethod !== 'POST') return { statusCode: 405, headers: cors, body: JSON.stringify({ error: 'Méthode non autorisée' }) };
@@ -66,9 +82,10 @@ exports.handler = async function (event) {
   if (!tenantId) return { statusCode: 400, headers: cors, body: JSON.stringify({ error: 'tenantId manquant' }) };
 
   try {
-    await verifyJwt(jwt);
+    const user = await verifyJwt(jwt);
+    await assertTenantMembership(user.id, tenantId);
   } catch (e) {
-    return { statusCode: 401, headers: cors, body: JSON.stringify({ error: e.message }) };
+    return { statusCode: e.forbidden ? 403 : 401, headers: cors, body: JSON.stringify({ error: e.message }) };
   }
 
   // Récupérer stripe_customer_id depuis la DB

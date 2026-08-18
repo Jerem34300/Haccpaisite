@@ -636,7 +636,8 @@ window.generatePMS = async function() {
         'Prefer':        'return=representation'
       };
       var extraRows = extraSites.map(function(nom) {
-        return { name: nom.trim(), nom: nom.trim(), code: _slug(nom), tenant_id: tenantId };
+        // Colonnes réelles de `sites` uniquement (la colonne `nom` n'existe pas)
+        return { name: nom.trim(), code: _slug(nom), tenant_id: tenantId };
       });
       var r2 = await fetch(SUPABASE_URL + '/rest/v1/sites', {
         method: 'POST', headers: hdrRep, body: JSON.stringify(extraRows)

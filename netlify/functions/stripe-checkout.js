@@ -57,6 +57,22 @@ async function verifyJwt(token) {
   return u;
 }
 
+// Vérifie que l'utilisateur authentifié appartient bien au tenant demandé
+// (sinon un tenant pourrait agir sur l'abonnement Stripe d'un autre).
+async function assertTenantMembership(userId, tenantId) {
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=tenant_id&limit=1`,
+    { headers: svcHeaders() }
+  );
+  if (!r.ok) throw new Error('Profil inaccessible');
+  const rows = await r.json();
+  if (!rows?.[0] || rows[0].tenant_id !== tenantId) {
+    const err = new Error('Accès refusé à ce tenant');
+    err.forbidden = true;
+    throw err;
+  }
+}
+
 async function getSubscription(tenantId) {
   const r = await fetch(
     `${SUPABASE_URL}/rest/v1/subscriptions?tenant_id=eq.${tenantId}&limit=1&select=*`,
@@ -102,9 +118,10 @@ exports.handler = async function (event) {
   if (!PLAN_PRICES[priceKey]) return { statusCode: 400, headers: cors, body: JSON.stringify({ error: `Price ID manquant pour ${priceKey} — vérifiez les variables d'environnement Netlify` }) };
 
   try {
-    await verifyJwt(jwt);
+    const user = await verifyJwt(jwt);
+    await assertTenantMembership(user.id, tenantId);
   } catch (e) {
-    return { statusCode: 401, headers: cors, body: JSON.stringify({ error: e.message }) };
+    return { statusCode: e.forbidden ? 403 : 401, headers: cors, body: JSON.stringify({ error: e.message }) };
   }
 
   const stripe = Stripe(stripeKey);
