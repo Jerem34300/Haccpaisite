@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HACCP Sans Papier : Pourquoi et Comment Digitaliser vos Registres — Guide Complet 2026 | HACC.PRO</title>
+<meta name="description" content="HACCP sans papier : pourquoi passer du registre papier au numérique, ce que dit la réglementation, checklist de transition et ce qu'un outil digital apporte concrètement en cuisine.">
+<meta name="keywords" content="haccp sans papier, registre haccp numérique, digitaliser haccp, haccp digital restaurant, application haccp cuisine, dématérialisation registres haccp">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://www.hacc.pro/guides/haccp-sans-papier.html">
+<meta property="og:title" content="HACCP Sans Papier : Pourquoi et Comment Digitaliser vos Registres — HACC.PRO">
+<meta property="og:description" content="Risques du papier, cadre réglementaire du numérique, checklist de transition : tout pour passer au HACCP sans papier.">
+<meta property="og:type" content="article">
+<link rel="icon" type="image/png" sizes="32x32" href="../favicon-32.png">
+<meta name="theme-color" content="#0F2240">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/guide.css">
+
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"Article",
+  "headline":"HACCP Sans Papier : Pourquoi et Comment Digitaliser vos Registres",
+  "description":"Pourquoi passer du registre papier au numérique, ce que dit la réglementation sur le format des registres HACCP, checklist de transition et bénéfices concrets d'un outil digital.",
+  "author":{"@type":"Organization","name":"HACC.PRO"},
+  "publisher":{"@type":"Organization","name":"HACC.PRO","url":"https://www.hacc.pro"},
+  "datePublished":"2026-08-27",
+  "dateModified":"2026-08-27",
+  "mainEntityOfPage":"https://www.hacc.pro/guides/haccp-sans-papier.html"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"FAQPage",
+  "mainEntity":[
+    {"@type":"Question","name":"Le passage au HACCP sans papier est-il autorisé par la réglementation ?","acceptedAnswer":{"@type":"Answer","text":"Oui. Le Règlement (CE) n°852/2004 impose la tenue de registres et la traçabilité, mais n'impose aucun support particulier. Un registre numérique est parfaitement recevable dès lors qu'il reste consultable, exportable et non modifiable a posteriori sans laisser de trace. La DDPP accepte couramment les registres numériques lors de ses contrôles."}},
+    {"@type":"Question","name":"Que se passe-t-il en cas de coupure internet en cuisine ?","acceptedAnswer":{"@type":"Answer","text":"Un bon outil HACCP numérique doit fonctionner hors-ligne : les relevés sont enregistrés localement sur la tablette ou le smartphone, puis synchronisés automatiquement dès que la connexion revient. HACC.PRO fonctionne comme une PWA offline-first, conçue spécifiquement pour les cuisines où le réseau est instable."}},
+    {"@type":"Question","name":"Un registre numérique a-t-il la même valeur qu'un registre papier signé ?","acceptedAnswer":{"@type":"Answer","text":"Un registre numérique bien conçu a en réalité une valeur probante supérieure : chaque relevé est horodaté automatiquement au moment de la saisie et associé à l'identité de la personne connectée, ce qui est plus difficile à falsifier qu'une signature manuscrite qui peut être apposée a posteriori."}},
+    {"@type":"Question","name":"Combien de temps prend la transition du papier au numérique ?","acceptedAnswer":{"@type":"Answer","text":"Pour une cuisine déjà organisée avec des registres papier clairs, la bascule vers un outil comme HACC.PRO prend généralement quelques jours : configuration initiale du PMS via un questionnaire guidé, puis formation rapide de l'équipe sur les écrans de saisie, qui reproduisent la logique des fiches papier existantes."}},
+    {"@type":"Question","name":"Faut-il conserver les anciens registres papier après la transition ?","acceptedAnswer":{"@type":"Answer","text":"Oui, les registres papier antérieurs à la transition doivent être conservés selon les durées réglementaires habituelles (généralement plusieurs années pour la traçabilité alimentaire). La transition au numérique s'applique aux nouveaux relevés, elle n'efface pas l'obligation de conservation de l'historique déjà produit sur support papier."}}
+  ]
+}
+</script>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/" class="nav-logo">
+    <svg width="26" height="26" viewBox="0 0 90 90" fill="none" aria-hidden="true">
+      <circle cx="45" cy="33" r="16" fill="white"/>
+      <circle cx="29" cy="38" r="11" fill="white"/>
+      <circle cx="61" cy="38" r="11" fill="white"/>
+      <path d="M30 46 L40 57 L62 32" stroke="#8DC63F" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>
+    <span class="logo-name">HACC<span>.PRO</span></span>
+  </a>
+  <a href="/" class="nav-back">← Retour</a>
+  <a href="../signup.html" class="nav-cta">Essai gratuit →</a>
+</nav>
+
+<div class="page">
+  <article class="article">
+    <div class="breadcrumb">
+      <a href="/">HACC.PRO</a> › <a href="../faq/index.html">Guide HACCP</a> › HACCP sans papier
+    </div>
+    <h1>HACCP sans papier : pourquoi et comment digitaliser vos registres</h1>
+    <div class="article-meta">
+      <span>📅 Mis à jour le 27 août 2026</span>
+      <span>⏱️ Lecture : 9 minutes</span>
+      <span>✓ Vérifié par nos experts HACCP</span>
+    </div>
+    <div class="article-intro">
+      Le classeur de fiches papier reste la norme dans une grande partie des cuisines françaises, mais il cumule des faiblesses structurelles qui exposent l'établissement lors d'un contrôle ou d'un incident. Passer au <strong>HACCP sans papier</strong> n'est ni une contrainte réglementaire ni un gadget : c'est une réponse concrète aux limites documentées du support papier. Ce guide explique pourquoi, ce que dit la réglementation, et comment organiser la transition sans tout bouleverser du jour au lendemain.
+    </div>
+
+    <figure class="article-illus">
+      <svg viewBox="0 0 560 320" role="img" aria-labelledby="illus-sanspapier-title" xmlns="http://www.w3.org/2000/svg">
+        <title id="illus-sanspapier-title">Un classeur de fiches papier barré d'une croix, une flèche vers une tablette affichant un relevé horodaté et validé</title>
+        <rect x="0" y="0" width="560" height="320" rx="20" fill="#F7F2F7"/>
+        <rect x="45" y="60" width="150" height="200" rx="10" fill="#ffffff" stroke="#DDD0DD" stroke-width="2"/>
+        <rect x="60" y="80" width="120" height="10" rx="5" fill="#DDD0DD"/>
+        <rect x="60" y="105" width="120" height="10" rx="5" fill="#DDD0DD"/>
+        <rect x="60" y="130" width="120" height="10" rx="5" fill="#DDD0DD"/>
+        <rect x="60" y="155" width="120" height="10" rx="5" fill="#DDD0DD"/>
+        <rect x="60" y="180" width="90" height="10" rx="5" fill="#DDD0DD"/>
+        <line x1="55" y1="70" x2="185" y2="250" stroke="#E86048" stroke-width="8" stroke-linecap="round"/>
+        <line x1="185" y1="70" x2="55" y2="250" stroke="#E86048" stroke-width="8" stroke-linecap="round"/>
+        <path d="M225 160 h60" stroke="#0F2240" stroke-width="6" stroke-linecap="round"/>
+        <path d="M265 140 l25 20 l-25 20" stroke="#0F2240" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="330" y="40" width="180" height="240" rx="20" fill="#0F2240"/>
+        <rect x="346" y="66" width="148" height="188" rx="8" fill="#ffffff"/>
+        <circle cx="420" cy="110" r="16" fill="#8DC63F"/>
+        <path d="M412 110 l5 6 l12 -14" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <rect x="365" y="140" width="110" height="10" rx="5" fill="#DDD0DD"/>
+        <rect x="365" y="160" width="80" height="10" rx="5" fill="#DDD0DD"/>
+        <rect x="365" y="195" width="110" height="24" rx="8" fill="#F7F2F7"/>
+        <text x="420" y="211" font-family="Nunito,sans-serif" font-size="11" font-weight="900" fill="#6fa832" text-anchor="middle">08:42 — OK</text>
+      </svg>
+      <figcaption>Le relevé papier peut se perdre ou se falsifier ; le relevé numérique est horodaté et infalsifiable par construction.</figcaption>
+    </figure>
+
+    <h2 id="limites-papier">Les limites du HACCP papier</h2>
+    <p>Le registre papier fonctionne tant que tout se passe bien. C'est précisément lors d'un contrôle inopiné ou d'un incident sanitaire qu'il révèle ses faiblesses :</p>
+    <ul>
+      <li><strong>Registres perdus ou mouillés</strong> : une fiche qui traîne près d'un plan de travail ou d'une plonge ne survit pas toujours à un service chargé.</li>
+      <li><strong>Ratures et écritures illisibles</strong> : en cuisine, l'écriture rapide au stylo dans des conditions de rush produit des fiches parfois difficiles à relire, y compris pour l'équipe elle-même.</li>
+      <li><strong>Falsification possible</strong> : rien n'empêche techniquement de remplir plusieurs relevés d'un coup en fin de journée, ou de compléter une fiche a posteriori en cas d'oubli. Les inspecteurs expérimentés repèrent ces écritures régularisées, mais le problème reste réel.</li>
+      <li><strong>Classement dispersé</strong> : plusieurs classeurs, plusieurs points de saisie, parfois plusieurs sites pour une cuisine centrale : retrouver un relevé précis prend du temps, surtout sous la pression d'un contrôle.</li>
+      <li><strong>Aucune alerte</strong> : un écart de température relevé sur une fiche papier à 22h ne remonte à personne avant la lecture du lendemain matin — le temps que la non-conformité soit traitée, le mal est fait.</li>
+    </ul>
+
+    <div class="warn-box">
+      <div class="warn-box-title">⚠️ Illisibilité et absence lors d'un contrôle DDPP</div>
+      <p style="margin:0;font-size:.88rem;line-height:1.65">Un registre illisible ou incomplet est traité par l'inspecteur de la même manière qu'un registre absent : il ne permet pas de démontrer la maîtrise du risque. Notre <a href="checklist-controle-ddpp.html">checklist de préparation à un contrôle DDPP</a> détaille l'ensemble des documents attendus.</p>
+    </div>
+
+    <h2 id="reglementation">Ce que dit la réglementation sur le format numérique</h2>
+    <p>Le Règlement (CE) n°852/2004 impose aux exploitants du secteur alimentaire de mettre en place et de conserver des procédures fondées sur les principes HACCP, avec une obligation de <strong>traçabilité documentée</strong>. Le texte impose le fond — l'existence, la fiabilité et la conservation des enregistrements — mais ne prescrit <strong>aucun support particulier</strong>.</p>
+    <p>Concrètement, cela signifie qu'un registre numérique est parfaitement recevable, à condition de respecter les mêmes exigences de fond qu'un registre papier :</p>
+    <ul>
+      <li>Le relevé doit être horodaté et attribuable à une personne.</li>
+      <li>Il doit rester consultable pendant toute la durée réglementaire de conservation.</li>
+      <li>Il doit pouvoir être présenté à l'inspecteur sous une forme lisible lors d'un contrôle, y compris exportable en PDF ou imprimable sur demande.</li>
+      <li>Toute modification a posteriori doit idéalement laisser une trace, plutôt que d'écraser silencieusement la valeur d'origine.</li>
+    </ul>
+    <p>En pratique, les inspecteurs DDPP sont aujourd'hui habitués aux outils numériques et acceptent couramment une tablette ou un export PDF à la place d'un classeur papier, tant que l'historique demandé est immédiatement accessible.</p>
+
+    <div class="info-box">
+      <div class="info-box-title">💡 Le numérique ne remplace pas le geste, il le sécurise</div>
+      <p style="margin:0;font-size:.88rem;line-height:1.65">Passer au numérique ne signifie pas automatiser la mesure elle-même. Avec HACC.PRO, le cuisinier continue de mesurer physiquement la température avec sa sonde devant l'enceinte — seule la saisie du relevé change de support, ce qui garantit qu'un vrai contrôle humain a bien eu lieu, contrairement à une sonde connectée automatique qui n'atteste de rien.</p>
+    </div>
+
+    <h2 id="checklist">Checklist de transition papier → numérique</h2>
+    <ul class="step-list">
+      <li>
+        <div class="step-num">1</div>
+        <div class="step-body">
+          <div class="step-h">Auditer l'existant</div>
+          <div class="step-p">Listez tous les registres papier actuellement utilisés (température, réception, nettoyage, plats témoins) pour vérifier qu'aucun point de contrôle n'est oublié lors de la bascule.</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">2</div>
+        <div class="step-body">
+          <div class="step-h">Choisir un outil pensé pour le terrain, pas pour le bureau</div>
+          <div class="step-p">Un logiciel conçu pour un usage administratif sur ordinateur ne convient pas à un cuisinier en plein service. L'outil doit fonctionner sur smartphone ou tablette, en quelques secondes, sans connexion obligatoire.</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">3</div>
+        <div class="step-body">
+          <div class="step-h">Vérifier le fonctionnement hors-ligne</div>
+          <div class="step-p">Une cuisine n'a pas toujours un réseau Wi-Fi fiable. L'outil doit enregistrer localement et synchroniser automatiquement dès que la connexion revient, sans jamais bloquer la saisie.</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">4</div>
+        <div class="step-body">
+          <div class="step-h">Former l'équipe sur des écrans qui reproduisent les fiches connues</div>
+          <div class="step-p">La transition est plus rapide quand l'écran de saisie numérique reprend la logique et le vocabulaire des fiches papier existantes, plutôt que d'imposer un nouveau système de pensée à l'équipe.</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">5</div>
+        <div class="step-body">
+          <div class="step-h">Migrer progressivement, point de contrôle par point de contrôle</div>
+          <div class="step-p">Basculez d'abord la température, le point le plus fréquemment relevé, avant d'étendre au nettoyage, à la réception et aux plats témoins. Une transition progressive limite les erreurs d'adaptation.</div>
+        </div>
+      </li>
+      <li>
+        <div class="step-num">6</div>
+        <div class="step-body">
+          <div class="step-h">Faire un audit interne avant le premier contrôle</div>
+          <div class="step-p">Vérifiez que l'export PDF de l'historique numérique est complet et lisible, pour être certain qu'il tiendra la route face à un inspecteur avant d'en avoir la démonstration en conditions réelles.</div>
+        </div>
+      </li>
+    </ul>
+
+    <h2 id="apports">Ce qu'un outil digital apporte concrètement</h2>
+    <ul>
+      <li><strong>Horodatage automatique</strong> : chaque relevé est daté et signé électroniquement au moment exact de la saisie, sans intervention manuelle possible sur l'heure.</li>
+      <li><strong>Alertes immédiates en cas d'écart</strong> : un relevé hors seuil déclenche une notification instantanée vers le responsable, au lieu d'être découvert le lendemain sur une fiche papier.</li>
+      <li><strong>Export instantané pour les contrôles</strong> : l'historique complet d'une période se génère en PDF en quelques secondes, contre une recherche manuelle dans des classeurs.</li>
+      <li><strong>Centralisation multi-site</strong> : pour une cuisine centrale livrant plusieurs établissements, un registre numérique centralisé évite la dispersion des données entre sites.</li>
+      <li><strong>Non-conformités tracées automatiquement</strong> : chaque écart devient une fiche de non-conformité avec action corrective à documenter, plutôt qu'une simple valeur notée sans suite.</li>
+    </ul>
+    <p>Pour aller plus loin sur la tenue au quotidien des relevés, consultez notre <a href="releve-temperature-haccp-fiche.html">guide sur la fiche de relevé de température conforme</a>, et notre <a href="tracabilite-alimentaire.html">guide complet sur la traçabilité alimentaire</a>.</p>
+
+    <h2 id="faq">Questions fréquentes sur le HACCP sans papier</h2>
+    <div class="article-faq">
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Le passage au HACCP sans papier est-il autorisé par la réglementation ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">Oui. Le Règlement (CE) n°852/2004 impose la tenue de registres et la traçabilité, mais n'impose aucun support particulier. Un registre numérique est parfaitement recevable dès lors qu'il reste consultable, exportable et non modifiable a posteriori sans laisser de trace. La DDPP accepte couramment les registres numériques lors de ses contrôles.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Que se passe-t-il en cas de coupure internet en cuisine ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">Un bon outil HACCP numérique doit fonctionner hors-ligne : les relevés sont enregistrés localement sur la tablette ou le smartphone, puis synchronisés automatiquement dès que la connexion revient. HACC.PRO fonctionne comme une PWA offline-first, conçue spécifiquement pour les cuisines où le réseau est instable.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Un registre numérique a-t-il la même valeur qu'un registre papier signé ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">Un registre numérique bien conçu a en réalité une valeur probante supérieure : chaque relevé est horodaté automatiquement au moment de la saisie et associé à l'identité de la personne connectée, ce qui est plus difficile à falsifier qu'une signature manuscrite qui peut être apposée a posteriori.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Combien de temps prend la transition du papier au numérique ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">Pour une cuisine déjà organisée avec des registres papier clairs, la bascule vers un outil comme HACC.PRO prend généralement quelques jours : configuration initiale du PMS via un questionnaire guidé, puis formation rapide de l'équipe sur les écrans de saisie, qui reproduisent la logique des fiches papier existantes.</div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" onclick="toggleFaq(this)" aria-expanded="false">
+          <span class="faq-q-text">Faut-il conserver les anciens registres papier après la transition ?</span>
+          <span class="faq-q-arrow">▼</span>
+        </button>
+        <div class="faq-a">Oui, les registres papier antérieurs à la transition doivent être conservés selon les durées réglementaires habituelles (généralement plusieurs années pour la traçabilité alimentaire). La transition au numérique s'applique aux nouveaux relevés, elle n'efface pas l'obligation de conservation de l'historique déjà produit sur support papier.</div>
+      </div>
+    </div>
+
+    <div class="article-cta">
+      <div class="article-cta-inner">
+        <h3>Passez au HACCP sans papier, sans rien perdre en simplicité</h3>
+        <p>Relevés horodatés depuis un smartphone, fonctionnement hors-ligne, alertes automatiques, export PDF en un clic. Essai gratuit 14 jours, sans carte bancaire.</p>
+        <a href="../signup.html" class="article-cta-btn">Commencer gratuitement →</a>
+      </div>
+    </div>
+  </article>
+
+  <!-- TOC sidebar -->
+  <aside class="toc-sidebar">
+    <div class="toc-box">
+      <div class="toc-title">Sommaire</div>
+      <a href="#limites-papier" class="toc-link">Limites du HACCP papier</a>
+      <a href="#reglementation" class="toc-link">Ce que dit la réglementation</a>
+      <a href="#checklist" class="toc-link">Checklist de transition</a>
+      <a href="#apports" class="toc-link">Ce qu'apporte le numérique</a>
+      <a href="#faq" class="toc-link">Questions fréquentes</a>
+    </div>
+    <div class="toc-cta">
+      <div class="toc-cta-h">HACCP sans papier, en pratique</div>
+      <div class="toc-cta-p">Saisie manuelle horodatée. Fonctionne hors-ligne. Alertes automatiques. Export PDF en 1 clic.</div>
+      <a href="../signup.html" class="toc-cta-btn">Essai gratuit →</a>
+    </div>
+  </aside>
+</div>
+
+<footer>
+  <a href="/">HACC.PRO</a>
+  <a href="../faq/index.html">Guide HACCP</a>
+  <a href="../guides/tracabilite-alimentaire.html">Traçabilité alimentaire</a>
+  <a href="../guides/releve-temperature-haccp-fiche.html">Fiche de relevé de température</a>
+  <a href="../signup.html">Essai gratuit</a>
+  <br><br>
+  <span>© 2026 HACC.PRO — Logiciel HACCP pour la restauration française</span>
+</footer>
+
+<script>
+function toggleFaq(btn){
+  const item=btn.closest('.faq-item');
+  const isOpen=item.classList.contains('open');
+  document.querySelectorAll('.faq-item.open').forEach(el=>{
+    el.classList.remove('open');
+    el.querySelector('.faq-q').setAttribute('aria-expanded','false');
+  });
+  if(!isOpen){item.classList.add('open');btn.setAttribute('aria-expanded','true');}
+}
+</script>
+<script>
+function toggleFab(){const fab=document.getElementById('fab'),sheet=document.getElementById('fabSheet'),open=fab.classList.toggle('open');sheet.classList.toggle('open',open);document.body.style.overflow=open?'hidden':'';}
+function closeFab(){document.getElementById('fab').classList.remove('open');document.getElementById('fabSheet').classList.remove('open');document.body.style.overflow='';}
+</script>
+
+<!-- ── FAB FLOTTANT ── -->
+<button class="fab" id="fab" onclick="toggleFab()" aria-label="Menu navigation">
+  <span></span><span></span><span></span>
+</button>
+<div class="fab-sheet" id="fabSheet">
+  <div class="fab-overlay" onclick="closeFab()"></div>
+  <div class="fab-panel">
+    <div class="fab-handle"></div>
+    <div class="fab-grid">
+      <a href="../signup.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🚀</span>Inscription</a>
+      <a href="../login.html" class="fab-link primary" onclick="closeFab()"><span class="fab-link-icon">🔑</span>Connexion</a>
+      <hr class="fab-divider">
+      <a href="/" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🏠</span>Accueil</a>
+      <a href="../mode-emploi.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📖</span>Mode d'emploi</a>
+      <a href="../faq/index.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📋</span>Guide HACCP</a>
+      <a href="../guides/plan-maitrise-sanitaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📄</span>PMS</a>
+      <a href="../guides/plat-temoin.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🍽️</span>Plats témoins</a>
+      <a href="../guides/temperature-haccp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🌡️</span>Températures</a>
+      <a href="../guides/tracabilite-alimentaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🔗</span>Traçabilité</a>
+      <a href="../guides/checklist-controle-ddpp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">✅</span>Checklist DDPP</a>
+      <a href="../guides/pms-ehpad.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🏥</span>PMS EHPAD</a>
+      <a href="../guides/releve-temperature-haccp-fiche.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📝</span>Fiche relevé température</a>
+      <a href="../guides/haccp-sans-papier.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📵</span>HACCP sans papier</a>
+      <a href="../guides/protocole-refroidissement-haccp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">❄️</span>Protocole refroidissement</a>
+      <a href="../guides/tableau-dlc-restauration.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📅</span>Tableau DLC</a>
+    </div>
+  </div>
+</div>
+</body>
+</html>
