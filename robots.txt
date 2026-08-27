@@ -16,4 +16,4 @@ Disallow: /netlify/
 Disallow: /js/
 Disallow: /css/
 
-Sitemap: https://hacc.pro/sitemap.xml
+Sitemap: https://www.hacc.pro/sitemap.xml
