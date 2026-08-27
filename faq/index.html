@@ -159,6 +159,12 @@ body{font-family:var(--font);color:var(--text);background:var(--bg)}
 .faq-a strong{color:var(--text);font-weight:800}
 .faq-a a{color:var(--plum);font-weight:800}
 
+/* Guides directory */
+.guides-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.guide-link{display:flex;align-items:center;gap:10px;padding:14px 16px;background:#fff;border:1px solid var(--border);border-radius:12px;text-decoration:none;color:var(--text);font-size:.88rem;font-weight:800;transition:all .15s}
+.guide-link:hover{border-color:var(--green);box-shadow:0 4px 16px rgba(92,30,90,.08)}
+.guide-link-icon{font-size:1.2rem;flex-shrink:0}
+
 /* CTA block */
 .cta-block{background:var(--navy);border-radius:16px;padding:28px;text-align:center;margin-top:48px;position:relative;overflow:hidden}
 .cta-block::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(141,198,63,.2),transparent 60%)}
@@ -214,6 +220,10 @@ body{overflow-x:hidden}
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-section">
+      <div class="sidebar-title">Guides</div>
+      <a href="#guides" class="sidebar-link">📚 Tous nos guides HACCP</a>
+    </div>
+    <div class="sidebar-section">
       <div class="sidebar-title">Réglementation</div>
       <a href="#reglementation" class="sidebar-link">HACCP obligatoire ?</a>
       <a href="#reglementation" class="sidebar-link">Paquet Hygiène</a>
@@ -251,6 +261,23 @@ body{overflow-x:hidden}
       <div class="page-badge">Guide HACCP complet</div>
       <h1 class="page-h1">HACCP : toutes vos questions, toutes les réponses</h1>
       <p class="page-intro">Ce guide regroupe les réponses aux questions les plus fréquentes sur la réglementation HACCP, le Plan de Maîtrise Sanitaire (PMS), les plats témoins, les températures et la traçabilité alimentaire en France. Mis à jour régulièrement par nos experts HACCP.</p>
+    </div>
+
+    <!-- ── TOUS LES GUIDES ── -->
+    <div class="faq-category" id="guides">
+      <h2 class="cat-h2"><span class="cat-icon">📚</span> Tous nos guides HACCP</h2>
+      <div class="guides-grid">
+        <a href="../guides/plan-maitrise-sanitaire.html" class="guide-link"><span class="guide-link-icon">📄</span>Plan de Maîtrise Sanitaire (PMS)</a>
+        <a href="../guides/plat-temoin.html" class="guide-link"><span class="guide-link-icon">🍽️</span>Plats témoins</a>
+        <a href="../guides/temperature-haccp.html" class="guide-link"><span class="guide-link-icon">🌡️</span>Températures HACCP</a>
+        <a href="../guides/tracabilite-alimentaire.html" class="guide-link"><span class="guide-link-icon">🔗</span>Traçabilité alimentaire</a>
+        <a href="../guides/checklist-controle-ddpp.html" class="guide-link"><span class="guide-link-icon">✅</span>Checklist contrôle DDPP</a>
+        <a href="../guides/pms-ehpad.html" class="guide-link"><span class="guide-link-icon">🏥</span>PMS EHPAD</a>
+        <a href="../guides/releve-temperature-haccp-fiche.html" class="guide-link"><span class="guide-link-icon">📝</span>Fiche de relevé de température</a>
+        <a href="../guides/haccp-sans-papier.html" class="guide-link"><span class="guide-link-icon">📵</span>HACCP sans papier</a>
+        <a href="../guides/protocole-refroidissement-haccp.html" class="guide-link"><span class="guide-link-icon">❄️</span>Protocole de refroidissement</a>
+        <a href="../guides/tableau-dlc-restauration.html" class="guide-link"><span class="guide-link-icon">📅</span>Tableau DLC restauration</a>
+      </div>
     </div>
 
     <!-- ── CATÉGORIE : RÉGLEMENTATION ── -->
@@ -554,11 +581,7 @@ function closeFab(){document.getElementById('fab').classList.remove('open');docu
       <hr class="fab-divider">
       <a href="/" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🏠</span>Accueil</a>
       <a href="../mode-emploi.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📖</span>Mode d'emploi</a>
-      <a href="../faq/index.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📋</span>Guide HACCP</a>
-      <a href="../guides/plan-maitrise-sanitaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📄</span>PMS</a>
-      <a href="../guides/plat-temoin.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🍽️</span>Plats témoins</a>
-      <a href="../guides/temperature-haccp.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🌡️</span>Températures</a>
-      <a href="../guides/tracabilite-alimentaire.html" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">🔗</span>Traçabilité</a>
+      <a href="../faq/index.html#guides" class="fab-link" onclick="closeFab()"><span class="fab-link-icon">📚</span>Tous nos guides</a>
     </div>
   </div>
 </div>
