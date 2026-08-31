@@ -25,6 +25,10 @@ const PROFILS = {
 
 // Ordre IMPORTANT : patterns spécifiques (cuits) AVANT patterns bare (crus)
 const KW = [
+  // --- Exceptions FROIDES prioritaires (avant les protéines cuites) ---
+  // « saumon fumé », « truite fumée »… = cru ; « salade de poulet/thon… » = cru.
+  { re:/\b(saumon|truite|maquereau|hareng|haddock|fl[ée]tan)\s+fum[ée]e?s?/i, p:'BF_CRU' },
+  { re:/\bsalade\s+(de\b|compos[ée]e?|pi[ée]montaise|c[ée]sar|niçoise|nicoise|verte)/i, p:'BF_CRU' },
   // --- BF_CUIT spécifiques (cuissons) ---
   { re:/\b(boeuf bourguignon|sauté de|blanquette|bourguignon|navarin|tajine|chili|gratin|hachis|lasagne|moussaka|paella|risotto|cassoulet|pot[- ]au[- ]feu|pot au feu|ragout|ragoût|carbonade|osso buco)\b/i, p:'BF_CUIT' },
   { re:/\b(rôti|roti|escalope|filet de|steak|cuisses?|saumon|poisson|cabillaud|colin|merlu|truite|côtes?|côtelettes?|epaule|épaule|poulet|dinde|veau|porc|bœuf|boeuf|agneau)\b/i, p:'BF_CUIT' },
@@ -727,30 +731,31 @@ window._menuGenerateTemoins = function(){
   S.enr33 = S.enr33 || {};
   S.enr33.lignes = S.enr33.lignes || [];
 
-  // Vérifier doublons : ne pas régénérer si déjà fait aujourd'hui pour ce menu
-  const existing = S.enr33.lignes.filter(l => l._menu_id === menu.menu_id && (l.date === today() || (l._ts||'').slice(0,10) === today()));
-  if(existing.length > 0){
-    if(!confirm(existing.length+' plat(s) témoin(s) déjà générés pour ce menu aujourd\'hui. En générer à nouveau ?')) return;
-  }
+  // Génération INCRÉMENTALE : on ne (re)crée que les témoins MANQUANTS pour ce menu
+  // aujourd'hui (par plat + variante). Ainsi, cocher une variante après une 1re
+  // génération crée juste son témoin, sans dupliquer les autres ni l'oublier.
+  // Les témoins soft-deletés ne comptent pas comme existants (régénérables).
+  const existing = S.enr33.lignes.filter(l =>
+    l._menu_id === menu.menu_id && !l._deleted &&
+    (l.date === today() || (l._ts||'').slice(0,10) === today())
+  );
+  const _key = (platId, platNom, variant) => (platId || platNom || '') + '||' + (variant || '');
+  const existSet = new Set(existing.map(l => _key(l._plat_id, l._plat_nom, l._variant)));
 
   let count = 0;
+  const addIfMissing = (nom, plat, variant, overrideProfil) => {
+    const k = _key(plat.plat_id, plat.nom, variant || '');
+    if (existSet.has(k)) return;
+    addPlatTemoin(nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, variant, overrideProfil);
+    existSet.add(k);
+    count++;
+  };
   CATS.forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
-      addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
-      count++;
-      if(plat.variants?.mixe){
-        const mxProfil = plat.variants.mixe_profil || mixeProfil(plat);
-        addPlatTemoin(plat.nom + ' (mixé)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé', mxProfil);
-        count++;
-      }
-      if(plat.variants?.sans_sel){
-        addPlatTemoin(plat.nom + ' (sans sel)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'sans_sel');
-        count++;
-      }
-      if(plat.variants?.hp){
-        addPlatTemoin(plat.nom + ' (HP)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'hp');
-        count++;
-      }
+      addIfMissing(plat.nom, plat, '');
+      if(plat.variants?.mixe) addIfMissing(plat.nom + ' (mixé)', plat, 'mixé', plat.variants.mixe_profil || mixeProfil(plat));
+      if(plat.variants?.sans_sel) addIfMissing(plat.nom + ' (sans sel)', plat, 'sans_sel');
+      if(plat.variants?.hp) addIfMissing(plat.nom + ' (HP)', plat, 'hp');
     });
   });
 
@@ -758,7 +763,10 @@ window._menuGenerateTemoins = function(){
   try {
     if(typeof SupaEngine !== 'undefined' && SupaEngine.flush) SupaEngine.flush();
   } catch(e){}
-  if(typeof toast === 'function') toast('✅ '+count+' plat'+(count>1?'s':'')+' témoin'+(count>1?'s':'')+' généré'+(count>1?'s':'')+' (ENR33)','success');
+  if(typeof toast === 'function'){
+    if(count > 0) toast('✅ '+count+' plat'+(count>1?'s':'')+' témoin'+(count>1?'s':'')+' généré'+(count>1?'s':'')+' (ENR33)','success');
+    else toast('Plats témoins déjà à jour pour ce menu','info');
+  }
   if(typeof renderMain === 'function') renderMain();
 };
 
@@ -898,13 +906,18 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
 </body></html>`;
 
   try {
-    const w = window.open('', '_blank', 'width=900,height=700');
-    if(!w){
-      if(typeof toast==='function') toast('Impression bloquée — autorisez les popups dans Chrome','danger');
-      return;
+    // Blob URL (compatible iOS Safari) si le helper est dispo, sinon ancien chemin.
+    if (typeof openPrintWindow === 'function') {
+      openPrintWindow(html);
+    } else {
+      const w = window.open('', '_blank', 'width=900,height=700');
+      if(!w){
+        if(typeof toast==='function') toast('Impression bloquée — autorisez les popups dans Chrome','danger');
+        return;
+      }
+      w.document.write(html);
+      w.document.close();
     }
-    w.document.write(html);
-    w.document.close();
     if(typeof toast==='function') toast('🖨️ '+realCount+' étiquettes prêtes à imprimer','success');
   } catch(e){
     console.warn('[menu print]', e);
@@ -1099,8 +1112,10 @@ function parseDicteeFullMenu(txt){
     const items = content.split(/\s+(?:et|ou|puis|ensuite)\s+|\s*,\s*/)
       .map(s => s.trim())
       .filter(s => s.length > 1 && s.length <= 80)
-      // Filtrer items qui sont juste un mot-clé de catégorie
-      .filter(it => !KW_PATTERN.test(it.replace(KW_PATTERN, '').length === 0 ? '' : it));
+      // Filtrer les items qui ne sont QU'un mot-clé de catégorie (ex: "plats").
+      // On n'utilise que .replace (déterministe) : .test() sur une regex /g est
+      // stateful (lastIndex) → résultats erratiques d'un item à l'autre.
+      .filter(it => it.replace(KW_PATTERN, '').trim().length > 0);
 
     items.forEach(it => {
       // Pas de doublons exacts dans la même catégorie

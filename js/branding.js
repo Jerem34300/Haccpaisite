@@ -4,9 +4,11 @@
 async function loadTenantBranding() {
   try {
     var cfg = {};
-    try { cfg = JSON.parse(localStorage.getItem('haccpro_supa_cfg') || '{}'); } catch(e){}
+    // Clé canonique en PREMIER (haccp_supa_cfg_v1), legacy en repli, pour ne pas
+    // repartir d'une session périmée stockée sous l'ancienne clé.
+    try { cfg = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
     if (!cfg.token && !cfg.userToken) {
-      try { cfg = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
+      try { cfg = JSON.parse(localStorage.getItem('haccpro_supa_cfg') || '{}'); } catch(e){}
     }
 
     var token    = cfg.token || cfg.userToken || '';
