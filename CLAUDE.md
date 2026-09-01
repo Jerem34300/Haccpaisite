@@ -70,7 +70,7 @@ Each HTML page is a self-contained SPA with its own JS module loaded via `<scrip
 | `paywall.html` | inline `<script>` | Subscription paywall / Stripe Checkout entry point |
 | `reset-password.html` | inline `<script>` | Password reset flow |
 | `mentions-legales.html`, `cgu.html`, `politique-confidentialite.html` | static | Legal pages |
-| `faq/index.html`, `guides/*.html` | static | SEO/support content |
+| `faq/index.html`, `guides/*.html`, `mode-emploi.html` | static | SEO/support content — `faq/index.html#guides` is the guide directory linked from every guide page's mobile menu |
 | `index.html`, `landing.html` | static | Public marketing pages |
 
 There are **three separate, inconsistent tenant-creation code paths** (see Audit §Bugs 6) — be aware when touching signup/onboarding that `app-signup.js`, `app-login.js`, and `app-onboarding.js` each independently call into tenant/profile creation.
@@ -222,9 +222,11 @@ Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_
 
 ---
 
-## 📋 État de l'audit (vérifié dans le code réel — juillet 2026)
+## 📋 État de l'audit (vérifié dans le code réel — juillet 2026, ré-audité septembre 2026)
 
 Chaque point a été vérifié directement dans le code (fichier + ligne), pas supposé. Statuts : **FAIT** / **PARTIEL** / **À FAIRE**.
+
+*Ré-audit du 1er septembre 2026 : tous les points ci-dessous ont été revérifiés sur le code actuel. Voir « Bilan du ré-audit — septembre 2026 » plus bas pour le résumé chiffré, les nouveautés non documentées et la confirmation qu'aucune régression n'a été détectée sur les points marqués FAIT en juillet.*
 
 ### Bugs
 
@@ -284,8 +286,8 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 1. **Mentions légales complètes — À FAIRE**
    `mentions-legales.html` (72 lignes) : **SIRET/SIREN absent**, **adresse postale de l'éditeur absente**, **directeur de publication absent**, **forme juridique/capital social absents** (`:48`, "Raison sociale : HACC.PRO" seul). Hébergeur **présent et correct** (`:54`, Netlify + Supabase). Contact **présent** (`contact@hacc.pro`, `:49,60,69`). Aucun placeholder visible type "[À compléter]" — les champs sont simplement absents, ce qui ne satisfait pas l'art. 6-III LCEN.
 
-2. **Rétention 30 jours vs 5 ans — PARTIEL**
-   Pas de contradiction textuelle directe "30 jours" vs "5 ans" entre `cgu.html:79` et `politique-confidentialite.html:110,215` — les deux s'accordent sur **30 jours** après résiliation pour les données HACCP métier (facturation → 10 ans, analytics → 2 ans, exceptions cohérentes). **Incohérence réelle trouvée ailleurs** : `faq/index.html:485` affirme que HACC.PRO "archive automatiquement toutes les données pendant au moins **3 ans**", ce qui contredit frontalement la suppression à 30 jours des CGU/Polconf. Par ailleurs, **aucun des deux documents légaux ne mentionne la durée réglementaire de conservation des registres HACCP** (les propres guides du site citent 5 ans pour les produits secs, `guides/tracabilite-alimentaire.html:47,285,352`) ni comment l'utilisateur doit archiver ses données avant suppression à J+30 pour rester conforme à ses propres obligations.
+2. **Rétention 30 jours vs 5 ans — FAIT (corrigé, confirmé septembre 2026)**
+   Corrigé par les commits `0cea8db`/`65bcd38` (18 et 27 août 2026). `cgu.html:79` distingue désormais explicitement les données de compte (30 jours après résiliation) des données HACCP métier (**5 ans**, avec référence au Règlement (CE) n°178/2002 et (CE) n°852/2004). `faq/index.html:485,512,527` a été aligné sur 5 ans (au lieu des 3 ans qui contredisaient les CGU/Polconf). Les trois documents (CGU, politique de confidentialité, FAQ) sont maintenant cohérents entre eux et citent la base réglementaire.
 
 3. **DPA — À FAIRE**
    Aucun document DPA/accord de sous-traitance dans le repo, ni en pièce jointe ni en lien référencé. `politique-confidentialite.html:143-173` liste bien les sous-traitants (Supabase, Netlify, Stripe, Resend) et affirme ligne 175 que "des contrats de sous-traitance conformes au RGPD sont conclus" — mais c'est une déclaration non sourcée, aucun document n'est produit ni accessible.
@@ -316,16 +318,42 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 8. **Menus PMS dashboard — À FAIRE (systèmes disjoints)**
    Zéro résultat pour "menu" dans `app-pms.js`/`pms-setup.html`, et zéro lien fonctionnel réciproque (seule mention isolée de `pms_records` comme source de données générique, `js/app-menu-dashboard.js:14`). Le système de menus et la génération PMS sont deux systèmes complètement séparés.
 
+### Nouveautés (ajoutées entre le 31 juillet et le 27 août 2026, absentes de l'audit initial)
+
+Tous les fichiers touchant l'app cœur (`admin-proxy.js`, `superadmin.html`, `app-dashboard.js`, `app-login.js`, `app-signup.js`, `app-onboarding.js`, `app-pms.js`, `app-menu-*.js`) sont restés **inchangés** depuis le commit `3540782` (correctif P0 sécurité du 31 juillet) — d'où l'absence de régression sur les points Sécurité/Bugs ci-dessus. Le travail depuis juillet a porté sur le marketing/SEO/légal et un durcissement ciblé des photos :
+
+- **`netlify/functions/beta-offer-status.js`** (nouveau) — endpoint public qui interroge Stripe pour savoir combien de places restent sur le coupon de lancement `HACCBETA`, afin que la landing page masque automatiquement l'offre une fois épuisée. Fail-open par conception (`active:true` si Stripe/clé indisponible).
+- **`netlify/sql/fix-pms-photos-limits.sql`** (nouveau) — défense en profondeur sur le bucket `pms-photos` : limite serveur de 8 Mo et de type MIME (`jpeg`/`png`/`webp`), en plus de la compression client déjà en place. Pas encore fusionné dans `schema.sql` (comme `fix-pms-records-rls-site-id.sql`), donc à vérifier/appliquer manuellement en base si pas déjà fait (voir migrations SQL en bas de fichier).
+- **Qualité photos HACCP** (`js/app-cuisine.js`, 4 sites d'upload — `onPhotoRequestFileSelected`, `cpPhotoCapture`, `nettNCHandlePhoto`, `photoSave`) — validation de taille (rejet >20 Mo côté client avec `toast()`), gestion `img.onerror`, et miniatures stockées agrandies (200-280px → 640px, qualité JPEG 0.55-0.6 → 0.72) car elles servent de **preuve HACCP officielle** du dossier (`_parsePhotoField`), pas de simple aperçu.
+- **`js/modern.js` + `css/modern.css`** (nouveaux) — animation de la jauge de température du hero sur `index.html`/`landing.html` (respecte `prefers-reduced-motion`).
+- **Refonte `index.html`/`landing.html`** — repositionnement autour des contrôles DDPP et de l'offre de lancement `HACCBETA`, nouvelle section fondateur (`assets/img/fondateur.jpg`).
+- **6 nouveaux guides SEO** dans `guides/` : `checklist-controle-ddpp.html`, `haccp-sans-papier.html`, `pms-ehpad.html`, `protocole-refroidissement-haccp.html`, `releve-temperature-haccp-fiche.html`, `tableau-dlc-restauration.html` — non listés dans le tableau de pages en tête de ce fichier.
+- **Refonte du menu mobile (FAB)** sur les 12 pages guides/FAQ/mode d'emploi — remplace la liste de guides câblée en dur (incohérente entre pages, 7 à 13 entrées selon la page) par un lien unique vers `faq/index.html#guides`, désormais le véritable annuaire des guides.
+- **`mentions-legales.html`, `cgu.html`, `politique-confidentialite.html`** — email de contact/DPO changé de `contact@hacc.pro` vers une adresse Gmail personnelle (`jeremie.hacc.pro@gmail.com`) ; à noter pour la cohérence de marque autant que pour la conformité légale (le RGPD n'impose pas de domaine dédié mais c'est inhabituel pour un DPO déclaré).
+- **`sitemap.xml`/`robots.txt`/canonicals** — bascule vers `www.hacc.pro` comme domaine canonique.
+
+### Bilan du ré-audit — 1er septembre 2026
+
+- **Régressions** : **aucune**. Les 5 correctifs P0 sécurité + l'unification des chemins tenant (juillet) sont tous confirmés toujours en place dans le code actuel, fichier par fichier.
+- **P1 Bugs résiduels** (§6 color/nom superadmin, §7 appBeep sur NC, §8 garde-fou export XLSX, §9 `co_restalliance`, §10 RLS enr19) : **0 corrigé** depuis juillet — tous encore ouverts, comportement identique ligne pour ligne à l'audit initial.
+- **P2 Légal** : **1 résolu** (rétention 30j/3ans/5ans harmonisée, §12 ci-dessous) sur 3 ; mentions légales (SIRET etc.) et DPA toujours absents.
+- **P3 Fonctionnalités** : **0 corrigé** — import CSV, intégration menus↔PMS, purge wizard, messagerie bidirectionnelle toujours à l'état de juillet.
+- **Nouveautés hors périmètre de l'audit initial** : ~10 ajouts (voir ci-dessus), aucun ne touche les zones auditées (sécurité, RLS, workflows NC/ENR) — essentiellement marketing/SEO/légal + un durcissement de la validation photo.
+- **Chiffres** : **6 points corrigés** au total depuis l'audit initial (5 P0 sécurité + unification tenant en juillet, + 1 P2 légal en août) / **11 points encore ouverts** sur les 17 chantiers numérotés (5 P1 + 2 P2 + 4 P3, plus les 2 sous-points P0 résiduels non numérotés) / **~10 nouveautés** non documentées avant ce ré-audit, aucune touchant le périmètre sécurité/RLS audité.
+
 ---
 
 ## 🎯 Chantiers restants, classés par priorité
 
-**✅ Corrigés (ex-P0 Sécurité + P1 §5 inscription) :**
+**✅ Corrigés (ex-P0 Sécurité + P1 §5 inscription, juillet 2026) :**
 1. ~~Isolation multi-tenant `admin-proxy.js`~~ — cloisonnement serveur par `tenant_id` pour `siege`/`directeur` (Audit Sécurité §1).
 2. ~~Bucket `pms-photos` public~~ — bucket privé + URLs signées (Audit Sécurité §2).
 3. ~~XSS `superadmin.html`/`app-dashboard.js`~~ — corrigées aux emplacements identifiés par l'audit (Audit Sécurité §3, pas une revue exhaustive).
 4. ~~Paywall sans filet serveur~~ — RLS `tenant_subscription_active()` sur `pms_records` insert/update (Audit Sécurité §4, périmètre limité à cette table).
 5. ~~3 chemins de création tenant incohérents~~ — unifiés sur `signup-setup.js`/`provision-tenant.js` (Audit Bugs §6).
+
+**✅ Corrigé depuis (août 2026, confirmé au ré-audit du 1er septembre) :**
+12. ~~Incohérence 30 jours vs 3 ans/5 ans sur la rétention des données~~ — CGU/Polconf/FAQ harmonisés sur 5 ans pour les données HACCP métier, avec référence réglementaire (Audit Légal §2, commits `0cea8db`/`65bcd38`).
 
 **P0 — Sécurité résiduelle :**
 - Le filet paywall (point 4 ci-dessus) ne couvre que `pms_records` — évaluer si d'autres tables écrites directement par le client (`sites.config`, `pms_config`) doivent aussi être cloisonnées par abonnement.
@@ -339,9 +367,8 @@ Chaque point a été vérifié directement dans le code (fichier + ligne), pas s
 10. Investiguer/reproduire le 403 RLS sur enr19 en prod (non reproductible depuis le code seul) — vérifier si `fix-pms-records-rls-site-id.sql` est réellement appliqué en base (Audit Bugs §1).
 
 **P2 — Conformité légale (risque juridique, pas de deadline technique) :**
-11. Compléter `mentions-legales.html` : SIRET, adresse, directeur de publication, forme juridique/capital (Audit Légal §1).
-12. Résoudre l'incohérence 30 jours (CGU/Polconf) vs 3 ans (FAQ) sur la rétention des données, et documenter la durée réglementaire de conservation HACCP + le parcours d'export avant suppression (Audit Légal §2).
-13. Rédiger et publier un DPA réel, référencé depuis la politique de confidentialité (Audit Légal §3).
+11. Compléter `mentions-legales.html` : SIRET, adresse, directeur de publication, forme juridique/capital (Audit Légal §1). Toujours absent au 1er septembre 2026.
+13. Rédiger et publier un DPA réel, référencé depuis la politique de confidentialité (Audit Légal §3). Toujours absent au 1er septembre 2026.
 
 **P3 — Fonctionnalités incomplètes ou manquantes (roadmap produit) :**
 14. Import Excel/CSV en masse des utilisateurs (absent, Audit Fonctionnalités §7).
@@ -355,3 +382,4 @@ Ces fichiers doivent être exécutés dans Supabase SQL Editor sur la base de pr
 1. `netlify/sql/fix-pms-photos-private.sql` — bucket `pms-photos` privé.
 2. `netlify/sql/fix-paywall-rls-subscription.sql` — filet RLS paywall sur `pms_records`.
 3. Si `netlify/sql/fix-pms-records-rls-site-id.sql` a déjà été appliqué sur cette base, le ré-exécuter après le point 2 (il recrée `pms_records_insert` et inclut désormais aussi le filet paywall).
+4. `netlify/sql/fix-pms-photos-limits.sql` (nouveau, août 2026) — limite serveur 8 Mo + types MIME autorisés sur le bucket `pms-photos`, idempotent.
