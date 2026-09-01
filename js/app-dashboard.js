@@ -494,7 +494,15 @@ async function getSignedPhotoUrl(u, expiresIn) {
     // où l'API évoluerait.
     const signedRaw = d?.signedURL || d?.signedUrl || '';
     if (!signedRaw) { console.warn('[getSignedPhotoUrl] réponse sans URL signée', path, d); return ''; }
-    const full = signedRaw.startsWith('http') ? signedRaw : `${SUPA_URL}${signedRaw}`;
+    // L'API renvoie un chemin SANS le préfixe /storage/v1 (ex.
+    // "/object/sign/pms-photos/…?token=…") — le SDK supabase-js le
+    // reconstruit pareil : `${url}/storage/v1` + signedURL. L'ancien code
+    // faisait SUPA_URL + signedRaw → URL 404 hors routage, aucun GET
+    // n'atteignait jamais le storage et l'<img> échouait en silence.
+    let full;
+    if (/^https?:\/\//.test(signedRaw)) full = signedRaw;
+    else if (signedRaw.startsWith('/storage/v1/')) full = `${SUPA_URL}${signedRaw}`;
+    else full = `${SUPA_URL}/storage/v1${signedRaw.startsWith('/') ? '' : '/'}${signedRaw}`;
     _photoSignCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
     return full;
   } catch(e) { console.warn('[getSignedPhotoUrl] erreur', path, e.message); return ''; }
