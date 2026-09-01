@@ -252,7 +252,15 @@ const SupaEngine = (() => {
       // en silence alors que le POST de signature répondait 200.
       const signedRaw = d?.signedURL || d?.signedUrl || d?.data?.signedURL || d?.data?.signedUrl || '';
       if (!signedRaw) { console.warn('[getSignedPhotoUrl] réponse sans URL signée', path, d); return ''; }
-      const full = signedRaw.startsWith('http') ? signedRaw : `${c.url}${signedRaw}`;
+      // L'API renvoie un chemin SANS le préfixe /storage/v1 (ex.
+      // "/object/sign/pms-photos/…?token=…") — le SDK supabase-js le
+      // reconstruit pareil : `${url}/storage/v1` + signedURL. L'ancien code
+      // faisait c.url + signedRaw → URL 404 hors routage, aucun GET
+      // n'atteignait jamais le storage et l'<img> échouait en silence.
+      let full;
+      if (/^https?:\/\//.test(signedRaw)) full = signedRaw;
+      else if (signedRaw.startsWith('/storage/v1/')) full = `${c.url}${signedRaw}`;
+      else full = `${c.url}/storage/v1${signedRaw.startsWith('/') ? '' : '/'}${signedRaw}`;
       _signedUrlCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
       return full;
     } catch(e) { console.warn('[getSignedPhotoUrl] erreur', path, e); _supaLog('⚠️ Erreur signature photo : ' + e.message); return ''; }
