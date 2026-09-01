@@ -442,6 +442,12 @@ function _pmsPhotoPath(u) {
   if (/^data:/.test(u) || /^https?:\/\//.test(u)) return ''; // base64 local ou URL externe non reconnue
   return u.replace(/^\/+/, '');
 }
+// Encode chaque segment du chemin (le nom de fichier peut contenir des
+// caractères spéciaux, ex. "::" quand un id source est vide) sans encoder
+// les "/" séparateurs.
+function _encodeStoragePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
 async function getSignedPhotoUrl(u, expiresIn) {
   expiresIn = expiresIn || 3600;
   const path = _pmsPhotoPath(u);
@@ -449,12 +455,17 @@ async function getSignedPhotoUrl(u, expiresIn) {
   const cached = _photoSignCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.url;
   try {
-    const d = await supa('POST', '/storage/v1/object/sign/pms-photos/' + path, { expiresIn });
-    if (!d || !d.signedURL) return '';
-    const full = d.signedURL.startsWith('http') ? d.signedURL : `${SUPA_URL}${d.signedURL}`;
+    const d = await supa('POST', '/storage/v1/object/sign/pms-photos/' + _encodeStoragePath(path), { expiresIn });
+    // L'API storage brute renvoie "signedURL", mais on accepte aussi la
+    // casse "signedUrl" (celle normalisée par le SDK supabase-js) au cas
+    // où l'API évoluerait — un champ manquant faisait échouer l'affichage
+    // en silence alors que le POST de signature répondait 200.
+    const signedRaw = d?.signedURL || d?.signedUrl || d?.data?.signedURL || d?.data?.signedUrl || '';
+    if (!signedRaw) { console.warn('[getSignedPhotoUrl] réponse sans URL signée', path, d); return ''; }
+    const full = signedRaw.startsWith('http') ? signedRaw : `${SUPA_URL}${signedRaw}`;
     _photoSignCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
     return full;
-  } catch(e) { console.warn('[getSignedPhotoUrl]', e.message); return ''; }
+  } catch(e) { console.warn('[getSignedPhotoUrl] erreur', path, e.message); return ''; }
 }
 
 // Hydratation paresseuse des <img data-psrc="…"> (chemin/URL pms-photos à
@@ -467,8 +478,8 @@ function _hydratePhotoImg(el) {
   if (!raw) return;
   if (raw.startsWith('data:image/')) { el.src = raw; return; }
   getSignedPhotoUrl(raw).then(function(signed){
-    if (signed) el.src = signed; else el.style.display = 'none';
-  }).catch(function(){ el.style.display = 'none'; });
+    if (signed) el.src = signed; else { console.warn('[photo hydration] pas d\'URL signée pour', raw); el.style.display = 'none'; }
+  }).catch(function(e){ console.warn('[photo hydration] échec', raw, e); el.style.display = 'none'; });
 }
 (function initPhotoLazyHydration(){
   function scan(root){
@@ -5061,7 +5072,10 @@ function _openLightboxResolved(url){
   const img=document.getElementById('lightbox-img');
   if (url && url.startsWith('data:image/')) { img.src = url; return; }
   img.removeAttribute('src');
-  getSignedPhotoUrl(url).then(function(signed){ img.src = signed || url; }).catch(function(){ img.src = url; });
+  getSignedPhotoUrl(url).then(function(signed){
+    if (!signed) console.warn('[lightbox] pas d\'URL signée, repli sur le chemin brut (échouera si bucket privé)', url);
+    img.src = signed || url;
+  }).catch(function(e){ console.warn('[lightbox] échec résolution URL signée', url, e); img.src = url; });
 }
 function openLightbox(url){_openLightboxResolved(url);document.getElementById('lightbox').classList.add('open');}
 function closeLightbox(){document.getElementById('lightbox').classList.remove('open');document.getElementById('lightbox-img').src='';}

@@ -194,7 +194,7 @@ const SupaEngine = (() => {
     const arr = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
     const blob = new Blob([arr], { type: mime });
-    const r = await fetch(`${c.url}/storage/v1/object/pms-photos/${storagePath}`, {
+    const r = await fetch(`${c.url}/storage/v1/object/pms-photos/${storagePath.split('/').map(encodeURIComponent).join('/')}`, {
       method: 'POST',
       headers: {
         'apikey': c.anonKey,
@@ -224,6 +224,12 @@ const SupaEngine = (() => {
     if (/^https?:\/\//.test(u)) return ''; // URL externe non reconnue
     return u.replace(/^\/+/, '');
   }
+  // Encode chaque segment du chemin (le nom de fichier peut contenir des
+  // caractères spéciaux, ex. "::" quand un id source est vide) sans encoder
+  // les "/" séparateurs.
+  function _encodeStoragePath(path) {
+    return path.split('/').map(encodeURIComponent).join('/');
+  }
   async function getSignedPhotoUrl(u, expiresIn) {
     expiresIn = expiresIn || 3600;
     const path = _pmsPhotoPath(u);
@@ -233,18 +239,23 @@ const SupaEngine = (() => {
     const c = cfg();
     try {
       const token = await _ensureFreshToken(c);
-      const r = await fetch(`${c.url}/storage/v1/object/sign/pms-photos/${path}`, {
+      const r = await fetch(`${c.url}/storage/v1/object/sign/pms-photos/${_encodeStoragePath(path)}`, {
         method: 'POST',
         headers: { 'apikey': c.anonKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ expiresIn }),
       });
-      if (!r.ok) { _supaLog(`⚠️ Signature photo échouée (${r.status}) : ${path}`); return ''; }
+      if (!r.ok) { console.warn('[getSignedPhotoUrl] signature échouée', r.status, path); _supaLog(`⚠️ Signature photo échouée (${r.status}) : ${path}`); return ''; }
       const d = await r.json();
-      if (!d.signedURL) return '';
-      const full = d.signedURL.startsWith('http') ? d.signedURL : `${c.url}${d.signedURL}`;
+      // L'API storage brute renvoie "signedURL", mais on accepte aussi la
+      // casse "signedUrl" (celle normalisée par le SDK supabase-js) au cas
+      // où l'API évoluerait — un champ manquant faisait échouer l'affichage
+      // en silence alors que le POST de signature répondait 200.
+      const signedRaw = d?.signedURL || d?.signedUrl || d?.data?.signedURL || d?.data?.signedUrl || '';
+      if (!signedRaw) { console.warn('[getSignedPhotoUrl] réponse sans URL signée', path, d); return ''; }
+      const full = signedRaw.startsWith('http') ? signedRaw : `${c.url}${signedRaw}`;
       _signedUrlCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
       return full;
-    } catch(e) { _supaLog('⚠️ Erreur signature photo : ' + e.message); return ''; }
+    } catch(e) { console.warn('[getSignedPhotoUrl] erreur', path, e); _supaLog('⚠️ Erreur signature photo : ' + e.message); return ''; }
   }
 
   // ── Traitement des photos d'une entrée avant POST ──
@@ -687,8 +698,8 @@ const SupaEngine = (() => {
     if (!raw) return;
     if (raw.startsWith('data:image/')) { el.src = raw; return; }
     SupaEngine.getSignedPhotoUrl(raw).then(function(signed){
-      if (signed) el.src = signed; else el.style.display = 'none';
-    }).catch(function(){ el.style.display = 'none'; });
+      if (signed) el.src = signed; else { console.warn('[photo hydration] pas d\'URL signée pour', raw); el.style.display = 'none'; }
+    }).catch(function(e){ console.warn('[photo hydration] échec', raw, e); el.style.display = 'none'; });
   }
   function scan(root){
     if (!root) return;
