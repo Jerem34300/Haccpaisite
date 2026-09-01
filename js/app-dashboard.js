@@ -448,6 +448,37 @@ function _pmsPhotoPath(u) {
 function _encodeStoragePath(path) {
   return path.split('/').map(encodeURIComponent).join('/');
 }
+// Appel direct (sans passer par supa()) : supa() ne parse le JSON que si
+// le content-type de la réponse contient "json" (`ct.includes('json')`,
+// sinon elle renvoie `[]`) — un comportement taillé pour /rest/v1/*
+// (PostgREST) qui, sur ce endpoint Storage, faisait échouer le parsing en
+// silence malgré un POST /object/sign répondant 200 : plus aucun GET
+// d'image signée ne partait jamais. On lit ici la réponse nous-mêmes.
+async function _signPmsPhoto(path, expiresIn, retried) {
+  const r = await fetch(`${SUPA_URL}/storage/v1/object/sign/pms-photos/${_encodeStoragePath(path)}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expiresIn }),
+  });
+  if (r.status === 401 && !retried && _refreshToken) {
+    try {
+      const rr = await fetch(SUPA_URL + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPA_KEY },
+        body: JSON.stringify({ refresh_token: _refreshToken }),
+      });
+      if (rr.ok) {
+        const data = await rr.json();
+        if (data.access_token) {
+          _token = data.access_token;
+          _refreshToken = data.refresh_token || _refreshToken;
+          return _signPmsPhoto(path, expiresIn, true);
+        }
+      }
+    } catch(e) { console.warn('[getSignedPhotoUrl] refresh token échoué', e); }
+  }
+  return r;
+}
 async function getSignedPhotoUrl(u, expiresIn) {
   expiresIn = expiresIn || 3600;
   const path = _pmsPhotoPath(u);
@@ -455,12 +486,13 @@ async function getSignedPhotoUrl(u, expiresIn) {
   const cached = _photoSignCache.get(path);
   if (cached && cached.expiresAt > Date.now()) return cached.url;
   try {
-    const d = await supa('POST', '/storage/v1/object/sign/pms-photos/' + _encodeStoragePath(path), { expiresIn });
+    const r = await _signPmsPhoto(path, expiresIn, false);
+    if (!r.ok) { const t = await r.text().catch(()=>''); console.warn('[getSignedPhotoUrl] signature échouée', r.status, path, t.slice(0,200)); return ''; }
+    const d = await r.json();
     // L'API storage brute renvoie "signedURL", mais on accepte aussi la
     // casse "signedUrl" (celle normalisée par le SDK supabase-js) au cas
-    // où l'API évoluerait — un champ manquant faisait échouer l'affichage
-    // en silence alors que le POST de signature répondait 200.
-    const signedRaw = d?.signedURL || d?.signedUrl || d?.data?.signedURL || d?.data?.signedUrl || '';
+    // où l'API évoluerait.
+    const signedRaw = d?.signedURL || d?.signedUrl || '';
     if (!signedRaw) { console.warn('[getSignedPhotoUrl] réponse sans URL signée', path, d); return ''; }
     const full = signedRaw.startsWith('http') ? signedRaw : `${SUPA_URL}${signedRaw}`;
     _photoSignCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
