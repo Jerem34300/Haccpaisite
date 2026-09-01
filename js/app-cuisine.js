@@ -7571,6 +7571,7 @@ function openOcrModal(pfx) {
   _photoB64 = null;
   // Reset UI
   const img = document.getElementById('ocr-img');
+  img.onerror = null; // évite un faux toast "Image invalide" hérité d'une capture précédente (voir closeOcrModal)
   img.style.display = 'none';
   img.src = '';
   document.getElementById('ocr-placeholder').style.display = 'block';
@@ -7588,7 +7589,7 @@ function closeOcrModal() {
   const btn = document.getElementById('ocr-apply-btn');
   if(btn){ btn.style.opacity='.4'; btn.style.pointerEvents='none'; }
   const img = document.getElementById('ocr-img');
-  if(img){ img.style.display='none'; img.src=''; }
+  if(img){ img.onerror = null; img.style.display='none'; img.src=''; } // onerror=null : évite un faux toast "Image invalide" au prochain openOcrModal()
   const ph = document.getElementById('ocr-placeholder');
   if(ph) ph.textContent='📷 Appuyez sur "Ouvrir la caméra"';
 }
