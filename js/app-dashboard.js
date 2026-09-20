@@ -452,7 +452,13 @@ function _pmsPhotoPath(u) {
 // caractères spéciaux, ex. "::" quand un id source est vide) sans encoder
 // les "/" séparateurs.
 function _encodeStoragePath(path) {
-  return path.split('/').map(encodeURIComponent).join('/');
+  // encodeURIComponent encode aussi ":" → %3A. Les fichiers historiques
+  // (qid = site::enr::ts → qShort "RA3414::") portent des ":" dans le nom.
+  // Supabase Storage répond 400 sur /object/sign/...%3A%3A... ; on laisse
+  // les ":" littéraux dans le segment (valides en path) après encodage.
+  return path.split('/').map(function(seg){
+    return encodeURIComponent(seg).replace(/%3A/gi, ':');
+  }).join('/');
 }
 // Appel direct (sans passer par supa()) : supa() ne parse le JSON que si
 // le content-type de la réponse contient "json" (`ct.includes('json')`,
@@ -461,11 +467,21 @@ function _encodeStoragePath(path) {
 // silence malgré un POST /object/sign répondant 200 : plus aucun GET
 // d'image signée ne partait jamais. On lit ici la réponse nous-mêmes.
 async function _signPmsPhoto(path, expiresIn, retried) {
-  const r = await fetch(`${SUPA_URL}/storage/v1/object/sign/pms-photos/${_encodeStoragePath(path)}`, {
+  const encA = _encodeStoragePath(path);
+  const encB = path.split('/').map(encodeURIComponent).join('/');
+  let r = await fetch(`${SUPA_URL}/storage/v1/object/sign/pms-photos/${encA}`, {
     method: 'POST',
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${_token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ expiresIn }),
   });
+  // Retry avec encodage intégral si 400 (objets uploadés avec %3A historiques)
+  if (r.status === 400 && encB !== encA) {
+    r = await fetch(`${SUPA_URL}/storage/v1/object/sign/pms-photos/${encB}`, {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expiresIn }),
+    });
+  }
   if (r.status === 401 && !retried && _refreshToken) {
     try {
       const rr = await fetch(SUPA_URL + '/auth/v1/token?grant_type=refresh_token', {
@@ -509,6 +525,14 @@ async function getSignedPhotoUrl(u, expiresIn) {
     if (/^https?:\/\//.test(signedRaw)) full = signedRaw;
     else if (signedRaw.startsWith('/storage/v1/')) full = `${SUPA_URL}${signedRaw}`;
     else full = `${SUPA_URL}/storage/v1${signedRaw.startsWith('/') ? '' : '/'}${signedRaw}`;
+    // Les GET /object/sign/...%3A%3A... renvoient 400 ; les ":" littéraux passent.
+    // On normalise uniquement le chemin (avant ?token=).
+    try {
+      const q = full.indexOf('?');
+      const base = q >= 0 ? full.slice(0, q) : full;
+      const qs = q >= 0 ? full.slice(q) : '';
+      full = base.replace(/%3A/gi, ':') + qs;
+    } catch(_e) {}
     _photoSignCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
     return full;
   } catch(e) { console.warn('[getSignedPhotoUrl] erreur', path, e.message); return ''; }
