@@ -2781,6 +2781,21 @@ function saveRow(id){
   if(AR[id]){try{const u=AR[id](id);Object.entries(u||{}).forEach(([k,v])=>{if(v!=null){S[id]=S[id]||{};S[id].draft=S[id].draft||{};S[id].draft[k]=String(v);}});}catch(e){}}
   const def=FDEFS[id];const draft={...((S[id]||{}).draft||{})};
   if(def)def.fields.forEach(f=>{if((draft[f.id]===undefined||draft[f.id]==='')&&dflt(f))draft[f.id]=dflt(f);});
+  // ENR31 — validation stricte (micro-fix UX) : produit / lot / DLC|DDM / visa
+  if(id==='enr31'){
+    const miss=[];
+    if(!String(draft.produit||'').trim()) miss.push('produit');
+    if(!String(draft.lot||'').trim()) miss.push('lot');
+    if(!String(draft.dlc||'').trim()) miss.push('DLC/DDM');
+    if(!String(draft.cuisinier||'').trim()) miss.push('visa');
+    if(miss.length){
+      const msg='⚠️ Traçabilité incomplète : '+miss.join(', ');
+      toast(msg,'warning');
+      try{const el=document.getElementById('enr31-err');if(el){el.textContent=msg;el.style.display='block';}}catch(e){}
+      return;
+    }
+    try{const el=document.getElementById('enr31-err');if(el){el.textContent='';el.style.display='none';}}catch(e){}
+  }
   if(Object.values(draft).filter(v=>v&&String(v).trim()).length===0){toast('⚠️ Aucune donnée saisie','warning');return;}
   const prod=draft.produit||draft.fournisseur||draft.association||draft.theme||'';
   if(prod)addProd(prod.trim());
@@ -5242,9 +5257,9 @@ function renderENR30(){
     <div class="fg full" style="margin-bottom:12px"><label>Traitement du produit</label><div class="ck-grid">${traits.map(t=>{const k='trait_'+t.replace(/[^a-z]/gi,'').toLowerCase();return`<div class="ckg"><input type="checkbox" id="nct_${k}" ${g(k)?'checked':''} onchange="nc30('${k}',this.checked?'1':'')"><label for="nct_${k}">${t}</label></div>`;}).join('')}</div></div>
     <div class="fgrid">
       ${chefSel('resp','enr30','Responsable informé')}
-      <div class="fg"><div class="cfl">Clôturée ?</div><div class="cfg">
-        <button class="cfb oui${g('cloture')==='OUI'?' on':''}" onclick="nc30cf('OUI',this)">✓ OUI</button>
-        <button class="cfb non${g('cloture')==='NON'?' on':''}" onclick="nc30cf('NON',this)">✗ NON</button>
+      <div class="fg"><div class="cfl">Gravité *</div><div class="cfg">
+        <button class="cfb${g('gravite')==='mineure'?' on':''}" onclick="nc30('gravite','mineure');this.parentElement.querySelectorAll('.cfb').forEach(b=>b.classList.remove('on'));this.classList.add('on')" style="flex:1">Mineure</button>
+        <button class="cfb${g('gravite')==='majeure'?' on':''}" onclick="nc30('gravite','majeure');this.parentElement.querySelectorAll('.cfb').forEach(b=>b.classList.remove('on'));this.classList.add('on')" style="flex:1;background:${g('gravite')==='majeure'?'#fee2e2':'transparent'}">Majeure</button>
       </div></div>
     </div>
     <div class="fg full" style="margin:10px 0"><label>Plan d'action correctif / préventif</label><textarea rows="3" class="fi" oninput="nc30('plan',this.value)">${escH(g('plan'))}</textarea></div>
@@ -5270,8 +5285,9 @@ function renderENR30(){
         <input type="hidden" id="nc30-sig-data" value="${escH(g('signature'))}">
       </div>
     </div>
-    <div class="btn-row">
-      <button class="btn-save" onclick="nc30Save()">✅ Enregistrer cette NC</button>
+    <div class="btn-row" style="flex-wrap:wrap;gap:8px">
+      <button class="btn-save" onclick="nc30Save('NON')">✅ Enregistrer (ouverte)</button>
+      <button class="btn" style="background:#7f1d1d;color:#fff;border:none" onclick="nc30Save('OUI')">🔒 Clôturer</button>
       <button class="btn btn-sec" onclick="nc30Reset()">🔄 Effacer</button>
     </div>
     <!-- Photo NC -->
@@ -5366,9 +5382,26 @@ function nc30SigClear(){
   nc30('signature','');
 }
 function nc30cf(v,el){nc30('cloture',v);el.parentElement.querySelectorAll('.cfb').forEach(b=>b.classList.toggle('on',b===el));}
-function nc30Save(){
+function nc30Save(forceCloture){
   const d=(S['enr30']||{}).draft||{};
   S['enr30']=S['enr30']||{};S['enr30'].lignes=S['enr30'].lignes||[];
+  // forceCloture: 'NON' = enregistrer ouverte, 'OUI' = clôturer, sinon draft.cloture || 'NON'
+  const cloture = (forceCloture==='OUI'||forceCloture==='NON') ? forceCloture : (d.cloture||'NON');
+  if(!d.gravite || (d.gravite!=='mineure'&&d.gravite!=='majeure')){
+    toast('⚠️ Gravité obligatoire (mineure / majeure)','warning');
+    return;
+  }
+  if(cloture==='OUI'){
+    if(!d.signature || !String(d.signature).startsWith('data:image')){
+      toast('⚠️ Signature obligatoire pour clôturer la NC','warning');
+      return;
+    }
+    if(!String(d.resp||d.nom_fct||'').trim()){
+      toast('⚠️ Responsable obligatoire pour clôturer la NC','warning');
+      return;
+    }
+  }
+  d.cloture = cloture;
   const selectedActionIds = getSelectedCorrectiveActionIds(d);
   const selectedActionNames = getSelectedCorrectiveActionNames(d);
   const customActionRaw = String(d.action_custom||'').trim();
@@ -5449,7 +5482,7 @@ function nc30Save(){
   if(d._auto_ligne_idx!==undefined){
     const li=parseInt(d._auto_ligne_idx);
     if(S['enr30'].lignes[li]){
-      Object.assign(S['enr30'].lignes[li],{...d,_auto:false,cloture:d.cloture||'OUI',_ts_completed:new Date().toISOString()});
+      Object.assign(S['enr30'].lignes[li],{...d,_auto:false,cloture:cloture,_ts_completed:new Date().toISOString()});
       delete S['enr30'].lignes[li]._auto_ligne_idx;
     }
     // Retirer du pending via _key
@@ -5517,7 +5550,7 @@ function nc30Save(){
       }
     }
   } catch(e){ try{SupaEngine.enqueue('enr30',S['enr30']?.lignes?.[0]);}catch{} }
-  goTo('enr30');toast('✅ NC enregistrée et clôturée','success');
+  goTo('enr30');toast(cloture==='OUI'?'✅ NC clôturée':'✅ NC enregistrée (ouverte)','success');
 }
 function nc30Reset(){S['enr30']=S['enr30']||{};S['enr30'].draft={};save();goTo('enr30');}
 
@@ -10695,13 +10728,17 @@ function renderENR31() {
   const draft = (S['enr31']||{}).draft||{};
   // Pré-remplir la date si absente
   if (!draft.date) { sd('date', today(), 'enr31'); }
+  const fields31 = (def.fields||[]).map(f=>{
+    if(['produit','lot','dlc','cuisinier'].includes(f.id)) return Object.assign({}, f, {label:(f.label||'')+' *'});
+    return f;
+  });
   return `
     <div class="card">
       <div class="card-title">${def.title}</div>
       <div class="regle">${def.regle}</div>
 
       <div style="margin-bottom:12px">
-        <div style="font-size:.7rem;font-weight:800;color:var(--plum);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📷 Photos étiquettes (max 3)</div>
+        <div style="font-size:.7rem;font-weight:800;color:var(--plum);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📷 Photos étiquettes (max 3) <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--gris2)">(recommandé)</span></div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
           <div>
             <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31')">
@@ -10725,7 +10762,8 @@ function renderENR31() {
       </div>
 
       <div class="fg-label">Nouvelle saisie</div>
-      ${renderFields(def.fields, 'enr31')}
+      ${renderFields(fields31, 'enr31')}
+      <div id="enr31-err" style="display:none;margin:8px 0 0;padding:8px 10px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:10px;color:#991b1b;font-size:.78rem;font-weight:700"></div>
 
     <div class="btn-row">
         <button class="btn-save" onclick="saveRow('enr31')">✅ Enregistrer</button>
