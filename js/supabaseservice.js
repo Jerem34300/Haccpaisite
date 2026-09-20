@@ -194,7 +194,7 @@ const SupaEngine = (() => {
     const arr = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) arr[i] = binary.charCodeAt(i);
     const blob = new Blob([arr], { type: mime });
-    const r = await fetch(`${c.url}/storage/v1/object/pms-photos/${storagePath.split('/').map(encodeURIComponent).join('/')}`, {
+    const r = await fetch(`${c.url}/storage/v1/object/pms-photos/${_encodeStoragePath(storagePath)}`, {
       method: 'POST',
       headers: {
         'apikey': c.anonKey,
@@ -228,7 +228,13 @@ const SupaEngine = (() => {
   // caractères spéciaux, ex. "::" quand un id source est vide) sans encoder
   // les "/" séparateurs.
   function _encodeStoragePath(path) {
-    return path.split('/').map(encodeURIComponent).join('/');
+    // encodeURIComponent encode aussi ":" → %3A. Les fichiers historiques
+    // (qid = site::enr::ts → qShort "RA3414::") portent des ":" dans le nom.
+    // Supabase Storage répond 400 sur /object/sign/...%3A%3A... ; on laisse
+    // les ":" littéraux dans le segment (valides en path) après encodage.
+    return path.split('/').map(function(seg){
+      return encodeURIComponent(seg).replace(/%3A/gi, ':');
+    }).join('/');
   }
   async function getSignedPhotoUrl(u, expiresIn) {
     expiresIn = expiresIn || 3600;
@@ -239,11 +245,20 @@ const SupaEngine = (() => {
     const c = cfg();
     try {
       const token = await _ensureFreshToken(c);
-      const r = await fetch(`${c.url}/storage/v1/object/sign/pms-photos/${_encodeStoragePath(path)}`, {
+      const encA = _encodeStoragePath(path);
+      const encB = path.split('/').map(encodeURIComponent).join('/');
+      let r = await fetch(`${c.url}/storage/v1/object/sign/pms-photos/${encA}`, {
         method: 'POST',
         headers: { 'apikey': c.anonKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ expiresIn }),
       });
+      if (r.status === 400 && encB !== encA) {
+        r = await fetch(`${c.url}/storage/v1/object/sign/pms-photos/${encB}`, {
+          method: 'POST',
+          headers: { 'apikey': c.anonKey, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ expiresIn }),
+        });
+      }
       if (!r.ok) { console.warn('[getSignedPhotoUrl] signature échouée', r.status, path); _supaLog(`⚠️ Signature photo échouée (${r.status}) : ${path}`); return ''; }
       const d = await r.json();
       // L'API storage brute renvoie "signedURL", mais on accepte aussi la
@@ -261,6 +276,12 @@ const SupaEngine = (() => {
       if (/^https?:\/\//.test(signedRaw)) full = signedRaw;
       else if (signedRaw.startsWith('/storage/v1/')) full = `${c.url}${signedRaw}`;
       else full = `${c.url}/storage/v1${signedRaw.startsWith('/') ? '' : '/'}${signedRaw}`;
+      try {
+        const q = full.indexOf('?');
+        const base = q >= 0 ? full.slice(0, q) : full;
+        const qs = q >= 0 ? full.slice(q) : '';
+        full = base.replace(/%3A/gi, ':') + qs;
+      } catch(_e) {}
       _signedUrlCache.set(path, { url: full, expiresAt: Date.now() + (expiresIn - 60) * 1000 });
       return full;
     } catch(e) { console.warn('[getSignedPhotoUrl] erreur', path, e); _supaLog('⚠️ Erreur signature photo : ' + e.message); return ''; }
@@ -274,7 +295,7 @@ const SupaEngine = (() => {
     const siteId = (entry.site_id||'SITE').toUpperCase();
     const enrType = entry.enr_type || 'enr';
     const fullPhotos = entry._fullPhotos || {};
-    const qShort = (entry.qid||'').slice(0,8);
+    const qShort = String(entry.qid||'').replace(/[^a-zA-Z0-9._-]/g,'').slice(0,12);
     let uploaded = 0, failed = 0;
 
     const photoEntries = Object.entries(entry.data).filter(([,v]) => _isB64Photo(v));
