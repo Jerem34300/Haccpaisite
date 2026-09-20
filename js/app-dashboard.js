@@ -5442,7 +5442,7 @@ function openDetail(id) {
   if (Object.keys(photos).length) {
     const pHtml = Object.entries(photos).map(([k,v])=>{
       let url='';
-      try { const o=JSON.parse(v); url=o.url||o.thumb_url||o.thumb||''; } catch { url=typeof v==='string'&&v.startsWith('http')?v:''; }
+      try { const o=JSON.parse(v); url=o.url||o.thumb_url||o.thumb||''; } catch { url=_parsePhotoUrl(typeof v==='string'?v:''); }
       if (!url) return '';
       const lbl = (typeof PHOTO_LABELS!=='undefined'&&PHOTO_LABELS[k]) ? PHOTO_LABELS[k] : ('📷 '+k);
       const isnc = k==='photo_nc';
@@ -5480,7 +5480,13 @@ function closeDetail() {
 function _parsePhotoUrl(val) {
   if (!val) return '';
   try { var o = JSON.parse(val); return o.url || o.thumb_url || o.thumb || ''; }
-  catch(e) { return (typeof val === 'string' && (val.startsWith('http') || val.startsWith('data:'))) ? val : ''; }
+  catch(e) {
+    if (typeof val !== 'string') return '';
+    if (val.startsWith('http') || val.startsWith('data:')) return val;
+    // chemin brut storage post-bucket-privé (ex. acks/.../x.jpg)
+    if (val.includes('/') && !val.startsWith('{')) return val.replace(/^\/+/, '');
+    return '';
+  }
 }
 function _weekKeyFromIso(isoStr){
   const d = new Date(isoStr||Date.now());
@@ -5499,8 +5505,10 @@ function buildRequestedPhotoItems(){
     if(a.kind!=='photo_request') return;
     const acks = Array.isArray(a.acks) ? a.acks : [];
     acks.forEach(k=>{
-      const url = String(k.photo_data_url||'');
-      if(!url.startsWith('data:image/') && !url.startsWith('http')) return;
+      const url = String(k.photo_data_url || k.photo_url || '');
+      if (!url) return;
+      // data: local, http(s) legacy public, ou chemin brut pms-photos (bucket privé)
+      if (!url.startsWith('data:image/') && !_pmsPhotoPath(url) && !/^https?:\/\//.test(url)) return;
       const siteCode = String(k.site_code || '').toUpperCase();
       if(scopedSites.size && siteCode && !scopedSites.has(siteCode)) return;
       const site = getSiteByCode(siteCode);
@@ -7049,7 +7057,8 @@ function hasPhoto(r) {
   const d = r.data||{};
   const hasPic = PHOTO_FIELDS.some(k => {
     if (!d[k]) return false;
-    try { const o=JSON.parse(d[k]); return !!(o.url||o.thumb||o.thumb_url); } catch { return false; }
+    try { const o=JSON.parse(d[k]); return !!(o.url||o.thumb||o.thumb_url); }
+    catch { return !!_parsePhotoUrl(typeof d[k]==='string'?d[k]:''); }
   });
   if (hasPic) return true;
   // Inclure les signatures canvas
@@ -8196,7 +8205,7 @@ function _renderCardsStandard(cfg, recs) {
     cfg.photoFields.forEach(pf=>{
       if(!d[pf])return;
       try{const o=JSON.parse(d[pf]);const url=o.url||o.thumb_url||o.thumb||'';if(url)photoUrls.push(url);}
-      catch{if(typeof d[pf]==='string'&&d[pf].startsWith('http'))photoUrls.push(d[pf]);}
+      catch{const url=_parsePhotoUrl(typeof d[pf]==='string'?d[pf]:'');if(url)photoUrls.push(url);}
     });
     if(photoUrls.length){
       photosHtml='<div class="rec-photos">'+photoUrls.map(u=>`<img data-psrc="${u}" class="rec-photo-thumb" onclick="event.stopPropagation();openLightbox('${u}')" loading="lazy" onerror="this.style.display='none'">`).join('')+'</div>';
