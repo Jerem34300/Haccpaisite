@@ -437,9 +437,15 @@ async function supaGet(table,query=''){return supa('GET',`/rest/v1/${table}?${qu
 const _photoSignCache = new Map(); // path -> { url, expiresAt }
 function _pmsPhotoPath(u) {
   if (!u || typeof u !== 'string') return '';
-  const m = u.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/pms-photos\/([^?]+)/);
+  // Formats connus Supabase Storage
+  let m = u.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/pms-photos\/([^?]+)/);
   if (m) return decodeURIComponent(m[1]);
-  if (/^data:/.test(u) || /^https?:\/\//.test(u)) return ''; // base64 local ou URL externe non reconnue
+  // Variantes (proxy, ancien SDK, chemin relatif /object/...)
+  m = u.match(/\/(?:object\/(?:public|sign|authenticated)\/)?pms-photos\/([^?]+)/);
+  if (m) return decodeURIComponent(m[1]);
+  if (/^data:/.test(u)) return ''; // base64 local — géré à part
+  if (/^https?:\/\//.test(u)) return ''; // URL externe hors bucket
+  // Chemin brut post-privatisation : SITE/enr…/file.jpg
   return u.replace(/^\/+/, '');
 }
 // Encode chaque segment du chemin (le nom de fichier peut contenir des
@@ -514,12 +520,17 @@ async function getSignedPhotoUrl(u, expiresIn) {
 function _hydratePhotoImg(el) {
   if (!el || el.dataset.psrcDone) return;
   el.dataset.psrcDone = '1';
-  const raw = el.dataset.psrc;
-  if (!raw) return;
-  // Empêcher onerror inline (souvent présent sur les templates) de masquer
-  // l'image pendant que le src est encore vide — course classique avant
-  // résolution de l'URL signée.
   el.onerror = null;
+  // Résoudre depuis le record en mémoire si data-psrc omis (gros data:image
+  // trop long pour un attribut HTML) ou pour relecture fraîche.
+  let raw = el.dataset.psrc || '';
+  if ((!raw || raw === '1') && el.dataset.prec && el.dataset.pfield && typeof _records !== 'undefined') {
+    try {
+      const rec = _records.find(function(x){ return String(x.id) === String(el.dataset.prec); });
+      if (rec && rec.data) raw = _parsePhotoUrl(rec.data[el.dataset.pfield] || '') || '';
+    } catch(e) { console.warn('[photo hydration] lookup record', e); }
+  }
+  if (!raw) { el.style.display = 'none'; return; }
   if (raw.startsWith('data:image/')) {
     el.onerror = function(){ this.style.display = 'none'; };
     el.src = raw;
@@ -531,10 +542,17 @@ function _hydratePhotoImg(el) {
       el.onerror = function(){ this.style.display = 'none'; };
       el.src = signed;
       el.style.display = '';
-    } else {
-      console.warn('[photo hydration] pas d\'URL signée pour', raw);
-      el.style.display = 'none';
+      return;
     }
+    if (/^https?:\/\//.test(raw)) {
+      console.warn('[photo hydration] signature impossible, tentative URL brute', raw.slice(0,120));
+      el.onerror = function(){ this.style.display = 'none'; };
+      el.src = raw;
+      el.style.display = '';
+      return;
+    }
+    console.warn('[photo hydration] pas d\'URL signée pour', raw);
+    el.style.display = 'none';
   }).catch(function(e){ console.warn('[photo hydration] échec', raw, e); el.style.display = 'none'; });
 }
 (function initPhotoLazyHydration(){
@@ -5495,11 +5513,20 @@ function closeDetail() {
 // ════════════════════════════════════════════════════
 function _parsePhotoUrl(val) {
   if (!val) return '';
-  try { var o = JSON.parse(val); return o.url || o.thumb_url || o.thumb || ''; }
-  catch(e) {
+  try {
+    var o = JSON.parse(val);
+    // Préférer un chemin storage déjà normalisable ; éviter de coller un
+    // énorme data:image dans data-psrc (troncature HTML → cadre blanc).
+    var cand = o.url || o.thumb_url || o.thumb || '';
+    if (typeof cand === 'string' && cand.startsWith('data:image/') && cand.length > 8000) {
+      // Trop gros pour un attribut HTML : garder un marqueur ; hydratation
+      // devra passer par le record (voir data-prec / fallback).
+      return cand; // encore tenté en sync ; si échec on verra
+    }
+    return cand;
+  } catch(e) {
     if (typeof val !== 'string') return '';
     if (val.startsWith('http') || val.startsWith('data:')) return val;
-    // chemin brut storage post-bucket-privé (ex. acks/.../x.jpg)
     if (val.includes('/') && !val.startsWith('{')) return val.replace(/^\/+/, '');
     return '';
   }
@@ -5740,7 +5767,7 @@ function renderPhotos() {
               ' onmouseover="this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 4px 12px rgba(0,0,0,.12)\'"'+ 
               ' onmouseout="this.style.transform=\'\';this.style.boxShadow=\'\'">'+ 
               '<div style="position:relative">'+ 
-              '<img data-psrc="'+escAttr(p.url)+'" style="width:100%;height:'+imgH+';object-fit:'+( isSig?'contain':'cover')+';display:block;background:'+bgCard+'" loading="lazy"'+
+              '<img'+ (p.recId && p.field ? ' data-prec="'+escAttr(String(p.recId))+'" data-pfield="'+escAttr(String(p.field))+'"' : '') + ' data-psrc="'+((p.url||'').startsWith('data:image/') && (p.url||'').length>4000 ? '1' : escAttr(p.url||''))+'"'+' style="width:100%;height:'+imgH+';object-fit:'+( isSig?'contain':'cover')+';display:block;background:'+bgCard+'" loading="lazy"'+
               ' onerror="if(this.src)this.style.display=\'none\'" onclick="event.stopPropagation();openLightbox(\''+p.url+'\')">'+ 
               '<div style="position:absolute;top:5px;left:5px;background:'+lblBg+';color:#fff;font-size:.54rem;font-weight:800;padding:2px 5px;border-radius:7px">'+p.lbl+'</div>'+ 
               '</div>'+ 
