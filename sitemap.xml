@@ -4,13 +4,13 @@
   <!-- Pages principales -->
   <url>
     <loc>https://www.hacc.pro/</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/signup.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -18,69 +18,77 @@
   <!-- Hub FAQ HACCP -->
   <url>
     <loc>https://www.hacc.pro/faq/index.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
 
-  <!-- Guides HACCP -->
+  <!-- Hub guides -->
+  <url>
+    <loc>https://www.hacc.pro/guides/</loc>
+    <lastmod>2026-09-21</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- Guides HACCP (canonical .html) -->
   <url>
     <loc>https://www.hacc.pro/guides/plan-maitrise-sanitaire.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/plat-temoin.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/temperature-haccp.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.85</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/tracabilite-alimentaire.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/checklist-controle-ddpp.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/pms-ehpad.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/releve-temperature-haccp-fiche.html</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/haccp-sans-papier.html</loc>
-    <lastmod>2026-08-27</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/protocole-refroidissement-haccp.html</loc>
-    <lastmod>2026-08-27</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://www.hacc.pro/guides/tableau-dlc-restauration.html</loc>
-    <lastmod>2026-08-27</lastmod>
+    <lastmod>2026-09-21</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>

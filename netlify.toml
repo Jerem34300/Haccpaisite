@@ -23,7 +23,8 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
 
-# Clean URL redirects (removes .html extension)
+# Pretty / short aliases. App routes stay 200 rewrites; guide aliases 301
+# to the canonical .html URL (matches sitemap + rel=canonical).
 [[redirects]]
   from = "/landing"
   to = "/landing.html"
@@ -42,22 +43,52 @@
 [[redirects]]
   from = "/guides/pms"
   to = "/guides/plan-maitrise-sanitaire.html"
-  status = 200
+  status = 301
+  force = true
 
 [[redirects]]
   from = "/guides/temperatures"
   to = "/guides/temperature-haccp.html"
-  status = 200
+  status = 301
+  force = true
 
 [[redirects]]
   from = "/guides/plat-temoin"
   to = "/guides/plat-temoin.html"
-  status = 200
+  status = 301
+  force = true
 
 [[redirects]]
   from = "/guides/tracabilite"
   to = "/guides/tracabilite-alimentaire.html"
-  status = 200
+  status = 301
+  force = true
+
+# Apex → www (belt-and-suspenders with _redirects). Primary domain in
+# Netlify UI must be www.hacc.pro for a true single-hop from http://hacc.pro.
+[[redirects]]
+  from = "https://hacc.pro/*"
+  to = "https://www.hacc.pro/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://hacc.pro/*"
+  to = "https://www.hacc.pro/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "http://www.hacc.pro/*"
+  to = "https://www.hacc.pro/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/index.html"
+  to = "/"
+  status = 301
+  force = true
 
 # /tarifs(.html) had no matching page (pricing lives as a #pricing anchor on
 # the homepage), causing 404s. Redirect to the anchor.

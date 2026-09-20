@@ -3,7 +3,6 @@ Allow: /
 Allow: /landing.html
 Allow: /faq/
 Allow: /guides/
-Allow: /comparatif/
 Allow: /signup.html
 
 # Pages privées de l'app — ne pas indexer
@@ -16,4 +15,5 @@ Disallow: /netlify/
 Disallow: /js/
 Disallow: /css/
 
+# /comparatif/ hub removed (never existed; was Allow'd → soft-404 risk)
 Sitemap: https://www.hacc.pro/sitemap.xml

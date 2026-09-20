@@ -3,3 +3,30 @@
 # via index.html. Le "!" force la règle : sans lui, Netlify laisserait le
 # fichier landing.html (qui existe toujours physiquement) shadower ce redirect.
 /landing.html    /    301!
+
+# Force HTTPS + www in one hop (apex and http www).
+# Netlify UI: Domain management → Primary domain MUST be www.hacc.pro
+# (DNS/UI setting not in repo). Without that, http://hacc.pro may still
+# SSL-upgrade to https://hacc.pro before applying apex→www.
+https://hacc.pro/*      https://www.hacc.pro/:splat  301!
+http://hacc.pro/*       https://www.hacc.pro/:splat  301!
+http://www.hacc.pro/*   https://www.hacc.pro/:splat  301!
+
+# Canonical home: /index.html → /
+/index.html    /    301!
+
+# Guides hub canonical is /guides/
+/guides/index.html    /guides/    301!
+
+# Guides: .html is canonical (matches <link rel="canonical"> + sitemap).
+# Pretty/extensionless URLs 301 to .html (force overrides Netlify pretty URLs).
+/guides/plan-maitrise-sanitaire    /guides/plan-maitrise-sanitaire.html    301!
+/guides/plat-temoin    /guides/plat-temoin.html    301!
+/guides/temperature-haccp    /guides/temperature-haccp.html    301!
+/guides/tracabilite-alimentaire    /guides/tracabilite-alimentaire.html    301!
+/guides/checklist-controle-ddpp    /guides/checklist-controle-ddpp.html    301!
+/guides/pms-ehpad    /guides/pms-ehpad.html    301!
+/guides/releve-temperature-haccp-fiche    /guides/releve-temperature-haccp-fiche.html    301!
+/guides/haccp-sans-papier    /guides/haccp-sans-papier.html    301!
+/guides/protocole-refroidissement-haccp    /guides/protocole-refroidissement-haccp.html    301!
+/guides/tableau-dlc-restauration    /guides/tableau-dlc-restauration.html    301!
