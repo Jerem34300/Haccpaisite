@@ -147,6 +147,22 @@ function navTo(page){
 }
 
 function openCuisine(siteId, siteCode, siteName){
+  // Si args incomplets et filtre site actif → compléter (évite PMS avec mauvais/ancien site)
+  try {
+    if ((!siteCode || !siteId || !siteName) && typeof getFilters === 'function') {
+      const f = getFilters();
+      if (f && f.site) {
+        const s = _sites.find(x => x.code === f.site);
+        if (s) {
+          siteId = siteId || s.id;
+          siteCode = siteCode || s.code;
+          siteName = siteName || s.name;
+        } else {
+          siteCode = siteCode || f.site;
+        }
+      }
+    }
+  } catch(e){}
   var sc = {};
   try { sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch(e){}
   // cuisine.html uses c.siteId for `sites?code=eq.{siteId}` — must be the text code, not UUID
@@ -1613,8 +1629,10 @@ function checkEnceinteAlerts(){
   const yStr=getYesterdayStr();
   const alerts=[];
   // Sites à vérifier: ceux avec config OU ceux qui ont eu des ENR19 ce mois
-  const sitesWithConfig=Object.keys(_encConfigs);
-  const sitesWithRecords=[...new Set(_records.filter(r=>r.enr_type==='enr19').map(r=>r.site_id).filter(Boolean))];
+  // Toujours restreindre au filtre multi-site actif (site / secteur / territoire)
+  const scopedCodes=new Set(getScopedSiteCodes());
+  const sitesWithConfig=Object.keys(_encConfigs).filter(id=>!scopedCodes.size||scopedCodes.has(id));
+  const sitesWithRecords=[...new Set(_records.filter(r=>r.enr_type==='enr19'&&(!scopedCodes.size||scopedCodes.has(r.site_id))).map(r=>r.site_id).filter(Boolean))];
   const sitesToCheck=[...new Set([...sitesWithConfig,...sitesWithRecords])];
   sitesToCheck.forEach(function(siteId){
     const cfg=_encConfigs[siteId];
@@ -1717,9 +1735,10 @@ function renderOverview(){
     code, name:_siteName(code), terr:_siteTerr(code), ...v,
     pct: Math.round((1-v.nc/v.total)*100),
   }));
-  // Sites sans saisies ce mois
+  // Sites sans saisies ce mois — uniquement dans le périmètre du filtre actif
+  const scopedCodes = new Set(getScopedSiteCodes());
   const inactiveRows = _sites
-    .filter(s=>!activeCodes.has(s.code))
+    .filter(s=>scopedCodes.has(s.code)&&!activeCodes.has(s.code))
     .map(s=>({code:s.code,name:s.name,terr:_siteTerr(s.code),total:0,nc:0,pct:null,lastActivity:null,cats:{}}));
   const allRows = [...rows,...inactiveRows];
 
@@ -1872,10 +1891,11 @@ function renderOverview(){
   let gmoSection='';
   const rolesGMO=['siege','directeur','chef_secteur'];
   if(_profile&&rolesGMO.includes(_profile.role)&&_gmos.length>=0){
-    const gmosMois=_gmos.filter(g=>g.visit_date?.startsWith(mois0));
-    const sitesSansGMO=_sites.filter(s=>!gmosMois.some(g=>g.site_id===s.id)&&recs.some(r=>r.site_id===s.code));
+    const scopedSiteIds=new Set(_sites.filter(s=>scopedCodes.has(s.code)).map(s=>s.id));
+    const gmosMois=_gmos.filter(g=>g.visit_date?.startsWith(mois0)&&scopedSiteIds.has(g.site_id));
+    const sitesSansGMO=_sites.filter(s=>scopedCodes.has(s.code)&&!gmosMois.some(g=>g.site_id===s.id)&&recs.some(r=>r.site_id===s.code));
     const ncMajeures=[];
-    _gmos.slice(0,20).forEach(g=>{
+    _gmos.filter(g=>scopedSiteIds.has(g.site_id)).slice(0,20).forEach(g=>{
       const bilan=g.scores?._bilan||[];
       const site=_sites.find(s=>s.id===g.site_id);
       bilan.filter(nc=>nc.niveau==='NC majeure'&&!nc.verifie).forEach(nc=>{
@@ -7907,7 +7927,13 @@ function _initOverviewTrendChart() {
   const byDay = {};
   dateArr.forEach(d => { byDay[d] = { total: 0, nc: 0 }; });
 
+  const fTrend = getFilters();
+  const scopeActive = !!(fTrend.site || fTrend.secteur || fTrend.territoire);
+  const scopedTrend = scopeActive ? new Set(getScopedSiteCodes()) : null;
+
   _records.forEach(r => {
+    if (r._deleted || (r.data && r.data._deleted)) return;
+    if (scopedTrend && !scopedTrend.has(r.site_id)) return;
     const day = r.recorded_at?.slice(0, 10);
     if (day && byDay[day] !== undefined) {
       byDay[day].total++;
