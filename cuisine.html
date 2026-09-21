@@ -3,7 +3,7 @@
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>HACC.PRO — Cuisine v36.3</title>
+  <title>HACC.PRO — Cuisine v36.3 · b399</title>
   <meta name="application-name" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-title" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -38,16 +38,23 @@
     // Enregistrement du Service Worker (PWA offline)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
+        var refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function() {
+          if (refreshing) return;
+          refreshing = true;
+          window.location.reload();
+        });
         navigator.serviceWorker.register('/sw.js').then(function(reg) {
-          // Mise à jour silencieuse disponible
           reg.addEventListener('updatefound', function() {
             var newWorker = reg.installing;
+            if (!newWorker) return;
             newWorker.addEventListener('statechange', function() {
               if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                console.log('[HACCPro] Mise à jour disponible — rechargez la page.');
+                newWorker.postMessage({ action: 'skipWaiting' });
               }
             });
           });
+          try { reg.update(); } catch (e) {}
         }).catch(function(err) {
           console.warn('[HACCPro] SW non enregistré :', err);
         });
@@ -907,9 +914,9 @@
 
 
   <!-- Application Cuisine (ordre important: service avant app) -->
-  <script src="js/supabaseservice.js"></script>
+  <script src="js/supabaseservice.js?v=399"></script>
   <script src="js/printservice.js"></script>
-  <script src="js/app-cuisine.js"></script>
+  <script src="js/app-cuisine.js?v=399"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
   <script src="js/app-menu-cuisine.js?v=363"></script>
   <!-- Tracabilité HACCP bidirectionnelle + IA recettes -->
