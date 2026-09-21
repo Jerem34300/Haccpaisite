@@ -10139,6 +10139,21 @@ async function _loadFromSupabase() {
             Object.keys(cc).forEach(k => {
               if (cc[k] !== undefined && !SKIP_HEADER.has(k)) S.config[k] = cc[k];
             });
+          } else if (key === 'adminPin') {
+            S.adminPin = _preferHashedPin(S.adminPin, cloud.adminPin);
+          } else if (key === 'chefPins' && cloud.chefPins && typeof cloud.chefPins === 'object') {
+            const localPins = (S.chefPins && typeof S.chefPins === 'object') ? S.chefPins : {};
+            const merged = { ...cloud.chefPins, ...localPins };
+            const names = new Set([...Object.keys(cloud.chefPins), ...Object.keys(localPins)]);
+            names.forEach(n => {
+              const cEntry = cloud.chefPins[n] || {};
+              const lEntry = localPins[n] || {};
+              merged[n] = { ...cEntry, ...lEntry };
+              if (cEntry.pin !== undefined || lEntry.pin !== undefined) {
+                merged[n].pin = _preferHashedPin(lEntry.pin, cEntry.pin);
+              }
+            });
+            S.chefPins = merged;
           } else {
             S[key] = cloud[key];
           }
@@ -10531,14 +10546,49 @@ async function _saveConfigToSupabase() {
         } else {
           cloudConfig[key] = localVal;
         }
+      } else if (key === 'adminPin') {
+        // Préférer forme hashée au plaintext (local ou cloud)
+        cloudConfig.adminPin = _preferHashedPin(localVal, cloudCurrent.adminPin);
+      } else if (key === 'chefPins' && typeof localVal === 'object') {
+        const cloudObj = (cloudCurrent.chefPins && typeof cloudCurrent.chefPins === 'object') ? cloudCurrent.chefPins : {};
+        const merged = { ...cloudObj, ...localVal };
+        const names = new Set([...Object.keys(cloudObj), ...Object.keys(localVal)]);
+        names.forEach(n => {
+          const cEntry = cloudObj[n] || {};
+          const lEntry = localVal[n] || {};
+          merged[n] = { ...cEntry, ...lEntry };
+          if (cEntry.pin !== undefined || lEntry.pin !== undefined) {
+            merged[n].pin = _preferHashedPin(lEntry.pin, cEntry.pin);
+          }
+        });
+        cloudConfig.chefPins = merged;
       } else if (typeof localVal === 'object') {
-        // Objets : merge (ex chefPins, chefSchedule)
+        // Objets : merge (ex chefSchedule)
         const cloudObj = (cloudCurrent[key] && typeof cloudCurrent[key] === 'object') ? cloudCurrent[key] : {};
         cloudConfig[key] = { ...cloudObj, ...localVal };
       } else {
         cloudConfig[key] = localVal;
       }
     });
+
+    // ── Étape 2b : Ne jamais uploader de PIN en clair ──
+    try {
+      await _migratePinsToHash(cloudConfig);
+      // Répercuter localement si on vient de migrer
+      if (_isPinHashObj(cloudConfig.adminPin) && typeof S.adminPin === 'string') {
+        S.adminPin = cloudConfig.adminPin;
+      }
+      if (cloudConfig.chefPins && S.chefPins) {
+        Object.keys(cloudConfig.chefPins).forEach(n => {
+          const hp = cloudConfig.chefPins[n]?.pin;
+          if (_isPinHashObj(hp) && typeof S.chefPins?.[n]?.pin === 'string') {
+            S.chefPins[n] = S.chefPins[n] || {};
+            S.chefPins[n].pin = hp;
+          }
+        });
+      }
+      try { localStorage.setItem(SK, JSON.stringify(S)); } catch(e){}
+    } catch(e) { console.warn('[save config cloud] pin migrate', e); }
 
     // ── Étape 3 : Écrire le résultat mergé ──
     const r = await fetch(`${c.url}/rest/v1/sites?code=eq.${c.siteId}`, {
@@ -15282,6 +15332,88 @@ function confirmYes(){ document.getElementById('confirm-modal').classList.remove
 function confirmNo(){ document.getElementById('confirm-modal').classList.remove('open'); _confirmCb=null; }
 
 // ════════════════════════════════════════════════════
+// PIN HASH — Web Crypto SHA-256 + salt (jamais de plaintext en stockage)
+// Stockage : {v:1, salt:<b64>, hash:<b64>}  |  legacy : string 4 chiffres
+// ════════════════════════════════════════════════════
+function _pinB64FromBuf(buf){
+  try{
+    const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+    let s = '';
+    for(let i=0;i<bytes.length;i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }catch(e){ return ''; }
+}
+function _pinBufFromB64(b64){
+  try{
+    const s = atob(b64);
+    const bytes = new Uint8Array(s.length);
+    for(let i=0;i<s.length;i++) bytes[i] = s.charCodeAt(i);
+    return bytes;
+  }catch(e){ return new Uint8Array(0); }
+}
+function _isPinHashObj(p){
+  return !!(p && typeof p==='object' && p.v===1 && typeof p.salt==='string' && typeof p.hash==='string');
+}
+/** Hash un PIN 4 chiffres → {v:1,salt,hash}. saltB64 optionnel (vérification). */
+async function _hashPin(pin, saltB64){
+  const enc = new TextEncoder();
+  let saltBytes;
+  if(saltB64){
+    saltBytes = _pinBufFromB64(saltB64);
+  } else {
+    saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  }
+  const pinBytes = enc.encode(String(pin||''));
+  const combined = new Uint8Array(saltBytes.length + pinBytes.length);
+  combined.set(saltBytes, 0);
+  combined.set(pinBytes, saltBytes.length);
+  const digest = await crypto.subtle.digest('SHA-256', combined);
+  return { v:1, salt: saltB64 || _pinB64FromBuf(saltBytes), hash: _pinB64FromBuf(digest) };
+}
+/** Vérifie entered contre stored (objet hashé ou legacy string). */
+async function _verifyPin(entered, stored){
+  try{
+    if(stored==null || stored==='') return { ok:false };
+    if(typeof stored === 'string'){
+      if(String(entered) === stored) return { ok:true, legacy:true };
+      return { ok:false };
+    }
+    if(_isPinHashObj(stored)){
+      const computed = await _hashPin(entered, stored.salt);
+      return { ok: computed.hash === stored.hash };
+    }
+    return { ok:false };
+  }catch(e){ return { ok:false }; }
+}
+/** Préfère la forme hashée au plaintext lors d'un merge local/cloud. */
+function _preferHashedPin(localPin, cloudPin){
+  try{
+    if(_isPinHashObj(localPin)) return localPin;
+    if(_isPinHashObj(cloudPin)) return cloudPin;
+    if(localPin !== undefined && localPin !== null) return localPin;
+    return cloudPin;
+  }catch(e){ return localPin !== undefined ? localPin : cloudPin; }
+}
+/** Migre adminPin + chefPins.*.pin plaintext → hash (async, mutates obj). */
+async function _migratePinsToHash(cfgLike){
+  try{
+    if(!cfgLike || typeof cfgLike !== 'object') return cfgLike;
+    if(typeof cfgLike.adminPin === 'string' && cfgLike.adminPin.length > 0){
+      cfgLike.adminPin = await _hashPin(cfgLike.adminPin);
+    }
+    if(cfgLike.chefPins && typeof cfgLike.chefPins === 'object'){
+      for(const name of Object.keys(cfgLike.chefPins)){
+        const entry = cfgLike.chefPins[name];
+        if(entry && typeof entry.pin === 'string' && entry.pin.length > 0){
+          entry.pin = await _hashPin(entry.pin);
+        }
+      }
+    }
+  }catch(e){ console.warn('[pin-hash] migrate', e); }
+  return cfgLike;
+}
+
+// ════════════════════════════════════════════════════
 // PIN MODAL — réutilisable (admin + chefs)
 // ════════════════════════════════════════════════════
 // _pinCtx : { mode: 'check'|'set1'|'set2'|'recovery', target: 'admin'|'chef:NOM', onSuccess: fn, first: '' }
@@ -15359,9 +15491,21 @@ function _pinValidate(){
   const name = isChef ? _pinCtx.target.slice(5) : '';
 
   if(m==='check'){
-    const correct = _pinCtx.target==='admin' ? S.adminPin : (S.chefPins?.[name]?.pin||'');
-    if(_pinBuf === correct){ closePinModal(); _pinCtx.onSuccess?.(); }
-    else _pinError('Code incorrect');
+    const stored = _pinCtx.target==='admin' ? S.adminPin : (S.chefPins?.[name]?.pin||'');
+    const entered = _pinBuf;
+    _verifyPin(entered, stored).then(res=>{
+      if(!res.ok){ _pinError('Code incorrect'); return; }
+      // Legacy plaintext → re-sauver en hash dès la première réussite
+      if(res.legacy){
+        _hashPin(entered).then(hashed=>{
+          try{
+            if(_pinCtx.target==='admin'){ S.adminPin=hashed; save(); }
+            else if(isChef){ S.chefPins=S.chefPins||{}; S.chefPins[name]=S.chefPins[name]||{}; S.chefPins[name].pin=hashed; save(); if(typeof _saveConfigToSupabase==='function')_saveConfigToSupabase(); }
+          }catch(e){ console.warn('[pin-hash] re-save', e); }
+        }).catch(()=>{});
+      }
+      closePinModal(); _pinCtx.onSuccess?.();
+    }).catch(()=>_pinError('Code incorrect'));
   } else if(m==='set1'){
     _pinCtx.first = _pinBuf; _pinBuf='';
     _pinCtx.mode = 'set2'; _setPinLabels(); _updatePinDisplay();
@@ -15369,9 +15513,13 @@ function _pinValidate(){
     if(_pinBuf !== _pinCtx.first){ _pinError('Les codes ne correspondent pas'); _pinCtx.first=''; _pinCtx.mode='set1'; _setPinLabels(); return; }
     const pin = _pinBuf;
     closePinModal();
-    if(_pinCtx.target==='admin'){ S.adminPin=pin; save(); toast('🔒 Code admin défini'); renderSecuritySection(); }
-    else if(isChef){ S.chefPins=S.chefPins||{}; S.chefPins[name]=S.chefPins[name]||{}; S.chefPins[name].pin=pin; save(); if(typeof _saveConfigToSupabase==='function')_saveConfigToSupabase(); toast('🔑 Code défini pour '+name); renderChefList(); }
-    _pinCtx.onSuccess?.();
+    _hashPin(pin).then(hashed=>{
+      try{
+        if(_pinCtx.target==='admin'){ S.adminPin=hashed; save(); toast('🔒 Code admin défini'); renderSecuritySection(); }
+        else if(isChef){ S.chefPins=S.chefPins||{}; S.chefPins[name]=S.chefPins[name]||{}; S.chefPins[name].pin=hashed; save(); if(typeof _saveConfigToSupabase==='function')_saveConfigToSupabase(); toast('🔑 Code défini pour '+name); renderChefList(); }
+        _pinCtx.onSuccess?.();
+      }catch(e){ console.warn('[pin-hash] set', e); toast('⚠️ Impossible de sécuriser le code'); }
+    }).catch(()=>toast('⚠️ Impossible de sécuriser le code'));
   }
 }
 
