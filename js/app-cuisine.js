@@ -4992,10 +4992,11 @@ function openNettModal(refId){
   const now=new Date();
   const heure=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
   const active=getActiveSession()||'';
-  const cuisiniers=(S.cuisiniers||[]);
+  // Same cook source as chefSel / other visa dropdowns (S.config.chefs)
+  const cuisiniers=getChefs();
   const chefOpts=cuisiniers.length
-    ?cuisiniers.map(c=>`<option value="${escH(c)}" ${c===active?'selected':''}>${escH(c)}</option>`).join('')
-    :`<option value="${escH(active)}">${active||'—'}</option>`;
+    ?`<option value="">— Sélectionner —</option>`+cuisiniers.map(c=>`<option value="${escH(c)}" ${c===active?'selected':''}>${escH(c)}</option>`).join('')
+    :(active?`<option value="${escH(active)}">${escH(active)}</option>`:`<option value="">—</option>`);
 
   document.getElementById('nett-modal-title').textContent=item.materiel;
   document.getElementById('nett-modal-zone').textContent=item.zone+' · '+NETT_FREQ_LABEL[item.freq];
@@ -7926,12 +7927,14 @@ function r23StepNav(cur){
 
 function r23ConfGlobal(){
   const d=(S[ENR23_SEC]||{}).draft||{};
-  const vehiculeOk=d.vehicule==='OUI';
-  // Vérif T°C selon type (frais/surgelé)
+  // Empty/untouched flags = conforme; only explicit NON → non-conforme (no silent NC)
+  const flagOk=v=>v!=='NON';
+  const vehiculeOk=flagOk(d.vehicule);
+  // Vérif T°C selon type (frais/surgelé) — empty T°C does not force NC
   const p1TcOk=!d.p1_tc||(d.p1_surge==='1'?parseFloat(d.p1_tc)<=-15:parseFloat(d.p1_tc)<=6);
   const p2TcOk=!d.p2_tc||(d.p2_surge==='1'?parseFloat(d.p2_tc)<=-15:parseFloat(d.p2_tc)<=6);
-  const p1Ok=d.p1_emballage==='OUI'&&d.p1_etiquetage==='OUI'&&d.p1_qualite==='OUI'&&p1TcOk;
-  const p2Ok=!d.p2_produit||(d.p2_emballage==='OUI'&&d.p2_etiquetage==='OUI'&&d.p2_qualite==='OUI'&&p2TcOk);
+  const p1Ok=flagOk(d.p1_emballage)&&flagOk(d.p1_etiquetage)&&flagOk(d.p1_qualite)&&p1TcOk;
+  const p2Ok=!d.p2_produit||(flagOk(d.p2_emballage)&&flagOk(d.p2_etiquetage)&&flagOk(d.p2_qualite)&&p2TcOk);
   return vehiculeOk&&p1Ok&&p2Ok;
 }
 
@@ -8304,7 +8307,7 @@ function r23HistoCard(){
   if(!lignes.length) return `<div class="card"><div class="empty-s">Aucune réception enregistrée.</div></div>`;
   const rows=lignes.map((r,i)=>{
     const dateF=r.date?new Date(r.date+'T12:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}):'—';
-    const conf=r.conforme==='OUI';
+    const conf=r.conforme!=='NON'; // unset/empty → conforme (align with r23ConfGlobal)
     const p1T=r.p1_tc?parseFloat(r.p1_tc).toFixed(1)+'°C':'—';
     const p2T=r.p2_tc?parseFloat(r.p2_tc).toFixed(1)+'°C':'—';
     return `<div class="hr-card">
