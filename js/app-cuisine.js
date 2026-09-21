@@ -6802,11 +6802,76 @@ function renderBilanJour() {
   </div>`;
 }
 
+
+// ── Accueil jour 1 — mission banner (b405) ───────────
+function missionEncPending(){
+  try{
+    var encs=getEnceintes();
+    if(!encs||!encs.length) return [];
+    var t=today(), saisies=(S['enr19']&&S['enr19'].saisies)||[];
+    var can=(typeof caniculeActive==='function')&&caniculeActive();
+    var pending=[];
+    encs.forEach(function(enc){
+      var hasOuv=saisies.some(function(r){return r.date===t&&r.enc_id===enc.id&&r.moment==='ouv';});
+      var hasFerm=saisies.some(function(r){return r.date===t&&r.enc_id===enc.id&&r.moment==='ferm';});
+      var hasAprem=can&&saisies.some(function(r){return r.date===t&&r.enc_id===enc.id&&r.moment==='aprem';});
+      if(!hasOuv) pending.push({enc:enc,moment:'ouv'});
+      else if(can&&!hasAprem) pending.push({enc:enc,moment:'aprem'});
+      else if(!hasFerm) pending.push({enc:enc,moment:'ferm'});
+    });
+    // Ouverture d'abord = « Premier geste »
+    pending.sort(function(a,b){
+      var rank={ouv:0,aprem:1,ferm:2};
+      return (rank[a.moment]||9)-(rank[b.moment]||9);
+    });
+    return pending;
+  }catch(e){ return []; }
+}
+function missionHasNettPriority(){
+  try{
+    // Aligné Ticket 5 « Maintenant » : nc / retard / today
+    return nettRef().some(function(it){
+      var st=nettStatus(it);
+      return st==='nc'||st==='retard'||st==='today';
+    });
+  }catch(e){ return false; }
+}
+function renderMissionBanner(){
+  try{
+    var base='border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:.8rem;font-weight:800;display:flex;align-items:center;gap:8px;';
+    // b404 pattern — profil / session
+    if(!getActiveSession()){
+      return '<div role="button" tabindex="0" onclick="try{openSessModal()}catch(e){}" style="background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;cursor:pointer;'+base+'">'
+        +'<span style="font-size:1.1rem">👤</span>'
+        +'<span>Choisis ton profil (rond à côté du nuage)</span>'
+        +'</div>';
+    }
+    var encPend=missionEncPending();
+    if(encPend.length){
+      return '<div role="button" tabindex="0" onclick="try{var el=document.querySelector(\'.qenc-tile.qenc-mission\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'});}catch(e){}" style="background:#f5f3ff;border:1.5px solid #c4b5fd;color:#5b21b6;cursor:pointer;'+base+'">'
+        +'<span style="font-size:1.1rem">🌡️</span>'
+        +'<span>Premier geste : relever 1 enceinte</span>'
+        +'</div>';
+    }
+    if(missionHasNettPriority()){
+      return '<div role="button" tabindex="0" onclick="try{_nettTab=\'priorites\';goTo(\'enr28\')}catch(e){}" style="background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;cursor:pointer;'+base+'">'
+        +'<span style="font-size:1.1rem">🧹</span>'
+        +'<span>Ensuite : 1 nettoyage</span>'
+        +'</div>';
+    }
+    return '<div style="background:#f0fdf4;border:1.5px solid #86efac;color:#166534;'+base+'">'
+      +'<span style="font-size:1.1rem">✅</span>'
+      +'<span>Tout est à jour</span>'
+      +'</div>';
+  }catch(e){ return ''; }
+}
+
 function renderAccueil(){
   const mois = S.config?.mois||today().slice(0,7);
   const [y,m] = mois.split('-');
   const moisLabel = new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   return `
+    ${renderMissionBanner()}
     ${renderBadgeEmploye()}
     ${renderHomeWidgets()}
     <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#b89ab6;margin:16px 0 8px 2px">📂 Toutes les fiches — ${moisLabel}</div>
@@ -16191,6 +16256,13 @@ function renderQuickEnc(){
   var t=today(),saisies=(S['enr19']&&S['enr19'].saisies)||[];
   var h=new Date().getHours();
   var allDone=true;
+  var firstPendId=null;
+  try{
+    if(getActiveSession()){
+      var _mp=missionEncPending();
+      if(_mp.length) firstPendId=_mp[0].enc.id;
+    }
+  }catch(e){}
   var tiles=encs.map(function(enc){
     var can=caniculeActive();
     var ouv=saisies.find(function(r){return r.date===t&&r.enc_id===enc.id&&r.moment==='ouv';});
@@ -16212,7 +16284,10 @@ function renderQuickEnc(){
     if(can) hasAll=!!ouv&&!!fer&&!!apr;
     if(can) hasSome=!!ouv||!!fer||!!apr;
     cls=hasNC?'has-nc':hasAll?'all-ok':hasSome?'partial':'';
-    return'<div class="qenc-tile '+cls+'" data-qt="enc" data-qi="'+enc.id+'" data-qm="'+nextM+'" onclick="qtTap(this)">'+
+    var isMission=firstPendId&&enc.id===firstPendId;
+    var missionCls=isMission?' qenc-mission':'';
+    var missionStyle=isMission?'box-shadow:0 0 0 3px rgba(139,92,246,.35);border-color:#a78bfa;':'';
+    return'<div class="qenc-tile '+cls+missionCls+'" data-qt="enc" data-qi="'+enc.id+'" data-qm="'+nextM+'" onclick="qtTap(this)"'+(missionStyle?' style="'+missionStyle+'"':'')+'>'+
       (can?'<div style="font-size:.5rem;font-weight:900;background:#f59e0b;color:#fff;border-radius:4px;padding:1px 5px;margin-bottom:3px;text-align:center">☀️ CANICULE</div>':'')+
       '<div class="qenc-name">'+escH(enc.label)+'</div>'+
       '<div class="qenc-temps" style="justify-content:'+(can?'space-between':'center')+'">'+
