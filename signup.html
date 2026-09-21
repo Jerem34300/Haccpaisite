@@ -86,7 +86,55 @@ body{
 .step-line{flex:1;height:2px;background:rgba(255,255,255,.1);margin:0 4px;transition:background .3s}
 .step-line.done{background:rgba(141,198,63,.4)}
 .step-lbl{
-  display:none;
+  display:block;
+  font-size:.58rem;
+  font-weight:800;
+  color:rgba(255,255,255,.55);
+  text-align:center;
+  margin-top:4px;
+  line-height:1.2;
+  max-width:72px;
+}
+.step-item{
+  display:flex;flex-direction:column;align-items:center;flex:1;position:relative;
+}
+.step-item .step-line{
+  position:absolute;top:14px;left:calc(50% + 16px);right:calc(-50% + 16px);margin:0;
+}
+.step-item:has(.step-dot.active) .step-lbl{color:#fff}
+.step-item:has(.step-dot.done) .step-lbl{color:rgba(141,198,63,.85)}
+.plan-reminder{
+  margin-top:14px;
+  background:rgba(141,198,63,.12);
+  border:1px solid rgba(141,198,63,.35);
+  border-radius:10px;
+  padding:8px 12px;
+  font-size:.78rem;font-weight:800;color:#fff;
+  text-align:center;line-height:1.35;
+}
+.plan-reminder a{color:#8DC63F;text-decoration:underline;font-weight:900}
+.plan-reminder.muted{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.75)}
+.billing-block{
+  background:#f8fafc;border:1.5px solid var(--border);border-radius:12px;
+  padding:14px 16px;margin:14px 0 4px;font-size:.8rem;font-weight:700;
+  color:var(--text);line-height:1.55;
+}
+.billing-block strong{color:var(--navy);font-weight:900}
+.billing-promo{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);
+  color:#a16207;font-weight:800}
+.config-haccp-list{list-style:none;padding:0;margin:0 0 8px}
+.config-haccp-list li{
+  display:flex;gap:10px;align-items:flex-start;
+  font-size:.82rem;font-weight:700;color:var(--text);
+  padding:8px 0;border-bottom:1px solid var(--border);
+}
+.config-haccp-list li:last-child{border-bottom:none}
+.config-haccp-list .ico{flex-shrink:0}
+.config-note{font-size:.75rem;color:var(--muted);font-weight:700;line-height:1.45;margin:8px 0 4px}
+.step-actions{
+  position:sticky;bottom:0;z-index:5;
+  background:linear-gradient(to top,#fff 70%,rgba(255,255,255,0));
+  padding-top:12px;padding-bottom:2px;margin-top:8px;
 }
 /* Body */
 .card-body{padding:28px}
@@ -238,23 +286,28 @@ body{
         </div>
       </div>
       <!-- Stepper -->
-      <div class="stepper" role="progressbar" aria-label="Étapes d'inscription">
+      <div class="stepper" role="progressbar" aria-label="Étapes d'inscription : Compte, Établissement, Config HACCP, Plan">
         <div class="step-item">
           <div class="step-dot active" id="dot-1">1</div>
           <div class="step-line" id="line-1"></div>
+          <div class="step-lbl">Compte</div>
         </div>
         <div class="step-item">
           <div class="step-dot" id="dot-2">2</div>
           <div class="step-line" id="line-2"></div>
+          <div class="step-lbl">Établissement</div>
         </div>
         <div class="step-item">
           <div class="step-dot" id="dot-3">3</div>
           <div class="step-line" id="line-3"></div>
+          <div class="step-lbl">Config HACCP</div>
         </div>
         <div class="step-item">
           <div class="step-dot" id="dot-4">4</div>
+          <div class="step-lbl">Plan</div>
         </div>
       </div>
+      <div class="plan-reminder muted" id="plan-reminder">Choisissez Solo ou Multi — <a href="/#pricing">voir les tarifs</a></div>
     </div>
 
     <!-- Body -->
@@ -263,7 +316,7 @@ body{
       <!-- Step 1 : Compte -->
       <div class="step active" id="step-1">
         <div class="step-title">Créez votre compte</div>
-        <div class="step-sub">Étape 1 sur 4 — Informations de connexion</div>
+        <div class="step-sub">Étape 1 sur 4 — Compte</div>
         <div class="field-row">
           <div class="field">
             <label for="su-prenom">Prénom</label>
@@ -298,16 +351,18 @@ body{
           </div>
         </div>
         <div class="err" id="err-1"></div>
-        <button class="btn-primary" id="btn-step1" onclick="checkEmailAndGoStep2()">
-          <span id="btn-step1-label">Continuer →</span>
-          <div class="spinner" id="btn-step1-spin"></div>
-        </button>
+        <div class="step-actions">
+          <button class="btn-primary" id="btn-step1" onclick="checkEmailAndGoStep2()">
+            <span id="btn-step1-label">Continuer →</span>
+            <div class="spinner" id="btn-step1-spin"></div>
+          </button>
+        </div>
       </div>
 
       <!-- Step 2 : Établissement -->
       <div class="step" id="step-2">
         <div class="step-title">Votre établissement</div>
-        <div class="step-sub">Étape 2 sur 4 — Informations sur votre cuisine</div>
+        <div class="step-sub">Étape 2 sur 4 — Établissement</div>
         <div class="field">
           <label for="su-company">Nom de l'enseigne / groupe</label>
           <input type="text" id="su-company" placeholder="Ex : Restaurant Le Provençal" autocomplete="organization">
@@ -343,16 +398,67 @@ body{
           </div>
         </div>
         <div class="err" id="err-2"></div>
-        <button class="btn-primary" onclick="goStep(3)">Continuer →</button>
-        <button class="btn-back" onclick="goStep(1)">← Retour</button>
+        <div class="step-actions">
+          <button class="btn-primary" onclick="goStep(3)">Continuer →</button>
+          <button class="btn-back" onclick="goStep(1)">← Retour</button>
+        </div>
       </div>
 
-      <!-- Step 3 : Plan -->
+      <!-- Step 3 : Config HACCP -->
       <div class="step" id="step-3">
-        <div class="step-title">Choisissez votre plan</div>
-        <div class="step-sub">Étape 3 sur 4 — Essai gratuit 14 jours inclus, sans carte bancaire</div>
+        <div class="step-title">Config HACCP</div>
+        <div class="step-sub">Étape 3 sur 4 — Ce qui sera configuré après l'inscription</div>
+        <ul class="config-haccp-list">
+          <li><span class="ico">🍳</span><span>Vos cuisines et types de production</span></li>
+          <li><span class="ico">❄️</span><span>Enceintes froides et seuils de température</span></li>
+          <li><span class="ico">🧹</span><span>Plan de nettoyage et procédures</span></li>
+          <li><span class="ico">👥</span><span>Équipe et accès</span></li>
+        </ul>
+        <p class="config-note">Après validation du plan, un questionnaire guidé (~20&nbsp;min) génère votre PMS. L'exploitant reste responsable de son Plan de Maîtrise Sanitaire.</p>
+        <div class="err" id="err-3"></div>
+        <div class="step-actions">
+          <button class="btn-primary" onclick="goStep(4)">Continuer →</button>
+          <button class="btn-back" onclick="goStep(2)">← Retour</button>
+        </div>
+      </div>
 
-        <!-- Toggle mensuel / annuel -->
+      <!-- Étape Entreprise : formulaire de demande de devis -->
+      <div class="step" id="step-enterprise">
+        <div class="step-title">Demande de devis Entreprise</div>
+        <div class="step-sub">Notre équipe vous contactera dans les 24 heures</div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Votre nom complet *</label>
+          <input class="ef-input-su" id="ent-name" type="text" placeholder="Marie Dupont" maxlength="120">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Email *</label>
+          <input class="ef-input-su" id="ent-email" type="email" placeholder="marie@etablissement.fr" maxlength="200">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Nom de l'établissement ou du groupe *</label>
+          <input class="ef-input-su" id="ent-company" type="text" placeholder="Groupe Les Jardins" maxlength="120">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Nombre de cuisines estimé</label>
+          <input class="ef-input-su" id="ent-kitchens" type="number" min="4" placeholder="ex : 8">
+        </div>
+        <div class="ef-row-su">
+          <label class="ef-label-su">Votre besoin (optionnel)</label>
+          <textarea class="ef-input-su ef-textarea-su" id="ent-message" placeholder="Type d'établissements, contraintes spécifiques, intégration souhaitée…" maxlength="1000"></textarea>
+        </div>
+        <div class="err" id="err-enterprise"></div>
+        <button class="btn-primary green" id="btn-enterprise" onclick="submitEnterpriseInquiry()">
+          <span id="btn-enterprise-label">Envoyer ma demande →</span>
+          <div class="spinner" id="btn-enterprise-spin"></div>
+        </button>
+        <button class="btn-back" onclick="_showStep(4)">← Retour aux plans</button>
+      </div>
+
+      <!-- Step 4 : Plan -->
+      <div class="step" id="step-4">
+        <div class="step-title">Choisissez votre plan</div>
+        <div class="step-sub">Étape 4 sur 4 — Plan et facturation</div>
+
         <div class="period-toggle-su">
           <button class="period-btn-su active" id="su-btn-monthly" onclick="suSetPeriod('monthly')">Mensuel</button>
           <button class="period-btn-su" id="su-btn-annual" onclick="suSetPeriod('annual')">
@@ -388,47 +494,12 @@ body{
             <div class="plan-price">Sur devis</div>
           </div>
         </div>
-        <div class="err" id="err-3"></div>
-        <button class="btn-primary" onclick="continueFromPlan()">Continuer →</button>
-        <button class="btn-back" onclick="goStep(2)">← Retour</button>
-      </div>
 
-      <!-- Étape Entreprise : formulaire de demande de devis -->
-      <div class="step" id="step-enterprise">
-        <div class="step-title">Demande de devis Entreprise</div>
-        <div class="step-sub">Notre équipe vous contactera dans les 24 heures</div>
-        <div class="ef-row-su">
-          <label class="ef-label-su">Votre nom complet *</label>
-          <input class="ef-input-su" id="ent-name" type="text" placeholder="Marie Dupont" maxlength="120">
+        <div class="billing-block" id="billing-block">
+          <div id="billing-trial-copy">Essai 14 jours, sans carte bancaire. Aucun prélèvement pendant l’essai. Ensuite : <strong id="billing-price">49€</strong> TTC/mois, renouvelé chaque mois. Résiliation en 1 clic, sans frais.</div>
+          <div class="billing-promo" id="billing-promo">Prix lancement <strong>34,30€</strong> avec code <strong>HACCBETA</strong> — puis 49€/mois.</div>
         </div>
-        <div class="ef-row-su">
-          <label class="ef-label-su">Email *</label>
-          <input class="ef-input-su" id="ent-email" type="email" placeholder="marie@etablissement.fr" maxlength="200">
-        </div>
-        <div class="ef-row-su">
-          <label class="ef-label-su">Nom de l'établissement ou du groupe *</label>
-          <input class="ef-input-su" id="ent-company" type="text" placeholder="Groupe Les Jardins" maxlength="120">
-        </div>
-        <div class="ef-row-su">
-          <label class="ef-label-su">Nombre de cuisines estimé</label>
-          <input class="ef-input-su" id="ent-kitchens" type="number" min="4" placeholder="ex : 8">
-        </div>
-        <div class="ef-row-su">
-          <label class="ef-label-su">Votre besoin (optionnel)</label>
-          <textarea class="ef-input-su ef-textarea-su" id="ent-message" placeholder="Type d'établissements, contraintes spécifiques, intégration souhaitée…" maxlength="1000"></textarea>
-        </div>
-        <div class="err" id="err-enterprise"></div>
-        <button class="btn-primary green" id="btn-enterprise" onclick="submitEnterpriseInquiry()">
-          <span id="btn-enterprise-label">Envoyer ma demande →</span>
-          <div class="spinner" id="btn-enterprise-spin"></div>
-        </button>
-        <button class="btn-back" onclick="_showStep(3)">← Retour aux plans</button>
-      </div>
 
-      <!-- Step 4 : Confirmation -->
-      <div class="step" id="step-4">
-        <div class="step-title">Démarrez votre essai gratuit</div>
-        <div class="step-sub">Étape 4 sur 4 — Récapitulatif de votre inscription</div>
         <div class="recap-box">
           <div class="recap-row">
             <span class="recap-label">Nom</span>
@@ -451,16 +522,14 @@ body{
             <span class="recap-val" id="recap-plan">—</span>
           </div>
         </div>
-        <div class="trial-badge">
-          <div class="trial-badge-icon">🎁</div>
-          <div class="trial-badge-text"><strong>14 jours d'essai gratuit</strong> — Toutes les fonctionnalités, aucune carte bancaire requise. Vous choisissez de continuer ou non à la fin de l'essai.</div>
-        </div>
         <div class="err" id="err-4"></div>
-        <button class="btn-primary green" id="btn-signup" onclick="doSignup()">
-          <span id="btn-signup-label">Démarrer mon essai gratuit →</span>
-          <div class="spinner" id="btn-signup-spin"></div>
-        </button>
-        <button class="btn-back" onclick="goStep(3)">← Retour</button>
+        <div class="step-actions">
+          <button class="btn-primary green" id="btn-signup" onclick="continueFromPlan()">
+            <span id="btn-signup-label">Continuer →</span>
+            <div class="spinner" id="btn-signup-spin"></div>
+          </button>
+          <button class="btn-back" onclick="goStep(3)">← Retour</button>
+        </div>
       </div>
 
       <!-- Success -->
