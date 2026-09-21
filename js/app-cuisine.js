@@ -4552,6 +4552,15 @@ function nettSetTab(t){
 }
 
 // ── Renderer principal ENR28 ─────────────────────────
+function nettProfilHintHtml(){
+  try{
+    if(getActiveSession()) return '';
+    return `<div role="button" tabindex="0" onclick="openSessModal()" style="background:#fff7ed;border:1.5px solid #fdba74;border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:.8rem;font-weight:800;color:#9a3412;cursor:pointer;display:flex;align-items:center;gap:8px">
+      <span style="font-size:1.1rem">👤</span>
+      <span>Choisis ton profil (rond en haut) pour valider un nettoyage</span>
+    </div>`;
+  }catch(e){ return ''; }
+}
 function renderENR28(){
   const _nuisZonesRestantes=nuisiblesZones().filter(z=>nuisiblesTodayForZone(z)===null).length;
   const _nuisBadge=_nuisZonesRestantes>0
@@ -4571,9 +4580,10 @@ function renderENR28(){
   else if(_nettTab==='zones') body=renderNettZones();
   else if(_nettTab==='nuisibles') body=renderNettNuisibles();
   else body=renderNettRef();
+  const profilHint=(_nettTab==='priorites'||_nettTab==='zones')?nettProfilHintHtml():'';
   return`<div class="card" style="padding:0;overflow:hidden">
     <div style="padding:14px 14px 0">${tabBar}</div>
-    <div id="nett-plan-body" style="padding:12px 14px 16px">${body}</div>
+    <div id="nett-plan-body" style="padding:12px 14px 16px">${profilHint}${body}</div>
   </div>
   ${_nettTab==='ref'?'':_nettTab==='nuisibles'?renderNuisiblesHisto():renderNettHisto()}`;
 }
@@ -4985,6 +4995,12 @@ function renderNettHisto(){
 let _nettModalId=null;
 function openNettModal(refId){
   if(roCheck())return;
+  // Micro UX: empty « — » is expected without session — nudge to header profile round
+  if(!getActiveSession()){
+    try{toast('👤 Choisis ton profil (rond en haut)','warning');}catch(e){}
+    try{openSessModal();}catch(e){}
+    return;
+  }
   _nettModalId=refId;
   const ref=nettRef();
   const item=ref.find(r=>r.id===refId);
@@ -4992,11 +5008,10 @@ function openNettModal(refId){
   const now=new Date();
   const heure=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
   const active=getActiveSession()||'';
-  // Same cook source as chefSel / other visa dropdowns (S.config.chefs)
-  const cuisiniers=getChefs();
+  const cuisiniers=(S.cuisiniers||[]);
   const chefOpts=cuisiniers.length
-    ?`<option value="">— Sélectionner —</option>`+cuisiniers.map(c=>`<option value="${escH(c)}" ${c===active?'selected':''}>${escH(c)}</option>`).join('')
-    :(active?`<option value="${escH(active)}">${escH(active)}</option>`:`<option value="">—</option>`);
+    ?cuisiniers.map(c=>`<option value="${escH(c)}" ${c===active?'selected':''}>${escH(c)}</option>`).join('')
+    :`<option value="${escH(active)}">${escH(active)||'—'}</option>`;
 
   document.getElementById('nett-modal-title').textContent=item.materiel;
   document.getElementById('nett-modal-zone').textContent=item.zone+' · '+NETT_FREQ_LABEL[item.freq];
