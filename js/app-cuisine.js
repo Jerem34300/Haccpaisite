@@ -7801,6 +7801,97 @@ const ENR23_SEC = 'enr23';
 function r23d(id){ return ((S[ENR23_SEC]||{}).draft||{})[id]; }
 function r23s(id,val){ S[ENR23_SEC]=S[ENR23_SEC]||{}; S[ENR23_SEC].draft=S[ENR23_SEC].draft||{}; S[ENR23_SEC].draft[id]=val; save(); }
 
+/* ── UX Ticket 3: réception en étapes (helpers) ── */
+function r23GetStep(){
+  try{
+    const s=parseInt(((S[ENR23_SEC]||{}).draft||{})._r23_step||'1',10);
+    return (s>=1&&s<=3)?s:1;
+  }catch(e){ return 1; }
+}
+function r23GetProdFocus(){
+  try{
+    const p=String(((S[ENR23_SEC]||{}).draft||{})._r23_prod||'1');
+    return (p==='2')?'2':'1';
+  }catch(e){ return '1'; }
+}
+function r23HasBL(){
+  try{
+    const d=(S[ENR23_SEC]||{}).draft||{};
+    if(String(d._fourc_bl||'').trim()) return true;
+    const f=String(d.fournisseur||'');
+    if(/BL\s*[:\-–—]?\s*\S+/i.test(f)) return true;
+    return false;
+  }catch(e){ return false; }
+}
+function r23ProdIsComplete(pfx){
+  try{
+    const d=(S[ENR23_SEC]||{}).draft||{};
+    return !!(String(d[pfx+'_produit']||'').trim()
+      && String(d[pfx+'_lot']||'').trim()
+      && String(d[pfx+'_dlc']||'').trim());
+  }catch(e){ return false; }
+}
+function r23HasCompleteProduct(){
+  return r23ProdIsComplete('p1')||r23ProdIsComplete('p2');
+}
+function r23HasVisa(){
+  try{
+    const d=(S[ENR23_SEC]||{}).draft||{};
+    return !!(String(d.cuisinier||(typeof getActiveSession==='function'?getActiveSession():'')||'').trim());
+  }catch(e){ return false; }
+}
+function r23GoStep(n){
+  try{
+    n=Math.max(1,Math.min(3,parseInt(n,10)||1));
+    const cur=r23GetStep();
+    if(n>cur){
+      const d=(S[ENR23_SEC]||{}).draft||{};
+      if(cur===1){
+        if(!String(d.fournisseur||'').trim()){ toast('⚠️ Saisissez le fournisseur','warning'); return; }
+        if(!r23HasBL()){ toast('⚠️ Saisissez le N° BL','warning'); return; }
+      }
+      if(cur===2){
+        if(!r23HasCompleteProduct()){
+          toast('⚠️ Complétez au moins 1 produit (nom, lot, DLC)','warning');
+          return;
+        }
+      }
+    }
+    r23s('_r23_step', String(n));
+    if(n===2 && !((S[ENR23_SEC]||{}).draft||{})._r23_prod) r23s('_r23_prod','1');
+    renderMain();
+    try{ document.querySelector('#main .card')?.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){}
+  }catch(e){ try{toast('⚠️ Navigation étape impossible','warning');}catch(_e){} }
+}
+function r23GoProd(p){
+  try{
+    r23s('_r23_prod', String(p)==='2'?'2':'1');
+    r23s('_r23_step','2');
+    renderMain();
+  }catch(e){}
+}
+function r23StepBar(cur){
+  const steps=[{n:1,l:'En-tête'},{n:2,l:'Produits'},{n:3,l:'Visa'}];
+  return `<div class="r23-steps" style="display:flex;gap:6px;margin:10px 0 14px;flex-wrap:wrap" role="tablist" aria-label="Étapes réception">
+    ${steps.map(s=>{
+      const on=cur===s.n;
+      const done=cur>s.n;
+      const bg=on?'var(--plum)':(done?'#f0fdf4':'#fff');
+      const col=on?'#fff':(done?'#166534':'var(--plum)');
+      const brd=on?'var(--plum)':(done?'#86efac':'var(--brd)');
+      return `<button type="button" role="tab" aria-selected="${on?'true':'false'}" onclick="r23GoStep(${s.n})"
+        style="flex:1;min-width:78px;padding:9px 6px;border-radius:10px;border:1.5px solid ${brd};background:${bg};color:${col};font-weight:800;font-size:.72rem;cursor:pointer;font-family:inherit">
+        ${done?'✓ ':''}${s.n}. ${s.l}
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+function r23StepNav(cur){
+  const prev=cur>1?`<button class="btn btn-sec" type="button" onclick="r23GoStep(${cur-1})">← Précédent</button>`:'';
+  const next=cur<3?`<button class="btn-save" type="button" style="flex:1" onclick="r23GoStep(${cur+1})">${cur===1?'Produits →':'Visa / validation →'}</button>`:'';
+  return `<div class="btn-row" style="margin-top:12px">${prev}${next}</div>`;
+}
+
 function r23ConfGlobal(){
   const d=(S[ENR23_SEC]||{}).draft||{};
   const vehiculeOk=d.vehicule==='OUI';
@@ -8112,9 +8203,25 @@ function r23ProdBlock(pfx, num){
 }
 
 function r23Save(){
+  try{
   const d=(S[ENR23_SEC]||{}).draft||{};
-  if(!d.fournisseur?.trim()){ toast('⚠️ Saisissez le fournisseur','warning'); return; }
-  if(!d.p1_produit?.trim()){ toast('⚠️ Saisissez au moins le produit 1','warning'); return; }
+  const miss=[];
+  if(!String(d.fournisseur||'').trim()) miss.push('fournisseur');
+  if(!r23HasBL()) miss.push('N° BL');
+  if(!r23HasCompleteProduct()) miss.push('≥1 produit complet (nom, lot, DLC)');
+  if(!r23HasVisa()) miss.push('visa / cuisinier');
+  if(miss.length){
+    const msg='⚠️ Réception incomplète : '+miss.join(', ');
+    toast(msg,'warning');
+    try{
+      const go=!r23HasBL()||!String(d.fournisseur||'').trim()?'1':(!r23HasCompleteProduct()?'2':'3');
+      r23s('_r23_step', go);
+      r23s('_r23_err', msg);
+      renderMain();
+    }catch(e){}
+    return;
+  }
+  try{ r23s('_r23_err',''); }catch(e){}
   const confGlobal=r23ConfGlobal();
   const now=new Date();
   const row={
@@ -8157,6 +8264,7 @@ function r23Save(){
   else autoBackup();
   toast('✅ Réception enregistrée !');
   renderMain();
+  }catch(e){ try{toast('⚠️ Erreur enregistrement réception','warning');}catch(_e){} }
 }
 
 function r23HistoCard(){
@@ -8302,16 +8410,14 @@ function renderFourcCalendar(){
 
 
 function renderENR23(){
+  try{
   const d=(S[ENR23_SEC]||{}).draft||{};
   if(!d.date) r23s('date',today());
+  if(!d._r23_step) r23s('_r23_step','1');
+  const step=r23GetStep();
+  const prodFocus=r23GetProdFocus();
   const confGlobal=r23ConfGlobal();
-  return `<div class="card">
-    <div class="card-title">📦 Contrôle à réception <span class="tag prpo">PrPo</span></div>
-    <div class="regle">Au moins <strong>2 produits par livraison.</strong> T°C ≤ +3°C (tolérance +6°C). NC → fiche Non-conformité.</div>
-
-    <div class="fg-label">Nouvelle réception</div>
-
-    <div class="fgrid" style="margin-bottom:10px">
+  const headerBlock=`<div class="fgrid" style="margin-bottom:10px">
       <div class="fg">
         <label>Date</label>
         <button class="dp-trigger" id="dpf-date-enr23" onclick="openDP('${d.date||today()}', (v)=>{r23s('date',v);const el=document.getElementById('dpf-date-enr23');if(el){el.querySelector('.dp-val').textContent=new Date(v+'T12:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});el.querySelector('.dp-val').classList.remove('empty');}},{max:'${today()}'})">
@@ -8325,26 +8431,51 @@ function renderENR23(){
         ${r23FourcPicker()}
       </div>
       ${r23ConfBtn('vehicule','🚚 Propreté du véhicule ?','full')}
-    </div>
-
-    ${r23ProdBlock('p1',1)}
-    ${r23ProdBlock('p2',2)}
-
-    <div class="fgrid" style="margin-top:4px">
+    </div>`;
+  const p1done=r23ProdIsComplete('p1');
+  const p2done=r23ProdIsComplete('p2');
+  const prodTabs=`<div style="display:flex;gap:6px;margin:0 0 10px;flex-wrap:wrap">
+      <button type="button" class="btn btn-sec" onclick="r23GoProd(1)"
+        style="flex:1;${prodFocus==='1'?'border-color:var(--plum);background:#faf5fa;font-weight:900':''}">
+        ${p1done?'✓ ':''}Produit 1${p1done?'':' *'}
+      </button>
+      <button type="button" class="btn btn-sec" onclick="r23GoProd(2)"
+        style="flex:1;${prodFocus==='2'?'border-color:var(--plum);background:#faf5fa;font-weight:900':''}">
+        ${p2done?'✓ ':''}Produit 2 <span style="font-size:.65rem;font-weight:600;color:#b89ab6">(opt.)</span>
+      </button>
+    </div>`;
+  // Un produit à la fois (valeurs persistées dans draft — aucune case retirée du dossier)
+  const prodBlock=prodFocus==='2' ? r23ProdBlock('p2',2) : r23ProdBlock('p1',1);
+  const visaBlock=`<div class="fgrid" style="margin-top:4px">
       ${chefSel('cuisinier',ENR23_SEC,'Cuisinier / Visa')}
     </div>
-
     <div id="r23-conf-banner" style="background:${confGlobal?'#f0fdf4':'#fff5f5'};border-radius:10px;padding:10px 13px;margin:10px 0;font-size:.82rem;font-weight:800;color:${confGlobal?'#166534':'#991b1b'}">
       ${confGlobal?'✅ Réception conforme':'❌ Réception non conforme — vérifiez les champs'}
     </div>
-
+    <div id="r23-err" style="display:${d._r23_err?'block':'none'};background:#fff5f5;color:#991b1b;border-radius:10px;padding:10px 13px;margin:8px 0;font-size:.82rem;font-weight:800">${escH(d._r23_err||'')}</div>
     <div class="btn-row">
       <button class="btn-save" onclick="r23Save()">✅ Enregistrer la réception</button>
       <button class="btn btn-sec" onclick="S['enr23'].draft={};save();renderMain()">🔄 Effacer</button>
-    </div>
+    </div>`;
+  let body='';
+  const errBanner=d._r23_err?`<div id="r23-err" style="display:block;background:#fff5f5;color:#991b1b;border-radius:10px;padding:10px 13px;margin:8px 0;font-size:.82rem;font-weight:800">${escH(d._r23_err)}</div>`:'';
+  if(step===1) body=headerBlock+errBanner+r23StepNav(1);
+  else if(step===2) body=prodTabs+prodBlock+errBanner+r23StepNav(2);
+  else body=`<div style="font-size:.78rem;color:#7A6579;font-weight:700;margin-bottom:8px">Récap : ${escH(d.fournisseur||'—')} · ${r23HasCompleteProduct()?'≥1 produit OK':'produit incomplet'}</div>`+visaBlock+r23StepNav(3);
+  // Dossier complet conservé dans draft ; chaque étape affiche ses champs (aucune case retirée)
+  return `<div class="card">
+    <div class="card-title">📦 Contrôle à réception <span class="tag prpo">PrPo</span></div>
+    <div class="regle">Réception en <strong>3 étapes</strong> : en-tête (BL / fournisseur) → produits → visa. T°C ≤ +3°C (tol. +6°C). NC → fiche Non-conformité.</div>
+    <div class="fg-label">Nouvelle réception</div>
+    ${r23StepBar(step)}
+    ${body}
   </div>
   ${r23HistoCard()}
   ${renderFourcCalendar()}`;
+  }catch(e){
+    try{console.warn('[renderENR23]',e);}catch(_e){}
+    return `<div class="card"><div class="empty-s">Erreur affichage réception.</div></div>`;
+  }
 }
 
 // ════════════════════════════════════════════════════
