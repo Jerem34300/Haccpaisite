@@ -1,12 +1,14 @@
 /**
  * app-signup.js — Logique d'inscription HACC.PRO
- * 4 étapes : Compte → Établissement → Plan → Confirmation
+ * 4 étapes : Compte → Établissement → Config HACCP → Plan
  */
 
 const _SU = SUPABASE_URL;
 const _SK = SUPABASE_ANON_KEY;
 
 let _step = 1;
+let _planFromUrl = false;
+let _planTouched = false;
 const _data = {
   email:'', password:'', firstName:'', lastName:'',
   company:'', type:'restaurant', sites:1, plan:'multi',
@@ -21,12 +23,54 @@ let _supaAuthEmail = '';
 (function init(){
   const urlPlan = new URLSearchParams(location.search).get('plan');
   if(urlPlan && ['solo','multi','enterprise'].includes(urlPlan)){
+    _planFromUrl = true;
     _data.plan = urlPlan;
     document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
     const card = document.getElementById('plan-'+urlPlan);
     if(card) card.classList.add('selected');
   }
+  updatePlanReminder();
+  updateBillingBlock();
 })();
+
+function updatePlanReminder(){
+  const el = document.getElementById('plan-reminder');
+  if(!el) return;
+  const urlPlan = new URLSearchParams(location.search).get('plan');
+  let plan = null;
+  if(urlPlan && ['solo','multi','enterprise'].includes(urlPlan)) plan = urlPlan;
+  else if(_planTouched) plan = _data.plan;
+  if(plan === 'solo'){
+    el.className = 'plan-reminder';
+    el.textContent = 'Vous avez choisi Solo — 29€ TTC/mois';
+  } else if(plan === 'multi'){
+    el.className = 'plan-reminder';
+    el.textContent = 'Vous avez choisi Multi — 49€ TTC/mois (3 cuisines)';
+  } else if(plan === 'enterprise'){
+    el.className = 'plan-reminder';
+    el.textContent = 'Vous avez choisi Entreprise — sur devis';
+  } else {
+    el.className = 'plan-reminder muted';
+    el.innerHTML = 'Choisissez Solo ou Multi — <a href="/#pricing">voir les tarifs</a>';
+  }
+}
+
+function updateBillingBlock(){
+  const promoEl = document.getElementById('billing-promo');
+  const trialEl = document.getElementById('billing-trial-copy');
+  if(!trialEl) return;
+  const plan = _data.plan;
+  if(plan === 'solo'){
+    trialEl.innerHTML = 'Essai 14 jours, sans carte bancaire. Aucun prélèvement pendant l’essai. Ensuite : <strong>29€</strong> TTC/mois, renouvelé chaque mois. Résiliation en 1 clic, sans frais.';
+    if(promoEl) promoEl.innerHTML = 'Prix lancement <strong>20,30€</strong> avec code <strong>HACCBETA</strong> — puis 29€/mois.';
+  } else if(plan === 'multi'){
+    trialEl.innerHTML = 'Essai 14 jours, sans carte bancaire. Aucun prélèvement pendant l’essai. Ensuite : <strong>49€</strong> TTC/mois, renouvelé chaque mois. Résiliation en 1 clic, sans frais.';
+    if(promoEl) promoEl.innerHTML = 'Prix lancement <strong>34,30€</strong> avec code <strong>HACCBETA</strong> — puis 49€/mois.';
+  } else if(plan === 'enterprise'){
+    trialEl.innerHTML = 'Essai 14 jours, sans carte bancaire. Aucun prélèvement pendant l’essai. Offre Entreprise : tarif sur devis. Résiliation en 1 clic, sans frais.';
+    if(promoEl) promoEl.innerHTML = 'Contactez-nous pour un devis adapté à votre groupe.';
+  }
+}
 
 // ── Stepper navigation ────────────────────────────────────────
 function goStep(to){
@@ -41,21 +85,22 @@ function _showStep(n){
   if(target) target.classList.add('active');
   _step = n;
   _updateStepper();
-  if(n===3) _preselectPlan();
-  if(n===4) _fillRecap();
+  if(n===4){ _preselectPlan(); _fillRecap(); updateBillingBlock(); }
   if(n==='enterprise') _prefillEnterpriseForm();
+  updatePlanReminder();
   window.scrollTo(0,0);
 }
 
 function _updateStepper(){
+  const cur = (typeof _step === 'number') ? _step : (_step === 'enterprise' || _step === 'success' ? 4 : 1);
   for(let i=1;i<=4;i++){
     const dot = document.getElementById('dot-'+i);
     if(!dot) continue;
     dot.className = 'step-dot';
-    if(i < _step) dot.classList.add('done');
-    else if(i === _step) dot.classList.add('active');
+    if(i < cur) dot.classList.add('done');
+    else if(i === cur) dot.classList.add('active');
     const line = document.getElementById('line-'+i);
-    if(line){ line.className='step-line'; if(i<_step) line.classList.add('done'); }
+    if(line){ line.className='step-line'; if(i<cur) line.classList.add('done'); }
   }
 }
 
@@ -156,8 +201,11 @@ function validateStep(n){
     return true;
   }
   if(n===3){
-    if(!_data.plan) return showErr(3,'Veuillez choisir un plan pour continuer');
-    if(!['solo','multi','enterprise'].includes(_data.plan)) return showErr(3,'Veuillez choisir un plan pour continuer');
+    return true; // Config HACCP — étape informative
+  }
+  if(n===4){
+    if(!_data.plan) return showErr(4,'Veuillez choisir un plan pour continuer');
+    if(!['solo','multi','enterprise'].includes(_data.plan)) return showErr(4,'Veuillez choisir un plan pour continuer');
     return true;
   }
   return true;
@@ -173,11 +221,11 @@ function selectColor(hex){
 
 // ── Routage depuis l'étape plan ────────────────────────────
 function continueFromPlan(){
-  if(!validateStep(3)) return;
+  if(!validateStep(4)) return;
   if(_data.plan === 'enterprise'){
     _showStep('enterprise');
   } else {
-    goStep(4);
+    doSignup();
   }
 }
 
@@ -200,6 +248,13 @@ function suSetPeriod(p){
 
 // ── Plan selection ────────────────────────────────────────────
 function _preselectPlan(){
+  const urlPlan = new URLSearchParams(location.search).get('plan');
+  if(urlPlan && ['solo','multi','enterprise'].includes(urlPlan)){
+    selectPlan(urlPlan);
+    _planFromUrl = true;
+    return;
+  }
+  if(_planTouched) return;
   const s = _data.sites || 1;
   const plan = s === 1 ? 'solo' : s > 3 ? 'enterprise' : 'multi';
   selectPlan(plan);
@@ -208,10 +263,13 @@ function _preselectPlan(){
 function selectPlan(plan){
   if(!['solo','multi','enterprise'].includes(plan)) return;
   _data.plan = plan;
+  _planTouched = true;
   document.querySelectorAll('.plan-card').forEach(c=>c.classList.remove('selected'));
   const card = document.getElementById('plan-'+plan);
   if(card) card.classList.add('selected');
-  hideErr(3);
+  hideErr(4);
+  updatePlanReminder();
+  updateBillingBlock();
 }
 
 // ── Recap ─────────────────────────────────────────────────────
@@ -226,7 +284,7 @@ function _fillRecap(){
     hotellerie:'Hôtellerie / Restauration', autre:'Autre établissement'
   };
   _set('recap-type', typeLabels[_data.type] || _data.type);
-  const planLabels = { solo:'Solo — 29€/mois · 1 cuisine', multi:'Multi — 49€/mois · jusqu\'à 3 cuisines', enterprise:'Entreprise — Sur devis' };
+  const planLabels = { solo:'Solo — 29€ TTC/mois', multi:'Multi — 49€ TTC/mois (3 cuisines)', enterprise:'Entreprise — Sur devis' };
   _set('recap-plan', planLabels[_data.plan] || _data.plan);
 }
 

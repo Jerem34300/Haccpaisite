@@ -17,13 +17,13 @@ const _DEFAULT_URL = SUPABASE_URL;
 const _DEFAULT_KEY = SUPABASE_ANON_KEY;
 
 function loadCfg() {
-  // Pré-remplir avec les clés intégrées
+  // Clés Supabase uniquement — ne jamais préremplir email/mot de passe (prod/démo)
   document.getElementById('cfg-url').value = _DEFAULT_URL;
   document.getElementById('cfg-key').value = _DEFAULT_KEY;
-  try {
-    const c = JSON.parse(localStorage.getItem(CFG_KEY) || '{}');
-    if (c.email) document.getElementById('login-email').value = c.email;
-  } catch(e) {}
+  const emailEl = document.getElementById('login-email');
+  const passEl  = document.getElementById('login-pass');
+  if (emailEl) emailEl.value = '';
+  if (passEl)  passEl.value = '';
 }
 
 function saveCfg(email) {
