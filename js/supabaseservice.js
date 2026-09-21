@@ -35,7 +35,7 @@ const SupaEngine = (() => {
   let _flushTimer = null;
   let _lastSyncErrToastAt = 0;
 
-  /** Toast visible (1× / 8s) pour erreurs sync 401/404/409 — pas seulement console.warn */
+  /** Toast visible (1× / 8s) pour erreurs sync 401/403/404/409 — pas seulement console.warn */
   function _toastSyncError(statusOrMsg, detail) {
     try {
       const now = Date.now();
@@ -47,11 +47,12 @@ const SupaEngine = (() => {
         raw = String(detail || '');
       } else {
         raw = String(statusOrMsg || detail || '');
-        const m = raw.match(/\b(401|404|409)\b/);
+        const m = raw.match(/\b(401|403|404|409)\b/);
         if (m) status = parseInt(m[1], 10);
       }
       let human;
       if (status === 401) human = 'Session expirée ou non autorisée (401) — reconnectez-vous pour synchroniser';
+      else if (status === 403) human = 'Accès refusé (403) — droits sync / Storage insuffisants';
       else if (status === 404) human = 'Ressource sync introuvable (404) — vérifiez la configuration Supabase';
       else if (status === 409) human = 'Conflit de synchronisation (409) — saisie déjà présente ou conflit';
       else human = 'Erreur de synchronisation' + (raw ? ' — ' + raw.slice(0, 80) : '');
@@ -554,7 +555,7 @@ const SupaEngine = (() => {
               continue;
             }
           }
-          if (r.status === 401 || r.status === 404 || r.status === 409) {
+          if (r.status === 401 || r.status === 403 || r.status === 404 || r.status === 409) {
             _toastSyncError(r.status, errTxt);
           }
           throw new Error(`HTTP ${r.status}${errTxt?' — '+errTxt.slice(0,80):''}`);
@@ -571,7 +572,7 @@ const SupaEngine = (() => {
         entry.next_retry_at = new Date(Date.now() + Math.min(3000 * Math.pow(2, entry.retries - 1), 48000)).toISOString();
         hasError = true;
         _supaLog(`⚠️ ${entry.enr_type} erreur (essai ${entry.retries}) : ${e.message}`);
-        if (/\b(401|404|409)\b/.test(String(e.message||''))) {
+        if (/\b(401|403|404|409)\b/.test(String(e.message||''))) {
           _toastSyncError(e.message);
         }
       }
@@ -631,6 +632,7 @@ const SupaEngine = (() => {
         _supaLog('✅ Bucket pms-photos OK — photos activees');
       } else if (r2.status===404) {
         _supaLog('⚠️ Bucket pms-photos introuvable — verifiez Supabase Storage');
+        _toastSyncError(404);
         ok = false;
       } else if (r2.status===403 || r2.status===400) {
         const t2 = await r2.text().catch(()=>'');
@@ -638,6 +640,7 @@ const SupaEngine = (() => {
         _supaLog('SQL a coller dans Supabase SQL Editor :');
         _supaLog("CREATE POLICY \"auth_upload\" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = \'pms-photos\');");
         _supaLog("CREATE POLICY \"auth_update\" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = \'pms-photos\');");
+        _toastSyncError(r2.status === 400 ? 403 : r2.status);
         ok = false;
       } else {
         const t2 = await r2.text().catch(()=>'');
