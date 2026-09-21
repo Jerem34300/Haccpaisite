@@ -956,6 +956,7 @@ function openSP(){
     openPinModal({
       mode:'set1',
       target:'admin',
+      required:true,
       onSuccess:()=>{
         try { if(typeof _saveConfigToSupabase==='function') _saveConfigToSupabase(); } catch(e){}
         _unlock();
@@ -5173,6 +5174,7 @@ function nettAdminGuard(action){
     openPinModal({
       mode:'set1',
       target:'admin',
+      required:true,
       onSuccess:()=>{
         try { if(typeof _saveConfigToSupabase==='function') _saveConfigToSupabase(); } catch(e){}
         action();
@@ -15444,7 +15446,7 @@ async function _migratePinsToHash(cfgLike){
 // ════════════════════════════════════════════════════
 // PIN MODAL — réutilisable (admin + chefs)
 // ════════════════════════════════════════════════════
-// _pinCtx : { mode: 'check'|'set1'|'set2'|'recovery', target: 'admin'|'chef:NOM', onSuccess: fn, first: '' }
+// _pinCtx : { mode: 'check'|'set1'|'set2'|'recovery', target: 'admin'|'chef:NOM', onSuccess: fn, first: '', required?: bool }
 let _pinCtx = {};
 let _pinBuf = '';
 
@@ -15453,10 +15455,33 @@ function openPinModal(ctx){
   _pinBuf = '';
   _updatePinDisplay();
   _setPinLabels();
+  _updatePinCancel();
   document.getElementById('pin-recovery-area').innerHTML = '';
   document.getElementById('pin-modal').classList.add('open');
 }
-function closePinModal(){ document.getElementById('pin-modal').classList.remove('open'); _pinBuf=''; }
+function _updatePinCancel(){
+  try {
+    const a = document.getElementById('pin-cancel-link');
+    if(!a) return;
+    if(_pinCtx.required){
+      a.style.display = 'none';
+      a.setAttribute('aria-hidden','true');
+    } else {
+      a.style.display = '';
+      a.removeAttribute('aria-hidden');
+    }
+  } catch(e){}
+}
+function closePinModal(force){
+  try {
+    if(!force && _pinCtx.required && !S.adminPin){
+      try { toast('🔒 Code admin obligatoire — créez un code à 4 chiffres'); } catch(e){}
+      return;
+    }
+  } catch(e){}
+  try { document.getElementById('pin-modal').classList.remove('open'); } catch(e){}
+  _pinBuf='';
+}
 
 function _setPinLabels(){
   const m = _pinCtx.mode;
@@ -15532,7 +15557,7 @@ function _pinValidate(){
           }catch(e){ console.warn('[pin-hash] re-save', e); }
         }).catch(()=>{});
       }
-      closePinModal(); _pinCtx.onSuccess?.();
+      closePinModal(true); _pinCtx.onSuccess?.();
     }).catch(()=>_pinError('Code incorrect'));
   } else if(m==='set1'){
     _pinCtx.first = _pinBuf; _pinBuf='';
@@ -15540,7 +15565,7 @@ function _pinValidate(){
   } else if(m==='set2'){
     if(_pinBuf !== _pinCtx.first){ _pinError('Les codes ne correspondent pas'); _pinCtx.first=''; _pinCtx.mode='set1'; _setPinLabels(); return; }
     const pin = _pinBuf;
-    closePinModal();
+    closePinModal(true);
     _hashPin(pin).then(hashed=>{
       try{
         if(_pinCtx.target==='admin'){ S.adminPin=hashed; save(); toast('🔒 Code admin défini'); renderSecuritySection(); }
@@ -15573,7 +15598,7 @@ function pinCheckRecovery(){
   if(!ans){ toast('⚠️ Entrez votre réponse'); return; }
   if(ans !== correct){ toast('❌ Réponse incorrecte'); return; }
   // Réponse correcte → connexion + option de réinitialiser le PIN
-  closePinModal();
+  closePinModal(true);
   if(_pinCtx.target==='admin'){
     toast('✅ Réponse correcte — accès autorisé');
     renderSP(); document.getElementById('sp').classList.add('open');
@@ -15601,7 +15626,6 @@ function renderSecuritySection(){
     ${hasPin?`
     <div style="display:flex;gap:8px;margin-bottom:6px">
       <button class="btn btn-sec" style="flex:1;font-size:.8rem;padding:9px" onclick="spChangeAdminPin()">🔄 Changer le code</button>
-      <button class="btn btn-sec" style="flex:1;font-size:.8rem;padding:9px;color:#dc2626;background:#fff5f5;border:1px solid #fca5a5" onclick="spRemoveAdminPin()">🗑️ Supprimer le code</button>
     </div>`:
     `<button class="btn btn-sec" style="width:100%;padding:9px;font-size:.8rem;margin-bottom:6px" onclick="spSetAdminPin()">🔒 Définir un code admin</button>`}
     ${renderAdminQForm()}`;
@@ -15625,9 +15649,13 @@ function spChangeAdminPin(){
   }});
 }
 function spRemoveAdminPin(){
-  showConfirm('Supprimer le code admin ?', 'La configuration sera accessible sans code.', 'Oui, supprimer', ()=>{
-    delete S.adminPin; save(); renderSecuritySection(); toast('🔓 Code admin supprimé');
-  });
+  // PIN admin obligatoire — plus de suppression libre. Stub pour appels résiduels.
+  try {
+    toast('🔒 Le code admin est obligatoire');
+    if(!S.adminPin){
+      openPinModal({mode:'set1', target:'admin', required:true, onSuccess:()=>{ try{renderSecuritySection();}catch(e){} }});
+    }
+  } catch(e){}
 }
 
 // Tablette partagée : ne jamais laisser la config ouverte en arrière-plan
