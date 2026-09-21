@@ -209,6 +209,13 @@ as $$
    where p.id = auth.uid();
 $$;
 
+create or replace function public.current_sector_id()
+returns uuid
+language sql stable security definer set search_path = public
+as $$
+  select sector_id from public.profiles where id = auth.uid();
+$$;
+
 create or replace function public.is_admin()
 returns boolean
 language sql stable security definer set search_path = public
@@ -372,7 +379,10 @@ create policy subscriptions_admin_write on public.subscriptions
   with check (public.is_super_admin() or (public.is_admin() and tenant_id = public.current_tenant_id()));
 
 -- ---------- PMS_RECORDS ----------
--- Lecture : super_admin partout ; sinon mêmes tenant ; cuisinier restreint à son site.
+-- Lecture : super_admin partout ; admins (siège/directeur) sur le tenant ;
+-- chef_secteur limité aux sites de son sector_id (profiles.sector_id → sites.sector_id →
+-- pms_records.site_id = sites.code) — aligné sur le filtre client de app-dashboard.js loadData ;
+-- cuisinier restreint à son site. Ne pas élargir chef_secteur au tenant entier.
 drop policy if exists pms_records_select on public.pms_records;
 create policy pms_records_select on public.pms_records
   for select to authenticated
@@ -382,7 +392,16 @@ create policy pms_records_select on public.pms_records
       tenant_id = public.current_tenant_id()
       and (
         public.is_admin()
-        or public.current_role_text() = 'chef_secteur'
+        or (
+          public.current_role_text() = 'chef_secteur'
+          and public.current_sector_id() is not null
+          and upper(site_id) in (
+            select upper(s.code)
+              from public.sites s
+             where s.sector_id = public.current_sector_id()
+               and s.tenant_id = public.current_tenant_id()
+          )
+        )
         or (public.current_role_text() = 'cuisinier'
             and upper(site_id) = public.current_site_code())
       )
