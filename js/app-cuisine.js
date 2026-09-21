@@ -4580,10 +4580,34 @@ function renderENR28(){
 
 // ── Vue Priorités ────────────────────────────────────
 function renderNettPriorites(){
+  try{
   const ref=nettRef();
   // Enrichir chaque item avec nettInfo, trier par joursRestants
   const enriched=ref.map(it=>({it,info:nettInfo(it)}));
   enriched.sort((a,b)=>a.info.joursRestants-b.info.joursRestants);
+
+  // UX Ticket 5 — « Maintenant » : jusqu'à 3 tâches urgentes non faites (liste complète inchangée en dessous)
+  const _prioRank={nc:0,retard:1,today:2,demain:3,semaine:4,mois:5};
+  const nowPool=enriched.filter(({info})=>!['done_today','ok'].includes(info.status));
+  nowPool.sort((a,b)=>{
+    const ra=_prioRank[a.info.status]??9, rb=_prioRank[b.info.status]??9;
+    if(ra!==rb) return ra-rb;
+    return a.info.joursRestants-b.info.joursRestants;
+  });
+  const nowTop=nowPool.slice(0,3);
+  let maintenantHtml='';
+  if(nowTop.length){
+    maintenantHtml=`<div class="nett-maintenant" style="margin-bottom:16px;padding:12px;background:linear-gradient(135deg,#fef2f2 0%,#fff7ed 100%);border:2px solid #f87171;border-radius:14px;box-shadow:0 2px 8px rgba(220,38,38,.12)">
+      <div style="font-size:.78rem;font-weight:900;letter-spacing:.5px;color:#991b1b;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+        <span style="font-size:1.05rem">⚡</span> MAINTENANT — ${nowTop.length} priorité${nowTop.length>1?'s':''}
+      </div>
+      ${nowTop.map(({it,info})=>nettItemRow(it,info)).join('')}
+    </div>`;
+  } else {
+    maintenantHtml=`<div class="nett-maintenant" style="margin-bottom:14px;padding:12px;background:#f0fdf4;border:2px solid #86efac;border-radius:14px;text-align:center">
+      <div style="font-size:.8rem;font-weight:800;color:#166534">✅ Rien d'urgent — tout est à jour</div>
+    </div>`;
+  }
 
   const groups={
     nc:         {ico:'⚠️',label:'Non-conformes — à refaire immédiatement',col:'#991b1b',bg:'#fef2f2',border:'#fca5a5',items:[]},
@@ -4615,7 +4639,7 @@ function renderNettPriorites(){
       `<span class="nett-stat-pill green">${groups.ok.items.length} à jour</span>`:''}
   </div>`;
 
-  let html=statsHtml;
+  let html=maintenantHtml+statsHtml;
   ['nc','retard','today','demain','semaine','mois','ok','done_today'].forEach(k=>{
     const g=groups[k];
     if(!g.items.length)return;
@@ -4628,6 +4652,10 @@ function renderNettPriorites(){
   });
   if(enriched.length===0)html='<div class="empty-s">Aucun élément dans le plan.</div>';
   return html;
+  }catch(e){
+    try{console.error('renderNettPriorites',e);}catch(_e){}
+    return '<div class="empty-s">⚠️ Affichage priorités indisponible</div>';
+  }
 }
 
 // ── Ligne item nettoyage (nouveau : accepte info objet ou status string) ─
