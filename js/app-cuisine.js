@@ -630,21 +630,23 @@ function navBadge(id){
         return n>0?{n,col:'#1d4ed8'}:null;
       }
 
-      // ENR19 — Enceintes non saisies aujourd'hui (ouverture ou fermeture manquante)
+      // ENR19 — Badge lisible (ex. « 3 enceintes sans ouverture »)
       case 'enr19':{
         const todayStr=today();
         const encs=getEnceintes();
         const saisies=(S['enr19']?.saisies||[]).filter(r=>r.date===todayStr);
-        // Enceintes avec au moins une saisie hors seuil aujourd'hui
         const ncEnc=encs.filter(e=>{
           const rOuv=saisies.filter(r=>r.enc_id===e.id&&r.moment==='ouv').slice(-1)[0];
           const rFerm=saisies.filter(r=>r.enc_id===e.id&&r.moment==='ferm').slice(-1)[0];
           return encConforme(rOuv?.temp,e.consigne)===false||encConforme(rFerm?.temp,e.consigne)===false;
         }).length;
-        // Enceintes sans aucune saisie aujourd'hui
-        const manquantes=encs.filter(e=>!saisies.some(r=>r.enc_id===e.id)).length;
-        const n=ncEnc>0?ncEnc:manquantes;
-        return n>0?{n,col:ncEnc>0?'#dc2626':'#6d28d9'}:null;
+        const sansOuv=encs.filter(e=>!saisies.some(r=>r.enc_id===e.id&&r.moment==='ouv')).length;
+        const sansFerm=encs.filter(e=>!saisies.some(r=>r.enc_id===e.id&&r.moment==='ferm')).length;
+        const plur=n=>n>1?'s':'';
+        if(ncEnc>0) return {n:ncEnc,label:ncEnc+' enceinte'+plur(ncEnc)+' hors seuil',col:'#dc2626'};
+        if(sansOuv>0) return {n:sansOuv,label:sansOuv+' enceinte'+plur(sansOuv)+' sans ouverture',col:'#6d28d9'};
+        if(sansFerm>0) return {n:sansFerm,label:sansFerm+' enceinte'+plur(sansFerm)+' sans fermeture',col:'#6d28d9'};
+        return null;
       }
 
       // ENR23 — Réceptions du jour non saisies (pas de ligne aujourd'hui = avertissement doux)
@@ -697,7 +699,7 @@ function renderNav(){
     const cl=[s.cat==='ccp'?'ccp':s.cat==='prpo'?'prpo':s.cat==='tool'?'tool':s.custom?'custom':'',cur===id?'active':''].join(' ');
     const _b=navBadge(id);
     const _badgeHtml=_b
-      ?`<span style="background:${_b.col};color:#fff;border-radius:20px;padding:0 6px;font-size:.58rem;font-weight:900;margin-left:3px;vertical-align:middle;line-height:1.7;display:inline-block;min-width:16px;text-align:center">${_b.n}</span>`
+      ?`<span style="background:${_b.col};color:#fff;border-radius:20px;padding:0 6px;font-size:.58rem;font-weight:900;margin-left:3px;vertical-align:middle;line-height:1.7;display:inline-block;min-width:16px;text-align:center;max-width:11.5em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escAttr(_b.label||_b.n)}">${_b.label||_b.n}</span>`
       :'';
     return`<button class="nb ${cl}" onclick="goTo('${id}')">${s.short}${_badgeHtml}</button>`;
   }).join('');
@@ -1612,10 +1614,12 @@ function tpHtml(id,sec,presets,label){
   const tPctLocal=t=>`${((t-sMin)/sRange*100).toFixed(1)}%`;
   const axisH=axisPts.map(([t,l])=>`<span style="left:${tPctLocal(t)}">${l}</span>`).join('');
   const presetsH=presets.map(p=>`<button class="tp-pre${numV===p?' on':''}" onclick="onTP('${id}','${sec}',${p})">${p>=0?'+':''}${p}°C</button>`).join('');
+  // UX Ticket 4 : gros presets °C en premier, slider / saisie manuelle conservés en dessous
   return`<div class="fg full">
     ${label?`<label>${label}</label>`:''}
     <div class="tp" id="tp-${id}-${sec}">
-      <div class="tp-disp" id="td-${id}-${sec}" data-qt="f" data-qi="${id}" data-qs="${sec}" data-qn="${sMin}" data-qx="${sMax}" onclick="qtTap(this)" style="cursor:pointer">${numV===null?'<span style="font-size:.9rem;color:#b89ab6">Tap ou glisser ↓</span>':disp+'<sub>°C</sub>'}</div>
+      <div class="tp-disp" id="td-${id}-${sec}" data-qt="f" data-qi="${id}" data-qs="${sec}" data-qn="${sMin}" data-qx="${sMax}" onclick="qtTap(this)" style="cursor:pointer">${numV===null?'<span style="font-size:.9rem;color:#b89ab6">Choisir un preset ou glisser ↓</span>':disp+'<sub>°C</sub>'}</div>
+      <div class="tp-presets">${presetsH}</div>
       <div class="tp-wrap">
         <input type="range" class="tp-slider" id="ts-${id}-${sec}"
           min="${sMin}" max="${sMax}" step="0.1" value="${slV}"
@@ -1624,7 +1628,6 @@ function tpHtml(id,sec,presets,label){
         <div class="tp-axis">${axisH}</div>
       </div>
       <div class="tp-manual"><span style="font-size:.74rem;color:#b89ab6;font-weight:700">Tap :</span><div id="tm-${id}-${sec}" class="qt-fake-inp" data-qt="f" data-qi="${id}" data-qs="${sec}" data-qn="${sMin}" data-qx="${sMax}" onclick="qtTap(this)">${numV!==null?(numV%1===0?numV.toFixed(0):numV.toFixed(1)):''}</div><span style="font-size:1rem;font-weight:800;color:var(--gris2)">°C</span></div>
-      <div class="tp-presets">${presetsH}</div>
     </div>
   </div>`;
 }
@@ -3872,10 +3875,12 @@ function tpHtmlEnc(id, sec, label, tMin, tMax, presets){
 
   if (numV !== null) setTimeout(() => _updateEncConfBadge(numV), 30);
 
+  // UX Ticket 4 : gros presets °C en premier, slider conservé ensuite
   return `<div class="fg full">
     ${label ? `<label>${label}</label>` : ''}
     <div class="tp" id="tp-${id}-${sec}" style="--tp-grad:${grad}">
       <div class="tp-disp" id="td-${id}-${sec}" data-qt="e" data-qi="${id}" data-qs="${sec}" data-qn="${tMin}" data-qx="${tMax}" onclick="qtTap(this)" style="cursor:pointer">${disp}<sub>°C</sub></div>
+      <div class="tp-presets">${presetsH}</div>
       <div class="tp-wrap">
         <input type="range" class="tp-slider" id="ts-${id}-${sec}"
           min="${tMin}" max="${tMax}" step="0.1" value="${slV}"
@@ -3885,7 +3890,6 @@ function tpHtmlEnc(id, sec, label, tMin, tMax, presets){
         <div class="tp-axis">${axisH}</div>
       </div>
       <div class="tp-manual"><span style="font-size:.74rem;color:#b89ab6;font-weight:700">Tap :</span><div id="tm-${id}-${sec}" class="qt-fake-inp" data-qt="e" data-qi="${id}" data-qs="${sec}" data-qn="${tMin}" data-qx="${tMax}" onclick="qtTap(this)">${numV!==null?(numV%1===0?numV.toFixed(0):numV.toFixed(1)):''}</div><span style="font-size:1rem;font-weight:800;color:var(--gris2)">°C</span></div>
-      <div class="tp-presets">${presetsH}</div>
     </div>
   </div>`;
 }
@@ -9657,10 +9661,12 @@ function tpHtmlR(id,sec,presets,label,tMin,tMax){
     ?'linear-gradient(to right,#fbbf24 0%,#f97316 40%,#ef4444 70%,#dc2626 100%)'
     :'linear-gradient(to right,#3b82f6 0%,#34d399 50%,#fbbf24 80%,#f87171 100%)';
   const presH=presets.map(p=>`<button class="tp-pre${numV===p?' on':''}" onclick="tpSet('${id}','${sec}',${p})">${p>=0?'+':''}${p}°C</button>`).join('');
+  // UX Ticket 4 : gros presets °C en premier, slider conservé ensuite
   return`<div class="fg full">
     ${label?`<label>${label}</label>`:''}
     <div class="tp" id="tp-${id}-${sec}" style="--tp-grad:${grad}">
       <div class="tp-disp" id="td-${id}-${sec}" data-qt="f" data-qi="${id}" data-qs="${sec}" data-qn="${tMin}" data-qx="${tMax}" onclick="qtTap(this)" style="cursor:pointer">${disp}<sub>°C</sub></div>
+      <div class="tp-presets">${presH}</div>
       <div class="tp-wrap">
         <input type="range" class="tp-slider" id="ts-${id}-${sec}"
           min="${tMin}" max="${tMax}" step="0.1" value="${slV}"
@@ -9670,7 +9676,6 @@ function tpHtmlR(id,sec,presets,label,tMin,tMax){
         <div class="tp-axis">${axisH}</div>
       </div>
       <div class="tp-manual"><span style="font-size:.74rem;color:#b89ab6;font-weight:700">Tap :</span><div id="tm-${id}-${sec}" class="qt-fake-inp" data-qt="f" data-qi="${id}" data-qs="${sec}" data-qn="${tMin}" data-qx="${tMax}" onclick="qtTap(this)">${numV!==null?(numV%1===0?numV.toFixed(0):numV.toFixed(1)):''}</div><span style="font-size:1rem;font-weight:800;color:var(--gris2)">°C</span></div>
-      <div class="tp-presets">${presH}</div>
     </div>
   </div>`;
 }
@@ -16172,7 +16177,10 @@ function renderQuickEnc(){
       '<div class="qenc-consigne">'+(enc.consigne!==undefined?enc.consigne:'')+'</div>'+
     '</div>';
   }).join('');
-  var badge=allDone?'<div style="font-size:.65rem;font-weight:800;color:#166534;background:#dcfce7;padding:2px 9px;border-radius:10px">✓ Tout saisi</div>':'<div style="font-size:.65rem;font-weight:800;color:#92400e;background:#fef3c7;padding:2px 9px;border-radius:10px">À compléter</div>';
+  var sansOuvN=encs.filter(function(e){return !saisies.some(function(r){return r.date===t&&r.enc_id===e.id&&r.moment==='ouv';});}).length;
+  var sansFermN=encs.filter(function(e){return !saisies.some(function(r){return r.date===t&&r.enc_id===e.id&&r.moment==='ferm';});}).length;
+  var badgeTxt=allDone?'✓ Tout saisi':(sansOuvN>0?(sansOuvN+' enceinte'+(sansOuvN>1?'s':'')+' sans ouverture'):(sansFermN>0?(sansFermN+' enceinte'+(sansFermN>1?'s':'')+' sans fermeture'):'À compléter'));
+  var badge=allDone?'<div style="font-size:.65rem;font-weight:800;color:#166534;background:#dcfce7;padding:2px 9px;border-radius:10px">'+badgeTxt+'</div>':'<div style="font-size:.65rem;font-weight:800;color:#92400e;background:#fef3c7;padding:2px 9px;border-radius:10px">'+badgeTxt+'</div>';
   return'<div style="margin-bottom:14px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><div style="font-size:.65rem;font-weight:900;text-transform:uppercase;letter-spacing:.5px;color:#b89ab6">🌡️ Enceintes — tap pour saisir</div>'+badge+'</div><div class="qenc-grid">'+tiles+'</div></div>';
 }
 
