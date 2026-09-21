@@ -20,10 +20,63 @@ function loadCfg() {
   // Clés Supabase uniquement — ne jamais préremplir email/mot de passe (prod/démo)
   document.getElementById('cfg-url').value = _DEFAULT_URL;
   document.getElementById('cfg-key').value = _DEFAULT_KEY;
+  _defeatLoginAutofill();
+}
+
+/** Force empty login fields + block browser/password-manager autofill. */
+function _defeatLoginAutofill() {
   const emailEl = document.getElementById('login-email');
   const passEl  = document.getElementById('login-pass');
-  if (emailEl) emailEl.value = '';
-  if (passEl)  passEl.value = '';
+  if (!emailEl && !passEl) return;
+
+  function wipe(el) {
+    if (!el) return;
+    if (document.activeElement === el) return; // user already typing
+    try { el.value = ''; } catch (e) {}
+    // Some browsers ignore .value= on password; also reset via setAttribute
+    try { el.setAttribute('value', ''); } catch (e) {}
+  }
+
+  function armReadonly(el) {
+    if (!el) return;
+    el.setAttribute('readonly', 'readonly');
+    const unlock = function () {
+      el.removeAttribute('readonly');
+      el.removeEventListener('focus', unlock);
+      el.removeEventListener('touchstart', unlock);
+    };
+    el.addEventListener('focus', unlock);
+    el.addEventListener('touchstart', unlock, { passive: true });
+  }
+
+  wipe(emailEl);
+  wipe(passEl);
+  armReadonly(emailEl);
+  armReadonly(passEl);
+
+  // Browsers inject autofill asynchronously after paint — keep clearing briefly
+  const delays = [0, 50, 100, 200, 400, 800, 1200, 2000];
+  delays.forEach(function (ms) {
+    setTimeout(function () { wipe(emailEl); wipe(passEl); }, ms);
+  });
+  let ticks = 0;
+  const iv = setInterval(function () {
+    wipe(emailEl);
+    wipe(passEl);
+    if (++ticks >= 25) clearInterval(iv); // ~2.5s
+  }, 100);
+
+  // Catch late autofill mutations
+  try {
+    const obs = new MutationObserver(function () {
+      wipe(emailEl);
+      wipe(passEl);
+    });
+    [emailEl, passEl].forEach(function (el) {
+      if (el) obs.observe(el, { attributes: true, attributeFilter: ['value'] });
+    });
+    setTimeout(function () { obs.disconnect(); }, 3000);
+  } catch (e) {}
 }
 
 function saveCfg(email) {
