@@ -16347,7 +16347,19 @@ function checkEndOfService(outgoing,next){
   var subEl=document.getElementById('eos-sub');
   var itemsEl=document.getElementById('eos-items');
   var btnEl=document.getElementById('eos-btn-go');
-  if(!titleEl||!subEl||!itemsEl||!btnEl)return;
+  var ovEl=document.getElementById('eos-ov');
+  // Fallback si overlay HTML absent (sinon le switch de session restait silencieux)
+  if(!titleEl||!subEl||!itemsEl||!btnEl||!ovEl){
+    try{
+      toast('⚠️ Avant de changer : '+missing.map(function(m){return m.label;}).join(' · '),'warning');
+    }catch(e){}
+    if(typeof showConfirm==='function'){
+      showConfirm(outgoing?'👋 '+outgoing+' — avant de partir':'👋 Fin de service',
+        missing.map(function(m){return m.icon+' '+m.label;}).join('\n'),
+        'Changer quand même', next);
+    } else { next(); }
+    return;
+  }
   titleEl.textContent=outgoing?'👋 '+outgoing+' — avant de partir':'👋 Fin de service';
   subEl.textContent=missing.length+' point'+(missing.length>1?'s':'')+' à régler :';
   itemsEl.innerHTML=missing.map(function(m,i){return'<div class="eos-item missing" onclick="eosGoItem('+i+')"><span style="font-size:1.25rem;flex-shrink:0">'+m.icon+'</span><div style="flex:1"><div>'+m.label+'</div><div style="font-size:.7rem;opacity:.75;margin-top:1px">'+m.detail+'</div></div><span style="opacity:.4">›</span></div>';}).join('');
