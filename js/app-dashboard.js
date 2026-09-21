@@ -33,12 +33,15 @@ const CONF_KEYS = ['conf_r','conf_rt','conforme','conf_fin','conf_deb','conf_t3'
   'conf_prem','conf_dern','conf_premier','conf_pre','conf_test'];
 function isNC(r){
   const d=r.data||{};
+  // Soft-deleted : exclus des KPIs / scores (restent visibles en histo avec badge)
+  if(r._deleted || d._deleted) return false;
   if(r.enr_type==='enr30') return d.cloture!=='OUI';
   if(r.enr_type==='nuisibles_val') return d.presence==='OUI'&&d.cloture!=='OUI';
   return CONF_KEYS.some(k=>d[k]==='NON')&&d.cloture!=='OUI';
 }
 function isNCCloturee(r){
   const d=r.data||{};
+  if(r._deleted || d._deleted) return false;
   if(r.enr_type==='enr30') return d.cloture==='OUI';
   if(r.enr_type==='nuisibles_val') return d.presence==='OUI'&&d.cloture==='OUI';
   return CONF_KEYS.some(k=>d[k]==='NON')&&d.cloture==='OUI';
@@ -1132,6 +1135,8 @@ function getFilters(){
 function filteredRecords(){
   const f=getFilters();
   return _records.filter(r=>{
+    // Soft-deleted exclus des KPIs / overview / scores (histo ENR garde _records + badge)
+    if(r._deleted || (r.data && r.data._deleted)) return false;
     if(f.mois&&!r.recorded_at?.startsWith(f.mois))return false;
     if(f.site&&r.site_id!==f.site)return false;
     // Chef de secteur : toujours restreint à son secteur (déjà filtré dans _records)
@@ -7675,8 +7680,10 @@ function renderPageENR(type) {
   if (f.site) recs = recs.filter(r => r.site_id === f.site);
   recs.sort((a,b) => b.recorded_at?.localeCompare(a.recorded_at||'')||0);
 
-  const nb  = recs.length;
-  const nc  = recs.filter(r => isNC(r)).length;
+  // KPIs sans soft-delete ; la liste/cards conserve les Masqué (badge)
+  const kpiRecs = recs.filter(r => !(r._deleted || (r.data && r.data._deleted)));
+  const nb  = kpiRecs.length;
+  const nc  = kpiRecs.filter(r => isNC(r)).length;
   const pct = nb > 0 ? Math.round((1-nc/nb)*100) : 100;
   const col = pct>=90?'#16a34a':pct>=75?'#d97706':'var(--red)';
 
