@@ -133,13 +133,25 @@ function saveCfg(){
   save();
   // h-etab-disp supprimé — rien à mettre à jour dans le header
 }
-function toast(msg,type='success'){
-  // Ne pas afficher si le modal PIN est ouvert (évite de bloquer le pavé)
-  const pinOpen=document.getElementById('pin-modal')?.classList.contains('open');
-  if(pinOpen) return;
+function toast(msg,type='success',opts){
+  try {
+    // Ne pas afficher si le modal PIN est ouvert (évite de bloquer le pavé)
+    // Sauf force:true (toasts sync 401/404/409 doivent rester visibles)
+    const pinOpen=document.getElementById('pin-modal')?.classList.contains('open');
+    const force = !!(opts && opts.force);
+    if(pinOpen && !force) return;
+  } catch(e){}
   const t=document.getElementById('toast');
-  t.textContent=msg;t.className=`show ${type}`;
-  setTimeout(()=>t.className='',1800);
+  if(!t) return;
+  try {
+    t.textContent=msg;
+    t.className=`show ${type}`;
+    // pin-modal est z-index 10000 — passer au-dessus si force
+    if(opts && opts.force) t.style.zIndex = '10050';
+    else t.style.zIndex = '';
+  } catch(e){}
+  const ms = (type==='warning' || (opts && opts.force)) ? 4200 : 1800;
+  setTimeout(()=>{ try { t.className=''; t.style.zIndex=''; } catch(e){} }, ms);
 }
 function escAttr(v){ return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;'); }
 

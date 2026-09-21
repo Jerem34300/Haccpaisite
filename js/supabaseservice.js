@@ -40,7 +40,6 @@ const SupaEngine = (() => {
     try {
       const now = Date.now();
       if (now - _lastSyncErrToastAt < 8000) return;
-      _lastSyncErrToastAt = now;
       let status = null;
       let raw = '';
       if (typeof statusOrMsg === 'number') {
@@ -56,8 +55,16 @@ const SupaEngine = (() => {
       else if (status === 404) human = 'Ressource sync introuvable (404) — vérifiez la configuration Supabase';
       else if (status === 409) human = 'Conflit de synchronisation (409) — saisie déjà présente ou conflit';
       else human = 'Erreur de synchronisation' + (raw ? ' — ' + raw.slice(0, 80) : '');
-      if (typeof toast === 'function') toast('⚠️ ' + human, 'warning');
-      else if (typeof showToast === 'function') showToast('⚠️ ' + human, 'warning', 5000);
+      // force:true → visible même si pin-modal ouvert (toast cuisine ignore sinon)
+      let shown = false;
+      if (typeof toast === 'function') {
+        toast('⚠️ ' + human, 'warning', {force:true});
+        shown = true;
+      } else if (typeof showToast === 'function') {
+        showToast('⚠️ ' + human, 'warning', 5000);
+        shown = true;
+      }
+      if (shown) _lastSyncErrToastAt = now;
     } catch (e) { /* ignore */ }
   }
 
