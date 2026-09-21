@@ -946,10 +946,26 @@ function openSP(){
   // Reset bouton au cas où il serait resté bloqué
   const _btn = document.querySelector('.sp-close');
   if(_btn){ _btn.disabled=false; _btn.textContent='✓ Enregistrer et fermer'; }
+  const _unlock = ()=>{ renderSP(); document.getElementById('sp')?.classList.add('open'); };
   if(S.adminPin){
-    openPinModal({mode:'check', target:'admin', onSuccess:()=>{ renderSP(); document.getElementById('sp').classList.add('open'); }});
+    // PIN admin défini → exiger le code avant d'ouvrir la config sensible
+    openPinModal({mode:'check', target:'admin', onSuccess:_unlock});
   } else {
-    renderSP(); document.getElementById('sp').classList.add('open');
+    // BLOCKING UX : tablette partagée — forcer la création d'un PIN avant config
+    // (chefs, structure, PIN). Pas d'accès libre.
+    openPinModal({
+      mode:'set1',
+      target:'admin',
+      onSuccess:()=>{
+        try { if(typeof _saveConfigToSupabase==='function') _saveConfigToSupabase(); } catch(e){}
+        _unlock();
+      }
+    });
+    // Sous-titre explicite (après labels pin)
+    try {
+      const sub=document.getElementById('pin-sub');
+      if(sub) sub.textContent='Obligatoire : créez un code admin (4 chiffres) pour protéger la configuration';
+    } catch(e){}
   }
 }
 function toggleNav(){
@@ -5153,7 +5169,19 @@ function nettAdminGuard(action){
   if(S.adminPin){
     openPinModal({mode:'check', target:'admin', onSuccess: action});
   } else {
-    action();
+    // Même règle que openSP : pas d'édition sensible sans PIN admin
+    openPinModal({
+      mode:'set1',
+      target:'admin',
+      onSuccess:()=>{
+        try { if(typeof _saveConfigToSupabase==='function') _saveConfigToSupabase(); } catch(e){}
+        action();
+      }
+    });
+    try {
+      const sub=document.getElementById('pin-sub');
+      if(sub) sub.textContent='Obligatoire : créez un code admin avant de modifier la structure';
+    } catch(e){}
   }
 }
 
@@ -15567,7 +15595,7 @@ function renderSecuritySection(){
       <span class="sec-admin-dot ${hasPin?'on':'off'}"></span>
       <div style="flex:1">
         <div style="font-size:.83rem;font-weight:800;color:var(--gris)">${hasPin?'Code admin actif':'Aucun code admin défini'}</div>
-        <div style="font-size:.7rem;color:#b89ab6">${hasPin?'La config est protégée par un code PIN':'Accès libre à la configuration'}</div>
+        <div style="font-size:.7rem;color:#b89ab6">${hasPin?'La config est protégée par un code PIN':'Un code admin est obligatoire pour ouvrir la config'}</div>
       </div>
     </div>
     ${hasPin?`
@@ -15602,8 +15630,21 @@ function spRemoveAdminPin(){
   });
 }
 
-// Surcharge openSP pour protéger par PIN
-const _origOpenSP = typeof openSP === 'function' ? openSP : null;
+// Tablette partagée : ne jamais laisser la config ouverte en arrière-plan
+(function _lockConfigOnHide(){
+  const closeIfOpen = ()=>{
+    try {
+      const sp = document.getElementById('sp');
+      if(sp && sp.classList.contains('open')){
+        // Fermer l'UI immédiatement (évite config exposée) ; save best-effort
+        sp.classList.remove('open');
+        try { save(); } catch(e){}
+      }
+    } catch(e){}
+  };
+  document.addEventListener('visibilitychange', ()=>{ if(document.hidden) closeIfOpen(); });
+  window.addEventListener('pagehide', closeIfOpen);
+})();
 
 // ════════════════════════════════════════════════════
 // SESSION CUISINIER

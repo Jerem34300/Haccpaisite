@@ -33,6 +33,33 @@ const _PMS_KEY_DEFAULT = SUPABASE_ANON_KEY;
 const SupaEngine = (() => {
   let _flushing = false;
   let _flushTimer = null;
+  let _lastSyncErrToastAt = 0;
+
+  /** Toast visible (1× / 8s) pour erreurs sync 401/404/409 — pas seulement console.warn */
+  function _toastSyncError(statusOrMsg, detail) {
+    try {
+      const now = Date.now();
+      if (now - _lastSyncErrToastAt < 8000) return;
+      _lastSyncErrToastAt = now;
+      let status = null;
+      let raw = '';
+      if (typeof statusOrMsg === 'number') {
+        status = statusOrMsg;
+        raw = String(detail || '');
+      } else {
+        raw = String(statusOrMsg || detail || '');
+        const m = raw.match(/\b(401|404|409)\b/);
+        if (m) status = parseInt(m[1], 10);
+      }
+      let human;
+      if (status === 401) human = 'Session expirée ou non autorisée (401) — reconnectez-vous pour synchroniser';
+      else if (status === 404) human = 'Ressource sync introuvable (404) — vérifiez la configuration Supabase';
+      else if (status === 409) human = 'Conflit de synchronisation (409) — saisie déjà présente ou conflit';
+      else human = 'Erreur de synchronisation' + (raw ? ' — ' + raw.slice(0, 80) : '');
+      if (typeof toast === 'function') toast('⚠️ ' + human, 'warning');
+      else if (typeof showToast === 'function') showToast('⚠️ ' + human, 'warning', 5000);
+    } catch (e) { /* ignore */ }
+  }
 
   // ── Config ────────────────────────────────────────
   function cfg() {
@@ -516,8 +543,12 @@ const SupaEngine = (() => {
               entry.synced_at = new Date().toISOString();
               syncedCount++;
               _supaLog(`⚠️ ${entry.enr_type} POST 409 + PATCH échec : ${patchE.message.slice(0,60)}`);
+              _toastSyncError(409, patchE.message);
               continue;
             }
+          }
+          if (r.status === 401 || r.status === 404 || r.status === 409) {
+            _toastSyncError(r.status, errTxt);
           }
           throw new Error(`HTTP ${r.status}${errTxt?' — '+errTxt.slice(0,80):''}`);
         }
@@ -533,6 +564,9 @@ const SupaEngine = (() => {
         entry.next_retry_at = new Date(Date.now() + Math.min(3000 * Math.pow(2, entry.retries - 1), 48000)).toISOString();
         hasError = true;
         _supaLog(`⚠️ ${entry.enr_type} erreur (essai ${entry.retries}) : ${e.message}`);
+        if (/\b(401|404|409)\b/.test(String(e.message||''))) {
+          _toastSyncError(e.message);
+        }
       }
     }
 
