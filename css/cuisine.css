@@ -249,6 +249,7 @@ header{background:var(--plum);color:#fff;position:sticky;top:0;z-index:300;box-s
 .pin-key.empty-key{background:transparent;border-color:transparent;cursor:default;}
 .pin-recovery-link{font-size:.77rem;color:var(--mag);cursor:pointer;text-decoration:underline;display:block;margin-bottom:4px;}
 .pin-cancel-link{font-size:.77rem;color:#b89ab6;cursor:pointer;text-decoration:underline;}
+.pin-cancel-link.pin-cancel-forced-hide{display:none!important;visibility:hidden!important;pointer-events:none!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important;}
 .pin-recovery-form{background:var(--fond);border-radius:12px;padding:14px;margin-top:12px;text-align:left;}
 .pin-recovery-q{font-size:.8rem;font-weight:700;color:var(--plum);margin-bottom:8px;}
 .pin-recovery-inp{width:100%;border:1.5px solid var(--brd);border-radius:10px;padding:9px 12px;font-size:.9rem;font-family:inherit;font-weight:600;background:#fff;margin-bottom:8px;}

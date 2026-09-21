@@ -15475,19 +15475,34 @@ function _updatePinCancel(){
   try {
     const a = document.getElementById('pin-cancel-link');
     if(!a) return;
-    if(_pinCtx.required){
-      a.style.display = 'none';
+    const mode = _pinCtx.mode;
+    const forcedSet = !S.adminPin && _pinCtx.target==='admin' && (mode==='set1' || mode==='set2');
+    const required = !!(_pinCtx.required || forcedSet);
+    if(required){
+      a.style.setProperty('display','none','important');
+      a.style.visibility = 'hidden';
+      a.style.pointerEvents = 'none';
+      try { a.removeAttribute('onclick'); } catch(e){ a.onclick = null; }
+      a.onclick = null;
+      a.textContent = '';
       a.setAttribute('aria-hidden','true');
+      a.classList.add('pin-cancel-forced-hide');
     } else {
-      a.style.display = '';
+      a.onclick = closePinModal;
+      a.setAttribute('onclick','closePinModal()');
+      a.textContent = 'Annuler';
+      a.style.removeProperty('display');
+      a.style.visibility = '';
+      a.style.pointerEvents = '';
       a.removeAttribute('aria-hidden');
+      a.classList.remove('pin-cancel-forced-hide');
     }
   } catch(e){}
 }
 function closePinModal(force){
   try {
     if(!force && _pinCtx.required && !S.adminPin){
-      try { toast('🔒 Code admin obligatoire — créez un code à 4 chiffres'); } catch(e){}
+      try { toast('🔒 Code admin obligatoire — créez un code à 4 chiffres', 'warning', {force:true}); } catch(e){}
       return;
     }
   } catch(e){}
@@ -15524,6 +15539,7 @@ function _setPinLabels(){
       ? `<a class="pin-recovery-link" onclick="pinShowRecovery()">🔑 Code oublié ?</a><br>`
       : '';
   } else { ra.innerHTML = ''; }
+  _updatePinCancel();
 }
 
 function pinPress(d){
@@ -15573,9 +15589,9 @@ function _pinValidate(){
     }).catch(()=>_pinError('Code incorrect'));
   } else if(m==='set1'){
     _pinCtx.first = _pinBuf; _pinBuf='';
-    _pinCtx.mode = 'set2'; _setPinLabels(); _updatePinDisplay();
+    _pinCtx.mode = 'set2'; _setPinLabels(); _updatePinCancel(); _updatePinDisplay();
   } else if(m==='set2'){
-    if(_pinBuf !== _pinCtx.first){ _pinError('Les codes ne correspondent pas'); _pinCtx.first=''; _pinCtx.mode='set1'; _setPinLabels(); return; }
+    if(_pinBuf !== _pinCtx.first){ _pinError('Les codes ne correspondent pas'); _pinCtx.first=''; _pinCtx.mode='set1'; _setPinLabels(); _updatePinCancel(); return; }
     const pin = _pinBuf;
     closePinModal(true);
     _hashPin(pin).then(hashed=>{
