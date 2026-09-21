@@ -25,6 +25,7 @@ let cur='accueil';
 // ── UUID stable sur chaque entrée (déduplication sync) ──
 function newUUID(){return(typeof crypto!=='undefined'&&crypto.randomUUID)?crypto.randomUUID():'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0;return(c==='x'?r:(r&0x3|0x8)).toString(16);});}
 function stampEntry(obj){if(!obj._uuid)obj._uuid=newUUID();if(!obj._created)obj._created=new Date().toISOString();return obj;}
+function _notDeleted(r){return !!(r&&!r._deleted);}
 let _cloudSaveTimer = null;
 function save(){
   try {
@@ -621,6 +622,7 @@ function navBadge(id){
         (S['enr02']?.lignes||[]).forEach(r=>{ if(r._enr01_ts) _tsTA.add(r._enr01_ts); });
         (S['enr03']?.lignes||[]).forEach(r=>{ if(r._enr01_ts) _tsTA.add(r._enr01_ts); });
         const n=(S['enr01']?.lignes||[]).filter(r=>{
+          if(!_notDeleted(r)) return false;
           if(r._statut && r._statut!=='en_attente') return false;
           if(r._ts && _tsTA.has(r._ts)) return false;
           // destination filter retiré : anciennes saisies sans destination
@@ -653,7 +655,7 @@ function navBadge(id){
       // On ne badge que s'il y a des NC réception
       case 'enr23':{
         const todayStr=today();
-        const nc=(S['enr23']?.lignes||[]).filter(r=>r.date===todayStr&&r.conforme==='NON').length;
+        const nc=(S['enr23']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===todayStr&&r.conforme==='NON').length;
         return nc>0?{n:nc,col:'#dc2626'}:null;
       }
 
@@ -2691,7 +2693,8 @@ function autoCreateNC(source, desc, lieu, action, extraFields){
 function ncAutoPending(){return S.nc_auto_pending||[];}
 function ncAutoCount(){
   // Compte les NC auto dans l'historique ENR30 qui ne sont pas encore clôturées
-  const autoOpen=(S['enr30']?.lignes||[]).filter(r=>r._auto===true&&r.cloture!=='OUI').length;
+  // Soft-deleted (_deleted) exclus des badges / KPIs
+  const autoOpen=(S['enr30']?.lignes||[]).filter(r=>_notDeleted(r)&&r._auto===true&&r.cloture!=='OUI').length;
   return autoOpen;
 }
 function ncAutoFill(idx){
@@ -6440,9 +6443,10 @@ function calcHACCPScore(){
   const mois=S.config?.mois||today().slice(0,7);
   const t=today();
   const encs=getEnceintes();
-  const saisies=S['enr19']?.saisies||[];
-  const nettVals=S.nett_val||[];
-  const nuisVals=S.nuisibles_val||[];
+  // Soft-deleted exclus des scores / widgets accueil (restent visibles en histo)
+  const saisies=(S['enr19']?.saisies||[]).filter(_notDeleted);
+  const nettVals=(S.nett_val||[]).filter(_notDeleted);
+  const nuisVals=(S.nuisibles_val||[]).filter(_notDeleted);
 
   const criteres=[];
 
@@ -6497,8 +6501,8 @@ function calcHACCPScore(){
   });
 
   // ── NC en attente ──────────────────────────────────
-  const ncOpen=(S['enr30']?.lignes||[]).filter(r=>r._auto===true&&r.cloture!=='OUI').length;
-  const ncTotal=(S['enr30']?.lignes||[]).filter(r=>r.date?.startsWith(mois)).length;
+  const ncOpen=(S['enr30']?.lignes||[]).filter(r=>_notDeleted(r)&&r._auto===true&&r.cloture!=='OUI').length;
+  const ncTotal=(S['enr30']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date?.startsWith(mois)).length;
   const ncPts=ncOpen===0?100:Math.max(0,Math.round((1-ncOpen/Math.max(1,ncTotal))*100));
   criteres.push({
     ico:'🚨',label:'Non-conformités',
@@ -6509,7 +6513,7 @@ function calcHACCPScore(){
   });
 
   // ── Refroidissements CCP ───────────────────────────
-  const enr01Mois=(S['enr01']?.lignes||[]).filter(r=>r.date?.startsWith(mois));
+  const enr01Mois=(S['enr01']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date?.startsWith(mois));
   const enr01NC=enr01Mois.filter(r=>r.conf_r==='NON'||r.conforme==='NON').length;
   const enr01Pending=enr01Mois.filter(r=>!r._statut||r._statut==='en_attente').length;
   const ccp1Pts=enr01NC>0?Math.max(0,100-enr01NC*20):enr01Pending>0?80:100;
@@ -6523,7 +6527,7 @@ function calcHACCPScore(){
 
   // ── Traçabilité réception — basé sur le calendrier fournisseurs ──
   const fourc=getFournisseurs();
-  const recepToday=(S['enr23']?.lignes||[]).filter(r=>r.date===t);
+  const recepToday=(S['enr23']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t);
   const livraisonsAttendues=fourcTodayDeliveries(); // fournisseurs attendus aujourd'hui
   let recepPts=100, recepDetail='', recepAction=null, recepOk=true;
   if(livraisonsAttendues.length>0){
@@ -6540,7 +6544,7 @@ function calcHACCPScore(){
     recepOk=true;
   } else {
     // Aucun fournisseur configuré — critère N/A, ne pas pénaliser
-    const recepMois=(S['enr23']?.lignes||[]).filter(r=>r.date?.startsWith(mois)).length;
+    const recepMois=(S['enr23']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date?.startsWith(mois)).length;
     recepPts=75; // neutre, ni pénalisant ni gonflant
     recepDetail='Aucun fournisseur configuré';
     recepAction={label:'Configurer',id:'enr23'};
@@ -6753,15 +6757,15 @@ function renderBilanJour() {
         || (S['enr_tc_distrib']?.lignes||[]).some(r=>r.date===t&&r[svc.id+'_valide']==='OUI');
   });
 
-  const refroidOk = (S['enr01']?.lignes||[]).filter(r=>r.date===t).length;
-  const refroidNC = (S['enr01']?.lignes||[]).filter(r=>r.date===t&&r.conforme==='NON').length;
-  const refroidAttente = (S['enr01']?.lignes||[]).filter(r=>r.date===t&&(!r._statut||r._statut==='en_attente')).length;
+  const refroidOk = (S['enr01']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t).length;
+  const refroidNC = (S['enr01']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t&&r.conforme==='NON').length;
+  const refroidAttente = (S['enr01']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t&&(!r._statut||r._statut==='en_attente')).length;
 
-  const ncJour = (S['enr30']?.lignes||[]).filter(r=>r.date===t).length;
-  const ncOuvertes = (S['enr30']?.lignes||[]).filter(r=>r.date===t&&r._auto===true&&r.cloture!=='OUI').length;
+  const ncJour = (S['enr30']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t).length;
+  const ncOuvertes = (S['enr30']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t&&r._auto===true&&r.cloture!=='OUI').length;
 
-  const recepJour = (S['enr23']?.lignes||[]).filter(r=>r.date===t).length;
-  const nettJour = (S.nett_val||[]).filter(r=>r.date===t&&r.conforme==='OUI').length;
+  const recepJour = (S['enr23']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===t).length;
+  const nettJour = (S.nett_val||[]).filter(r=>_notDeleted(r)&&r.date===t&&r.conforme==='OUI').length;
   const nettRetards = nettRef().filter(it=>['retard','nc'].includes(nettStatus(it))).length;
 
   const items = [
@@ -10017,17 +10021,78 @@ async function _loadFromSupabase() {
   const siteChanged = lastSite !== currentSite;
   const userChanged = currentUser && lastUser && lastUser !== currentUser;
 
-  // Ne pas reset ici — le reset est fait DANS le try{} après chargement cloud réussi
-  // (évite de perdre les données si le cloud est inaccessible)
+  // MT-01: NE PAS écrire lastSite/lastUser avant hydrate cloud réussi.
+  // Sinon un reload raté après changement site/user fait croire au prochain boot
+  // que le site est déjà le bon → purge ignorée → fuite cross-site (haccp_v6 partagé).
   const isFirstTime = siteChanged && !lastSite;
-  localStorage.setItem(lastSiteKey, currentSite);
-  if (currentUser) localStorage.setItem(lastUserKey, currentUser);
+
+  // MT-02: purge agressive ENR (+ files d'attente) DÈS qu'on détecte un changement,
+  // avant d'appliquer le cloud — même si le fetch échoue ensuite.
+  function _purgeLocalEnrForTenantSwitch(opts){
+    opts = opts || {};
+    const PURGE_SAISIES = [
+      'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending',
+    ];
+    try {
+      PURGE_SAISIES.forEach(key => {
+        if (key==='enr19') {
+          const encSaved2 = S['enr19']?.enceintes;
+          S['enr19'] = {saisies:[]};
+          // Sur changement de site on drop aussi les enceintes (rechargées cloud)
+          if (!opts.dropSiteScoped && encSaved2) S['enr19'].enceintes = encSaved2;
+        }
+        else if (key==='nc_auto_pending') { S.nc_auto_pending=[]; }
+        else { S[key] = {lignes:[]}; }
+      });
+      S.nett_val = []; S.nuisibles_val = [];
+      Object.keys(S).filter(k=>k.startsWith('enr_distrib_')).forEach(k=>{ S[k]={lignes:[]}; });
+      (S.customPages||[]).forEach(cp=>{ if(cp.id) S[cp.id]={lignes:[]}; });
+      if (opts.dropSiteScoped) {
+        // MT-05: vider produits/fournisseurs — rétention v36 = fuite cross-site sur tablette réassignée
+        S.produits = [];
+        S.fournisseurs = [];
+        S.nett_ref = []; S.nett_zones_extra = [];
+        S.customPages = [];
+        S.chefPins = {}; S.chefPrefs = {}; S.chefSchedule = {};
+        if (S.config) {
+          S.config.chefs = [];
+          S.config.distribServices = null;
+          S.config.wgDistribSeen = {};
+          if (Array.isArray(S.config.homeWidgets))
+            S.config.homeWidgets = S.config.homeWidgets.filter(w=>!w.id?.startsWith('d_'));
+        }
+        if (S['enr19']) S['enr19'].enceintes = [];
+      }
+      // Queues / timers liés aux saisies ENR (même origine localStorage)
+      try { localStorage.removeItem('haccp_supa_queue_v1'); } catch(e){}
+      try { localStorage.removeItem('haccp_ccp_timers'); } catch(e){}
+      try { localStorage.setItem(SK, JSON.stringify(S)); } catch(e){}
+    } catch(e) {
+      console.warn('[_purgeLocalEnrForTenantSwitch]', e);
+    }
+  }
+
+  if (siteChanged || userChanged) {
+    if (userChanged) console.log('[_loadFromSupabase] Compte changé ('+lastUser+' → '+currentUser+') — purge localStorage');
+    _purgeLocalEnrForTenantSwitch({ dropSiteScoped: !!siteChanged });
+    if (!isFirstTime) {
+      try { toast(userChanged ? '🔄 Compte changé — rechargement des données…' : '🔄 Site changé — chargement du nouveau site…', 'info'); } catch(e){}
+    }
+  }
 
   const headers = {
     'apikey': c.anonKey,
     'Authorization': `Bearer ${c.userToken || c.anonKey}`,
     'Accept': 'application/json'
   };
+
+  // Stamp lastSite/lastUser uniquement après hydrate cloud réussi
+  function _stampLastSiteUser(){
+    try {
+      localStorage.setItem(lastSiteKey, currentSite);
+      if (currentUser) localStorage.setItem(lastUserKey, currentUser);
+    } catch(e){}
+  }
 
   try {
     // ── 0. Référentiel actions correctives HACCP (catalogue + mapping) ──
@@ -10044,43 +10109,7 @@ async function _loadFromSupabase() {
       if (site) {
         // Config cloud — écraser le local (cloud = source de vérité)
         const cloud = site.config || {};
-        // ── Reset config si changement de site OU d'utilisateur (APRÈS avoir le cloud en main) ──
-        if (siteChanged || userChanged) {
-          if (userChanged) console.log('[_loadFromSupabase] Compte changé ('+lastUser+' → '+currentUser+') — purge localStorage');
-          const PURGE_SAISIES = [
-            'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending',
-          ];
-          PURGE_SAISIES.forEach(key => {
-            if (key==='enr19') {
-              const encSaved2 = S['enr19']?.enceintes;
-              S['enr19'] = {saisies:[]};
-              if (encSaved2) S['enr19'].enceintes = encSaved2;
-            }
-            else if (key==='nc_auto_pending') { S.nc_auto_pending=[]; }
-            else { S[key] = {lignes:[]}; }
-          });
-          S.nett_val = []; S.nuisibles_val = [];
-          Object.keys(S).filter(k=>k.startsWith('enr_distrib_')).forEach(k=>{ S[k]={lignes:[]}; });
-          (S.customPages||[]).forEach(cp=>{ if(cp.id) S[cp.id]={lignes:[]}; });
-          // Reset config UNIQUEMENT si changement de site (pas juste de compte)
-          // Le cloud écrasera juste en-dessous — si cloud vide on pousse le local
-          if (siteChanged) {
-            // FIX v36 : ne plus vider produits/fournisseurs (le dico s'effaçait à chaque reco)
-            // S.produits et S.fournisseurs sont conservés ; le cloud les écrasera s'il en a.
-            S.nett_ref = []; S.nett_zones_extra = [];
-            S.customPages = [];
-            S.chefPins = {}; S.chefPrefs = {}; S.chefSchedule = {};
-            if (S.config) {
-              S.config.chefs = [];
-              S.config.distribServices = null;
-              S.config.wgDistribSeen = {};
-              if (Array.isArray(S.config.homeWidgets))
-                S.config.homeWidgets = S.config.homeWidgets.filter(w=>!w.id?.startsWith('d_'));
-            }
-            if (S['enr19']) S['enr19'].enceintes = [];
-          }
-          if (!isFirstTime) toast(userChanged ? '🔄 Compte changé — rechargement des données…' : '🔄 Site changé — chargement du nouveau site…', 'info');
-        }
+        // Purge déjà faite plus haut si site/user changed (MT-01/02/05)
         // ── Nom établissement : APRÈS la purge pour qu'il ne soit pas écrasé ──
         // site.name vient de la table sites (source de vérité), config.code vient du siteId
         S.config = S.config || {};
@@ -10186,9 +10215,11 @@ async function _loadFromSupabase() {
     if (recs.length === 0) {
       try {
         const pendingQueue = JSON.parse(localStorage.getItem('haccp_supa_queue_v1') || '[]');
-        if (Array.isArray(pendingQueue) && pendingQueue.length > 0) {
+        if (Array.isArray(pendingQueue) && pendingQueue.length > 0 && !(siteChanged || userChanged)) {
           console.warn('[_loadFromSupabase] Cloud vide mais '+pendingQueue.length+' saisie(s) en attente de sync — données locales conservées');
           toast('⚠️ Synchronisation en attente — données locales conservées', 'warning');
+          _stampLastSiteUser();
+          window._supaLoadDone = true;
           return;
         }
       } catch(e) { /* si la lecture de la queue échoue, on continue normalement */ }
@@ -10222,6 +10253,8 @@ async function _loadFromSupabase() {
       save(); initTheme(); renderNav(); renderMain();
       if (typeof renderChefList === 'function') renderChefList();
       toast('☁️ PMS synchronisé (aucune saisie récente)', 'info');
+      _stampLastSiteUser();
+      window._supaLoadDone = true;
       return;
     }
 
@@ -10419,10 +10452,19 @@ async function _loadFromSupabase() {
 
     // Flag : le chargement initial a bien eu lieu → les saves vers cloud sont maintenant sûrs
     window._supaLoadDone = true;
+    _stampLastSiteUser(); // MT-01: stamp seulement après hydrate OK
 
   } catch(e) {
     console.warn('[_loadFromSupabase]', e);
-    toast('⚠️ Erreur chargement cloud : '+e.message, 'warning');
+    try { toast('⚠️ Erreur chargement cloud : '+e.message, 'warning'); } catch(_t){}
+    // MT-01: hydrate raté après changement → force purge + clear lastSite
+    // pour que le prochain boot ne skippe pas la purge (lastSite ≠ current).
+    if (siteChanged || userChanged) {
+      try { _purgeLocalEnrForTenantSwitch({ dropSiteScoped: !!siteChanged }); } catch(_p){}
+      try { localStorage.removeItem(lastSiteKey); } catch(_ls){}
+      // lastUser: clear aussi si compte changé, pour retenter la purge au prochain boot
+      if (userChanged) { try { localStorage.removeItem(lastUserKey); } catch(_lu){} }
+    }
   }
 }
 
@@ -13720,7 +13762,7 @@ function getPeriodByKey(p, ctx){
 // _pFilter global — utilise la période du contexte courant (audit par défaut)
 function _pFilter(arr, ctx){
   const p=getPeriodByKey(S.expCfg?.auditPeriod||'mois', ctx||'audit');
-  return (arr||[]).filter(r=>{const d=r.date||r._ts?.slice(0,10)||'';return d>=p.from&&d<=p.to;});
+  return (arr||[]).filter(r=>{if(!_notDeleted(r))return false;const d=r.date||r._ts?.slice(0,10)||'';return d>=p.from&&d<=p.to;});
 }
 
 function filterByPeriod(arr,dateKey='date'){
@@ -15448,7 +15490,16 @@ function setActiveSession(name){
 }
 function clearSession(){
   delete S.activeSession;
-  save();
+  // MT-02: wipe ENR local (SK partagé haccp_v6) avant redirect — évite fuite
+  // vers le prochain compte/site sur la même tablette.
+  try {
+    localStorage.removeItem(SK); // full SK wipe (plus sûr qu'un purge partiel)
+    localStorage.removeItem('haccp_supa_queue_v1');
+    localStorage.removeItem('haccp_ccp_timers');
+    localStorage.removeItem(BACKUP_KEY);
+    localStorage.removeItem(BACKUP_TS_KEY);
+  } catch(e){}
+  try { S = {}; } catch(e){}
   // Effacer toute la config Supabase (token + siteId + email)
   try {
     localStorage.removeItem('haccp_supa_cfg_v1');
@@ -16328,15 +16379,15 @@ function checkEndOfService(outgoing,next){
   var missing=[];
   var ferManq=encs.filter(function(e){return!saisies.some(function(r){return r.date===t&&r.enc_id===e.id&&r.moment==='ferm';});});
   if(ferManq.length)missing.push({icon:'🌡️',label:'T°C fermeture'+(ferManq.length>1?' ('+ferManq.length+' enceintes)':' — '+ferManq[0].label),detail:ferManq.map(function(e){return e.label;}).join(', '),goto:'enr19'});
-  var ncOpen=((S['enr30']&&S['enr30'].lignes)||[]).filter(function(r){return r._auto===true&&r.cloture!=='OUI';}).length;
+  var ncOpen=((S['enr30']&&S['enr30'].lignes)||[]).filter(function(r){return _notDeleted(r)&&r._auto===true&&r.cloture!=='OUI';}).length;
   if(ncOpen>0)missing.push({icon:'📋',label:ncOpen+' NC à clôturer',detail:'Obligatoire avant fin de service',goto:'enr30'});
-  var refAttente=((S['enr01']&&S['enr01'].lignes)||[]).filter(function(r){return r.date===t&&(!r._statut||r._statut==='en_attente');}).length;
+  var refAttente=((S['enr01']&&S['enr01'].lignes)||[]).filter(function(r){return _notDeleted(r)&&r.date===t&&(!r._statut||r._statut==='en_attente');}).length;
   if(refAttente>0)missing.push({icon:'❄️',label:refAttente+' refroidissement'+(refAttente>1?'s':'')+' en attente',detail:'À clôturer avant de partir',goto:'enr01'});
   var livraisons=fourcTodayDeliveries();
-  var recepFaites=((S['enr23']&&S['enr23'].lignes)||[]).filter(function(r){return r.date===t;}).length;
+  var recepFaites=((S['enr23']&&S['enr23'].lignes)||[]).filter(function(r){return _notDeleted(r)&&r.date===t;}).length;
   if(livraisons.length>0&&recepFaites===0)missing.push({icon:'📦',label:'Réceptions non saisies',detail:livraisons.map(function(f){return f.nom;}).join(', '),goto:'enr23'});
   // Plats témoins périmés à détruire
-  var temoinsADetruire=((S['enr33']&&S['enr33'].lignes)||[]).filter(function(r){return r.date_destruct&&r.date_destruct<=t&&!r._jete;}).length;
+  var temoinsADetruire=((S['enr33']&&S['enr33'].lignes)||[]).filter(function(r){return _notDeleted(r)&&r.date_destruct&&r.date_destruct<=t&&!r._jete;}).length;
   if(temoinsADetruire>0)missing.push({icon:'🍱',label:temoinsADetruire+' plat'+(temoinsADetruire>1?'s':'')+' témoin'+(temoinsADetruire>1?'s':'')+' à détruire',detail:'DLC dépassée — obligation réglementaire HACCP',goto:'enr33'});
   // Lots étiquettes non imprimés
   var lotsEnAttente=(_e33batch.reduce(function(s,b){return s+(b.nb||1);},0))+(_e34batch.reduce(function(s,b){return s+(b.nb||1);},0))+(_e36batch.reduce(function(s,b){return s+(b.nb||1);},0));
