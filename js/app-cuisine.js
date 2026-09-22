@@ -4035,28 +4035,36 @@ function encToggleAc(actionId){
 function _encSelectedActionPayload(){
   const catalog=_ncCatalog().actions||[];
   const byId=new Map(catalog.map(a=>[a.id,a]));
-  // Aussi chercher dans les defaults (ids fallback-*)
+  // Aussi chercher dans les defaults (ids fallback-*) + suggestions courantes (learned…)
   HACCP_DEFAULT_CORRECTIVE_ACTIONS.forEach(a=>{ if(!byId.has(a.id)) byId.set(a.id,a); });
+  try{
+    getSuggestedCorrectiveActions('temperature', (_encSaisie&&_encSaisie.label)||'')
+      .forEach(a=>{ if(a&&a.id&&!byId.has(a.id)) byId.set(a.id,a); });
+  }catch(e){}
   const ids=[...new Set(_encAcSelectedIds.filter(Boolean))];
   const names=ids.map(id=>byId.get(id)?.name||'').filter(Boolean);
-  return { ids, names, action: names.join(' · ') };
+  // Gate UX: ids orphelins sans libellé = pas d'AC valide
+  const validIds=ids.filter(id=>byId.get(id)?.name);
+  return { ids:validIds, names, action: names.join(' · ') };
 }
 function _renderEncAcPanel(force){
   const el=document.getElementById('enc-modal-ac');
   if(!el) return;
   if(!force){ el.innerHTML=''; return; }
   try{ loadCorrectiveActionsCatalog(false); }catch(e){}
-  const suggested=getSuggestedCorrectiveActions('temperature', (_encSaisie&&_encSaisie.label)||'');
+  let suggested=getSuggestedCorrectiveActions('temperature', (_encSaisie&&_encSaisie.label)||'');
+  // Toujours afficher des chips (fallback local #90) — pas de shortcut « sans AC / ENR30 après »
   if(!suggested.length){
-    el.innerHTML='<div style="font-size:.72rem;color:#991b1b;font-weight:700">⚠️ Choisissez une action corrective dans ENR30 après enregistrement.</div>';
-    return;
+    suggested=HACCP_DEFAULT_CORRECTIVE_ACTIONS
+      .filter(a=>normalizeNCType(a.category)==='temperature')
+      .map(a=>({...a,recommended:true}));
   }
-  // Préselection 1ère recommandée si aucune sélection
-  if(!_encAcSelectedIds.length){
-    const rec=suggested.find(a=>a.recommended)||suggested[0];
-    if(rec) _encAcSelectedIds=[rec.id];
-  }
+  // Pas de préselection auto : l'opérateur doit taper ≥1 chip avant Enregistrer
   const selected=new Set(_encAcSelectedIds);
+  const selNames=[...selected].map(id=>{
+    const hit=suggested.find(a=>a.id===id)||HACCP_DEFAULT_CORRECTIVE_ACTIONS.find(a=>a.id===id)||(_ncCatalog().actions||[]).find(a=>a.id===id);
+    return hit&&hit.name?hit.name:id;
+  }).filter(Boolean);
   el.innerHTML=`<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#991b1b;margin-bottom:6px">Action corrective (requise)</div>
     <div class="nc-actions-grid" style="gap:6px">
       ${suggested.slice(0,4).map(a=>`<button type="button" class="nc-action-btn${selected.has(a.id)?' selected':''}${a.recommended?' recommended':''}" onclick="encToggleAc('${a.id}')" style="padding:9px 10px">
@@ -4064,7 +4072,7 @@ function _renderEncAcPanel(force){
         ${a.description?`<span class="nc-action-desc" style="font-size:.65rem">${escH(a.description)}</span>`:''}
       </button>`).join('')}
     </div>
-    <div style="font-size:.65rem;color:#7f1d1d;margin-top:6px">${selected.size?('✅ '+escH([...selected].map(id=>(suggested.find(a=>a.id===id)||{}).name||id).filter(Boolean).join(' · '))):'⚠️ Sélectionnez au moins une action.'}</div>`;
+    <div style="font-size:.65rem;color:#7f1d1d;margin-top:6px">${selected.size?('✅ '+escH(selNames.join(' · '))):'⚠️ Sélectionnez au moins une action avant d\'enregistrer.'}</div>`;
 }
 function openEncSaisie(encId, moment){
   const enc=getEnceintes().find(e=>e.id===encId);
@@ -4103,6 +4111,17 @@ function saveEncSaisie(){
   const temp=(S['enc_modal']?.draft?.enc_temp)||'';
   const chef=(S['enc_modal']?.draft?.enc_chef)||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
+  const ok=encConforme(temp,_encSaisie.consigne);
+  let ac={ids:[],names:[],action:''};
+  if(ok===false){
+    // Bloquer l'enregistrement NC tant qu'aucune chip AC n'est choisie
+    _renderEncAcPanel(true);
+    ac=_encSelectedActionPayload();
+    if(!ac.ids.length || !String(ac.action||'').trim()){
+      toast('⚠️ T°C hors seuil — sélectionnez au moins une action corrective','warning');
+      return; // garder la modale ouverte, rien n'est encore sauvé
+    }
+  }
   const saisie={
     date:today(),heure:nowT(),
     enc_id:_encSaisie.encId,
@@ -4118,15 +4137,7 @@ function saveEncSaisie(){
   save();
   // ── Supabase sync ──
   try { SupaEngine.enqueue('enr19', saisie); } catch(e){}
-  const ok=encConforme(temp,_encSaisie.consigne);
   if(ok===false){
-    // S'assurer que le panneau AC est visible + au moins 1 action sélectionnée
-    _renderEncAcPanel(true);
-    let ac=_encSelectedActionPayload();
-    if(!ac.ids.length){
-      toast('⚠️ T°C hors seuil — sélectionnez une action corrective','warning');
-      return; // garder la modale ouverte
-    }
     appVibrate([300,100,300,100,300]);
     toast('⚠️ T°C hors seuil — NC + action corrective','warning');
     const _encLabel=_encSaisie.label||_encSaisie.encId||'Enceinte';
@@ -4257,6 +4268,13 @@ function saveEncSaisie20(){
   var temp=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_temp)||'';
   var chef=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_chef)||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
+  var ok=encConforme(temp,_encSaisie.consigne);
+  var ac20={ids:[],names:[],action:''};
+  if(ok===false){
+    _renderEncAcPanel(true);
+    ac20=_encSelectedActionPayload();
+    if(!ac20.ids.length || !String(ac20.action||'').trim()){ toast('⚠️ T°C hors seuil — sélectionnez au moins une action corrective','warning'); return; }
+  }
   var saisie={
     date:today(),heure:nowT(),
     enc_id:_encSaisie.encId,
@@ -4270,11 +4288,7 @@ function saveEncSaisie20(){
   S['enr20'].saisies.unshift(saisie);
   save();
   try{SupaEngine.enqueue('enr20',saisie);}catch(e){}
-  var ok=encConforme(temp,_encSaisie.consigne);
   if(ok===false){
-    _renderEncAcPanel(true);
-    var ac20=_encSelectedActionPayload();
-    if(!ac20.ids.length){ toast('⚠️ T°C hors seuil — sélectionnez une action corrective','warning'); return; }
     toast('⚠️ T°C hors seuil — NC + action corrective','warning');
     autoCreateNC('ENR20 Canicule T°C','Plan canicule — hors seuil : '+(_encSaisie.label||'')+' ('+_encSaisie.moment+') : '+((parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1))+'°C — consigne '+_encSaisie.consigne,_encSaisie.label||'',ac20.action,{cause_matriel:'1',cause_milieu:'1',non_conformity_type:'temperature',corrective_action_ids:ac20.ids,corrective_action_names:ac20.names,action_custom:''});
   } else {
@@ -4388,6 +4402,13 @@ function saveEncSaisie21(){
   var chef=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_chef)||'';
   var motif=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_motif)||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
+  var ok=encConforme(temp,_encSaisie.consigne);
+  var ac21={ids:[],names:[],action:''};
+  if(ok===false){
+    _renderEncAcPanel(true);
+    ac21=_encSelectedActionPayload();
+    if(!ac21.ids.length || !String(ac21.action||'').trim()){ toast('⚠️ T°C hors seuil — sélectionnez au moins une action corrective','warning'); return; }
+  }
   var ligne={
     date:today(),heure:nowT(),
     enc_id:_encSaisie.encId,
@@ -4402,11 +4423,7 @@ function saveEncSaisie21(){
   S['enr21'].lignes.unshift(ligne);
   save();
   try{SupaEngine.enqueue('enr21',ligne);}catch(e){}
-  var ok=encConforme(temp,_encSaisie.consigne);
   if(ok===false){
-    _renderEncAcPanel(true);
-    var ac21=_encSelectedActionPayload();
-    if(!ac21.ids.length){ toast('⚠️ T°C hors seuil — sélectionnez une action corrective','warning'); return; }
     toast('⚠️ T°C hors seuil — NC + action corrective','warning');
     autoCreateNC('ENR21 T°C individuel','T°C hors seuil : '+(_encSaisie.label||'')+' — '+((parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1))+'°C — consigne '+_encSaisie.consigne+(motif?' ('+motif+')':''),_encSaisie.label||'',ac21.action,{cause_matriel:'1',non_conformity_type:'temperature',corrective_action_ids:ac21.ids,corrective_action_names:ac21.names,action_custom:''});
   } else {
