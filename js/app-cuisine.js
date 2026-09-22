@@ -125,6 +125,36 @@ function getSiteName(){
 // escH défini dans utils.js
 const gd=(id,sec)=>((S[sec]||{}).draft||{})[id];
 function sd(id,val,sec){S[sec]=S[sec]||{};S[sec].draft=S[sec].draft||{};S[sec].draft[id]=val;save();}
+function currentMoisLocal(){
+  try{
+    if(typeof today==='function') return today().slice(0,7);
+    if(typeof toLocalYMD==='function') return toLocalYMD(new Date()).slice(0,7);
+  }catch(e){}
+  try{ return new Date().toISOString().slice(0,7); }catch(e2){ return ''; }
+}
+function syncConfigMoisToNow(){
+  // Corrige S.config.mois figé (ex: avril 2026) pour KPIs / « Toutes les fiches »
+  try{
+    S.config=S.config||{};
+    const cur=currentMoisLocal();
+    if(!cur) return cur;
+    if(S.config.mois!==cur){
+      S.config.mois=cur;
+      try{ save(); }catch(e){}
+    }
+    try{ const el=document.getElementById('etab-mois'); if(el) el.value=cur; }catch(e){}
+    return cur;
+  }catch(e){ console.warn('[syncConfigMois]',e); return currentMoisLocal(); }
+}
+function getConfigMois(){
+  try{
+    const cur=currentMoisLocal();
+    const stored=(S.config&&S.config.mois)||'';
+    if(stored && cur && stored < cur) return syncConfigMoisToNow();
+    if(stored) return stored;
+    return syncConfigMoisToNow() || cur;
+  }catch(e){ return currentMoisLocal(); }
+}
 function saveCfg(){
   S.config=S.config||{};
   S.config.etab=document.getElementById('etab-nom').value;
@@ -1079,7 +1109,8 @@ function renderSP(){
   const _sc=SupaEngine.cfg();
   if(nomEl) nomEl.value=_sc.siteNom||S.config?.etab||'';
   if(codeEl) codeEl.value=_sc.siteId||'';
-  if(moisEl)moisEl.value=(typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7); // mois civil local
+  try{ syncConfigMoisToNow(); }catch(e){}
+  if(moisEl)moisEl.value=getConfigMois();
 
   // Bouton abonnement Stripe (solo plan uniquement)
   const _abEl = document.getElementById('sp-abonnement');
@@ -2272,8 +2303,9 @@ function getSuggestedCorrectiveActions(type, problemText){
     list = list.filter(a => mappedIds.has(a.id));
   }
   if(list.length===0){
-    list = catalog.actions
-      .filter(a=>a.is_default && normalizeNCType(a.category)===t)
+    // Fallback catalogue local si DB vide / catégories incompatibles / mappings orphelins
+    list = HACCP_DEFAULT_CORRECTIVE_ACTIONS
+      .filter(a=>normalizeNCType(a.category)===t)
       .map(a=>({...a,recommended:true}));
   }
   const learned = (_ncKnowledge?.recommendations||[])
@@ -2341,10 +2373,13 @@ async function loadCorrectiveActionsCatalog(force){
       if(!mappings[t]) mappings[t] = [];
       if(m.corrective_action_id) mappings[t].push(m.corrective_action_id);
     });
+    const acts = Array.isArray(actions) ? actions : [];
+    // Ne pas écraser le fallback local avec un catalogue vide (seed SQL non appliqué)
     S.corrective_actions_catalog = {
-      actions: Array.isArray(actions) ? actions : [],
-      mappings,
-      updated_at: new Date().toISOString()
+      actions: acts.length ? acts : HACCP_DEFAULT_CORRECTIVE_ACTIONS,
+      mappings: acts.length ? mappings : {},
+      updated_at: new Date().toISOString(),
+      source: acts.length ? 'supabase' : 'fallback'
     };
     _ncActionsCatalogLoadedAt = Date.now();
     save();
@@ -3893,14 +3928,16 @@ function _encGradient(tMin, tMax, consigne) {
 function _updateEncConfBadge(vn) {
   const el = document.getElementById('enc-conf-badge');
   if (!el || !_encSaisie.consigne) return;
-  if (vn === null || isNaN(vn)) { el.innerHTML = ''; return; }
+  if (vn === null || isNaN(vn)) { el.innerHTML = ''; _renderEncAcPanel(false); return; }
   const ok = encConforme(vn, _encSaisie.consigne);
-  if (ok === null) { el.innerHTML = ''; return; }
+  if (ok === null) { el.innerHTML = ''; _renderEncAcPanel(false); return; }
   const disp = (vn>=0?'+':'')+vn.toFixed(1)+'°C';
   if (ok) {
     el.innerHTML = `<div style="background:#dcfce7;border:1.5px solid #86efac;border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">✅</span><span style="font-size:.82rem;font-weight:900;color:#166534">${disp} — Conforme · consigne ${_encSaisie.consigne}</span></div>`;
+    _renderEncAcPanel(false);
   } else {
     el.innerHTML = `<div style="background:#fee2e2;border:1.5px solid #fca5a5;border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px"><span style="font-size:1.1rem">⚠️</span><span style="font-size:.82rem;font-weight:900;color:#991b1b">${disp} — HORS SEUIL · consigne ${_encSaisie.consigne}</span></div>`;
+    _renderEncAcPanel(true);
   }
 }
 
@@ -3981,13 +4018,64 @@ function onEncTP(id,sec,p,mn,mx){onEncTS(id,sec,p,mn,mx);}
 
 // ── Modale saisie enceinte ─────────────────────────────────
 let _encSaisie={};
+let _encAcSelectedIds = [];
+function encToggleAc(actionId){
+  try{
+    const id=String(actionId||'');
+    if(!id) return;
+    const set=new Set(_encAcSelectedIds);
+    if(set.has(id)) set.delete(id); else set.add(id);
+    _encAcSelectedIds=[...set];
+    const temp=(S['enc_modal']?.draft?.enc_temp);
+    const vn=temp!==''&&temp!==undefined?parseFloat(temp):NaN;
+    if(!isNaN(vn)) _updateEncConfBadge(vn);
+    else _renderEncAcPanel(true);
+  }catch(e){ console.warn('[encToggleAc]',e); }
+}
+function _encSelectedActionPayload(){
+  const catalog=_ncCatalog().actions||[];
+  const byId=new Map(catalog.map(a=>[a.id,a]));
+  // Aussi chercher dans les defaults (ids fallback-*)
+  HACCP_DEFAULT_CORRECTIVE_ACTIONS.forEach(a=>{ if(!byId.has(a.id)) byId.set(a.id,a); });
+  const ids=[...new Set(_encAcSelectedIds.filter(Boolean))];
+  const names=ids.map(id=>byId.get(id)?.name||'').filter(Boolean);
+  return { ids, names, action: names.join(' · ') };
+}
+function _renderEncAcPanel(force){
+  const el=document.getElementById('enc-modal-ac');
+  if(!el) return;
+  if(!force){ el.innerHTML=''; return; }
+  try{ loadCorrectiveActionsCatalog(false); }catch(e){}
+  const suggested=getSuggestedCorrectiveActions('temperature', (_encSaisie&&_encSaisie.label)||'');
+  if(!suggested.length){
+    el.innerHTML='<div style="font-size:.72rem;color:#991b1b;font-weight:700">⚠️ Choisissez une action corrective dans ENR30 après enregistrement.</div>';
+    return;
+  }
+  // Préselection 1ère recommandée si aucune sélection
+  if(!_encAcSelectedIds.length){
+    const rec=suggested.find(a=>a.recommended)||suggested[0];
+    if(rec) _encAcSelectedIds=[rec.id];
+  }
+  const selected=new Set(_encAcSelectedIds);
+  el.innerHTML=`<div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#991b1b;margin-bottom:6px">Action corrective (requise)</div>
+    <div class="nc-actions-grid" style="gap:6px">
+      ${suggested.slice(0,4).map(a=>`<button type="button" class="nc-action-btn${selected.has(a.id)?' selected':''}${a.recommended?' recommended':''}" onclick="encToggleAc('${a.id}')" style="padding:9px 10px">
+        <span class="nc-action-name" style="font-size:.78rem">${escH(a.name)}</span>
+        ${a.description?`<span class="nc-action-desc" style="font-size:.65rem">${escH(a.description)}</span>`:''}
+      </button>`).join('')}
+    </div>
+    <div style="font-size:.65rem;color:#7f1d1d;margin-top:6px">${selected.size?('✅ '+escH([...selected].map(id=>(suggested.find(a=>a.id===id)||{}).name||id).filter(Boolean).join(' · '))):'⚠️ Sélectionnez au moins une action.'}</div>`;
+}
 function openEncSaisie(encId, moment){
   const enc=getEnceintes().find(e=>e.id===encId);
   if(!enc)return;
   _encSaisie={encId,moment,consigne:enc.consigne,label:enc.label||encId};
+  _encAcSelectedIds=[];
+  try{ loadCorrectiveActionsCatalog(false); }catch(e){}
   const _mLabel=moment==='ouv'?'🌅 Ouverture':moment==='aprem'?'☀️ Après-midi':'🌙 Fermeture';
   document.getElementById('enc-modal-title').textContent=enc.label+' — '+_mLabel;
   document.getElementById('enc-modal-sub').textContent=`Consigne : ${enc.consigne}`;
+  const _acEl=document.getElementById('enc-modal-ac'); if(_acEl) _acEl.innerHTML='';
   // Plages HACCP adaptées au type
   const isConge = enc.type==='congelateur';
   const tMin = isConge ? -30 : -10;
@@ -4000,11 +4088,15 @@ function openEncSaisie(encId, moment){
   // Chef
   document.getElementById('enc-modal-chef').innerHTML=
     chefSel('enc_chef','enc_modal','Cuisinier / Visa');
+  var _btn19=document.querySelector('#enc-ov .btn-save');
+  if(_btn19) _btn19.setAttribute('onclick','saveEncSaisie()');
   document.getElementById('enc-ov').classList.add('open');
 }
 function closeEncSaisie(){
   document.getElementById('enc-ov').classList.remove('open');
   _encSaisie={};
+  _encAcSelectedIds=[];
+  const _acEl=document.getElementById('enc-modal-ac'); if(_acEl) _acEl.innerHTML='';
 }
 function saveEncSaisie(){
   if(roCheck())return;
@@ -4028,13 +4120,26 @@ function saveEncSaisie(){
   try { SupaEngine.enqueue('enr19', saisie); } catch(e){}
   const ok=encConforme(temp,_encSaisie.consigne);
   if(ok===false){
+    // S'assurer que le panneau AC est visible + au moins 1 action sélectionnée
+    _renderEncAcPanel(true);
+    let ac=_encSelectedActionPayload();
+    if(!ac.ids.length){
+      toast('⚠️ T°C hors seuil — sélectionnez une action corrective','warning');
+      return; // garder la modale ouverte
+    }
     appVibrate([300,100,300,100,300]);
-    toast('⚠️ T°C hors seuil — NC créée automatiquement','warning');
+    toast('⚠️ T°C hors seuil — NC + action corrective','warning');
     const _encLabel=_encSaisie.label||_encSaisie.encId||'Enceinte';
     const _tVal=(parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1)+'°C';
-    const _moment=_encSaisie.moment==='ouv'?'ouverture':'fermeture';
+    const _moment=_encSaisie.moment==='ouv'?'ouverture':(_encSaisie.moment==='aprem'?'après-midi':'fermeture');
     const _desc='T°C enceinte hors seuil — '+_encLabel+' ('+_moment+') : '+_tVal+' — consigne '+_encSaisie.consigne;
-    autoCreateNC('ENR19 – T°C Enceintes', _desc, _encLabel, '', {cause_matriel:'1', cause_milieu:'1'});
+    autoCreateNC('ENR19 – T°C Enceintes', _desc, _encLabel, ac.action, {
+      cause_matriel:'1', cause_milieu:'1',
+      non_conformity_type:'temperature',
+      corrective_action_ids:ac.ids,
+      corrective_action_names:ac.names,
+      action_custom:''
+    });
   } else {
     appVibrate([50]);
     autoBackup();
@@ -4131,9 +4236,12 @@ function openEncSaisie20(encId, moment){
   var enc=getEnceintes().find(function(e){return e.id===encId;});
   if(!enc)return;
   _encSaisie={encId:encId,moment:moment,consigne:enc.consigne,label:enc.label||encId,_sec20:true};
+  _encAcSelectedIds=[];
+  try{ loadCorrectiveActionsCatalog(false); }catch(e){}
   var mLabel=moment==='ouv'?'🌅 Ouverture':moment==='midi'?'☀️ Midi':'🌙 Fermeture';
   document.getElementById('enc-modal-title').textContent=enc.label+' — '+mLabel+' (Plan Canicule)';
   document.getElementById('enc-modal-sub').textContent='Consigne : '+enc.consigne;
+  var _acEl20=document.getElementById('enc-modal-ac'); if(_acEl20) _acEl20.innerHTML='';
   var isConge=enc.type==='congelateur';
   var tMin=isConge?-30:-10; var tMax=isConge?5:25;
   var presets=isConge?[-25,-22,-20,-18,-15]:[0,2,3,4,5,6,7,8,10,12,14];
@@ -4164,8 +4272,11 @@ function saveEncSaisie20(){
   try{SupaEngine.enqueue('enr20',saisie);}catch(e){}
   var ok=encConforme(temp,_encSaisie.consigne);
   if(ok===false){
-    toast('⚠️ T°C hors seuil — NC créée','warning');
-    autoCreateNC('ENR20 Canicule T°C','Plan canicule — hors seuil : '+(_encSaisie.label||'')+' ('+_encSaisie.moment+') : '+((parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1))+'°C — consigne '+_encSaisie.consigne,_encSaisie.label||'','',{cause_matriel:'1',cause_milieu:'1'});
+    _renderEncAcPanel(true);
+    var ac20=_encSelectedActionPayload();
+    if(!ac20.ids.length){ toast('⚠️ T°C hors seuil — sélectionnez une action corrective','warning'); return; }
+    toast('⚠️ T°C hors seuil — NC + action corrective','warning');
+    autoCreateNC('ENR20 Canicule T°C','Plan canicule — hors seuil : '+(_encSaisie.label||'')+' ('+_encSaisie.moment+') : '+((parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1))+'°C — consigne '+_encSaisie.consigne,_encSaisie.label||'',ac20.action,{cause_matriel:'1',cause_milieu:'1',non_conformity_type:'temperature',corrective_action_ids:ac20.ids,corrective_action_names:ac20.names,action_custom:''});
   } else {
     autoBackup();
     toast('✅ Relevé canicule enregistré','success');
@@ -4249,8 +4360,11 @@ function openEncSaisie21(encId){
   var enc=getEnceintes().find(function(e){return e.id===encId;});
   if(!enc)return;
   _encSaisie={encId:encId,moment:'ponctuel',consigne:enc.consigne,label:enc.label||encId,_sec21:true};
+  _encAcSelectedIds=[];
+  try{ loadCorrectiveActionsCatalog(false); }catch(e){}
   document.getElementById('enc-modal-title').textContent=enc.label+' — Contrôle individuel';
   document.getElementById('enc-modal-sub').textContent='Consigne : '+enc.consigne;
+  var _acEl21=document.getElementById('enc-modal-ac'); if(_acEl21) _acEl21.innerHTML='';
   var isConge=enc.type==='congelateur';
   var tMin=isConge?-30:-10; var tMax=isConge?5:25;
   var presets=isConge?[-25,-22,-20,-18,-15]:[0,2,3,4,5,6,7,8,10,12,14];
@@ -4290,8 +4404,11 @@ function saveEncSaisie21(){
   try{SupaEngine.enqueue('enr21',ligne);}catch(e){}
   var ok=encConforme(temp,_encSaisie.consigne);
   if(ok===false){
-    toast('⚠️ T°C hors seuil — NC créée','warning');
-    autoCreateNC('ENR21 T°C individuel','T°C hors seuil : '+(_encSaisie.label||'')+' — '+((parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1))+'°C — consigne '+_encSaisie.consigne+(motif?' ('+motif+')':''),_encSaisie.label||'','',{cause_matriel:'1'});
+    _renderEncAcPanel(true);
+    var ac21=_encSelectedActionPayload();
+    if(!ac21.ids.length){ toast('⚠️ T°C hors seuil — sélectionnez une action corrective','warning'); return; }
+    toast('⚠️ T°C hors seuil — NC + action corrective','warning');
+    autoCreateNC('ENR21 T°C individuel','T°C hors seuil : '+(_encSaisie.label||'')+' — '+((parseFloat(temp)>=0?'+':'')+parseFloat(temp).toFixed(1))+'°C — consigne '+_encSaisie.consigne+(motif?' ('+motif+')':''),_encSaisie.label||'',ac21.action,{cause_matriel:'1',non_conformity_type:'temperature',corrective_action_ids:ac21.ids,corrective_action_names:ac21.names,action_custom:''});
   } else {
     autoBackup();
     toast('✅ T°C enregistrée','success');
@@ -5912,7 +6029,7 @@ function accueilTaches(){
   const now = new Date();
   const h = now.getHours();
   const todayStr = today();
-  const mois = S.config?.mois || todayStr.slice(0,7);
+  const mois = getConfigMois();
   const tasks = [];
 
   // ── 1. T°C ENCEINTES OUVERTURE ─────────────────────
@@ -6375,7 +6492,7 @@ function updateDictCount(){
 // EXPORT PHOTOS DU MOIS — ZIP
 // ══════════════════════════════════════════════
 async function exportPhotosZip(){
-  const mois = S.config?.mois || today().slice(0,7);
+  const mois = getConfigMois();
   const moisLabel = mois.slice(0,7);
   const photos = [];
 
@@ -6504,7 +6621,7 @@ window._PRODUITS_DEFAULT = [
 ].sort();
 
 function calcHACCPScore(){
-  const mois=S.config?.mois||today().slice(0,7);
+  const mois=getConfigMois();
   const t=today();
   const encs=getEnceintes();
   // Soft-deleted exclus des scores / widgets accueil (restent visibles en histo)
@@ -6805,7 +6922,7 @@ function renderBilanJour() {
   }
 
   const t = today();
-  const mois = S.config?.mois || t.slice(0,7);
+  const mois = getConfigMois();
 
   // Tâches du tableau de bord
   const encs = getEnceintes();
@@ -6935,7 +7052,7 @@ function renderMissionBanner(){
 }
 
 function renderAccueil(){
-  const mois = S.config?.mois||today().slice(0,7);
+  const mois = getConfigMois();
   const [y,m] = mois.split('-');
   const moisLabel = new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   return `
@@ -7747,7 +7864,7 @@ function expDistrib(){
   const lignes=(S[DISTRIB_SEC]||{}).lignes||[];
   if(!lignes.length){toast('⚠️ Aucune donnée à exporter','warning');return;}
   const site=getSiteName();
-  const mois=S.config?.mois||new Date().toISOString().slice(0,7);
+  const mois=getConfigMois();
   const wb=XLSX.utils.book_new();
   const headers=['Date','Midi – Plat froid','Midi – T°C froid','Midi – Froid conf.','Midi – Plat chaud','Midi – T°C chaud','Midi – Chaud conf.','Midi – Heure','Midi – Cuisinier','Soir – Plat froid','Soir – T°C froid','Soir – Froid conf.','Soir – Plat chaud','Soir – T°C chaud','Soir – Chaud conf.','Soir – Heure','Soir – Cuisinier'];
   const rows=lignes.map(r=>{
@@ -8674,7 +8791,7 @@ function openAuditModal(){
 function closeAuditModal(){ document.getElementById('audit-ov').classList.remove('open'); }
 
 function buildAuditBody(){
-  const mois = S.config?.mois || today().slice(0,7);
+  const mois = getConfigMois();
   const site = getSiteName();
   const todayStr = today();
   const [y,m] = mois.split('-');
@@ -8964,7 +9081,7 @@ function sigGetDataURL(){
 }
 
 function generatePDF(type){
-  const mois = S.config?.mois || today().slice(0,7);
+  const mois = getConfigMois();
   const site = getSiteName();
   const code = S.config?.code || '';
   const todayStr = today();
@@ -9663,7 +9780,7 @@ const BACKUP_TS_KEY = 'haccp_v6_backup_ts';
 
 function exportJSON(){
   const site = getSiteName() || 'HACCP';
-  const mois = S.config?.mois || today().slice(0,7);
+  const mois = getConfigMois();
   const data = JSON.stringify(S, null, 2);
   const blob = new Blob([data], {type:'application/json'});
   const url = URL.createObjectURL(blob);
@@ -10148,6 +10265,9 @@ async function _loadFromSupabase() {
     _purgeLocalEnrForTenantSwitch({ dropSiteScoped: !!siteChanged });
     // Visa session: ne pas conserver Jeremie (ou autre) d'un site/compte précédent
     try { delete S.activeSession; } catch(e){}
+    try { delete S._badgeDismissed; } catch(e){}
+    try { S._badgeSiteId = ''; } catch(e){}
+    try { syncConfigMoisToNow(); } catch(e){}
     try { if (typeof updateSessHeader === 'function') updateSessHeader(); } catch(e){}
     if (!isFirstTime) {
       try { toast(userChanged ? '🔄 Compte changé — rechargement des données…' : '🔄 Site changé — chargement du nouveau site…', 'info'); } catch(e){}
@@ -10165,6 +10285,9 @@ async function _loadFromSupabase() {
     try {
       localStorage.setItem(lastSiteKey, currentSite);
       if (currentUser) localStorage.setItem(lastUserKey, currentUser);
+      S._badgeSiteId = currentSite || '';
+      try { syncConfigMoisToNow(); } catch(e2){}
+      try { save(); } catch(e3){}
     } catch(e){}
   }
 
@@ -10918,7 +11041,7 @@ function _mpDateRange(period){
     return {from:d15.toISOString().slice(0,10), to:todayStr, label:'15 derniers jours'};
   }
   if(period==='mois'){
-    const mois=S.config?.mois||todayStr.slice(0,7);
+    const mois=getConfigMois();
     const [y,m]=mois.split('-');
     const label=new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
     const lastDay=new Date(+y,+m,0).toISOString().slice(0,10);
@@ -13725,7 +13848,7 @@ async function doSync(){
   syncLog(`${toSync.length} section(s) à envoyer`,'info');
 
   // Construire le payload
-  const mois=document.getElementById('etab-mois')?.value||new Date().toISOString().slice(0,7);
+  const mois=document.getElementById('etab-mois')?.value||getConfigMois();
   const payload=toSync.map(s=>({
     site_id:siteId,
     site_nom:siteNom,
@@ -13901,7 +14024,7 @@ function getPeriodByKey(p, ctx){
   const t=today();
   const d=new Date(t+'T12:00');
   const iso=d=>d.toISOString().slice(0,10);
-  const mois=S.config?.mois||t.slice(0,7);
+  const mois=getConfigMois();
   if(p==='today') return{from:t,to:t,label:"Aujourd'hui ("+fmtDateFr(t)+')'};
   if(p==='week'){const f=new Date(d);f.setDate(f.getDate()-6);return{from:iso(f),to:t,label:'7 derniers jours'};}
   if(p==='15j'){const f=new Date(d);f.setDate(f.getDate()-14);return{from:iso(f),to:t,label:'15 derniers jours'};}
@@ -14028,7 +14151,7 @@ async function doExportXLSX() {
 
   const wb = XLSX.utils.book_new();
   const site = S.config?.etab || S.syncCfg?.siteNom || 'Site';
-  const mois = S.config?.mois || new Date().toISOString().slice(0, 7);
+  const mois = getConfigMois();
   const [_y,_m]=mois.split('-');
   const moisLabel=new Date(+_y,+_m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   // ── Période sélectionnée ──────────────────────────────
@@ -15793,10 +15916,12 @@ function validateTemperature(val, context) {
 }
 function setActiveSession(name){
   S.activeSession = name;
+  try { delete S._badgeDismissed; } catch(e){}
   save();
   updateSessHeader();
   applyNavLayout();
   closeSessModal();
+  try { if(typeof renderMain==='function' && cur==='accueil') renderMain(); } catch(e){}
   toast('👋 Bonjour '+name+' !');
 }
 function clearSession(){
@@ -16143,6 +16268,10 @@ function _badgeWeekKey(){
 }
 function calcEmployeBadge(){
   const chefs=getChefs(); if(!chefs.length) return null;
+  try{
+    const siteId=(typeof SupaEngine!=='undefined'&&SupaEngine.cfg)?(SupaEngine.cfg().siteId||''):'';
+    if(siteId && S._badgeSiteId && S._badgeSiteId!==siteId) return null;
+  }catch(e){}
   const wk=_badgeWeekKey();
   if(S._badgeDismissed===wk) return null;
   // Dates de la semaine courante
@@ -16159,6 +16288,7 @@ function calcEmployeBadge(){
     'enr19','enr23','enr26','enr28','enr30','enr33','enr34','enr_tc_distrib'];
   secIds.forEach(id=>{
     (S[id]?.lignes||[]).forEach(r=>{
+      if(r && r._deleted) return;
       if((r.date||'')>=monStr){
         const who=r.cuisinier||r.nom_fct||r.operateur||r.visa||'';
         if(who) addIfChef(who,1);
@@ -16166,11 +16296,12 @@ function calcEmployeBadge(){
     });
     // saisies ENR19
     (S[id]?.saisies||[]).forEach(r=>{
+      if(r && r._deleted) return;
       if((r.date||'')>=monStr) addIfChef(r.cuisinier||'',1);
     });
   });
   // Nettoyage
-  (S.nett_val||[]).forEach(v=>{ if((v.date||'')>=monStr) addIfChef(v.cuisinier||'',1); });
+  (S.nett_val||[]).forEach(v=>{ if(v && !v._deleted && (v.date||'')>=monStr) addIfChef(v.cuisinier||'',1); });
   // T°C distrib
   (S['enr_tc_distrib']?.lignes||[]).forEach(r=>{
     if((r.date||'')>=monStr){
@@ -16185,6 +16316,8 @@ function calcEmployeBadge(){
   // Écart significatif si 2+ chefs
   if(entries.length>1 && entries[1][1]>0 && entries[0][1]<entries[1][1]*1.2) return null;
   const [winner, count] = entries[0];
+  // Garde anti-fuite cross-site: winner doit encore être dans la liste chefs courante
+  if(!getChefs().includes(winner)) return null;
   const msgIdx = Math.abs([...winner].reduce((h,c)=>h+c.charCodeAt(0),0) + new Date().getDate()) % _BADGE_MSGS.length;
   return {winner, count, msg: _BADGE_MSGS[msgIdx], week:wk};
 }
@@ -16374,7 +16507,8 @@ function init(){
   const _c = SupaEngine.cfg();
   if(_c.siteId) document.getElementById('etab-code').value = _c.siteId;
   if(_c.siteNom || S.config?.etab) document.getElementById('etab-nom').value = _c.siteNom || S.config.etab || '';
-  document.getElementById('etab-mois').value=cfg.mois||now.toISOString().slice(0,7);
+  try{ syncConfigMoisToNow(); }catch(e){}
+  try{ document.getElementById('etab-mois').value=getConfigMois(); }catch(e){}
   // h-etab-disp supprimé
   registerCustomPages();
   registerDistribSvcPages();
@@ -16675,7 +16809,7 @@ function renderBilanMoisBtn(){
   var lastDay=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
   var dayNum=now.getDate();
   if(dayNum<lastDay-4&&dayNum!==1)return'';
-  var mois=S.config&&S.config.mois?S.config.mois:today().slice(0,7);
+  var mois=getConfigMois();
   var parts=mois.split('-');
   var moisLabel=new Date(+parts[0],+parts[1]-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
   return'<div onclick="openAuditModal()" style="background:linear-gradient(135deg,var(--plum),var(--mag));border-radius:16px;padding:15px 16px;margin-bottom:14px;cursor:pointer;display:flex;align-items:center;gap:12px;user-select:none"><span style="font-size:1.9rem">📄</span><div style="flex:1"><div style="font-size:.92rem;font-weight:900;color:#fff">Bilan '+moisLabel+'</div><div style="font-size:.72rem;color:rgba(255,255,255,.8);margin-top:2px">Générer les 3 rapports PDF + Excel</div></div><span style="font-size:1.3rem;color:rgba(255,255,255,.65)">›</span></div>';

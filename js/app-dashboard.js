@@ -1748,7 +1748,8 @@ function renderOverview(){
   const allRows = [...rows,...inactiveRows];
 
   // ── KPIs ────────────────────────────────────────────────────
-  const sitesEnAlerte  = rows.filter(r=>r.pct<75).length;
+  // Alerte = score < 75% OU au moins 1 NC ouverte (évite 0 vs N NC contradictoire)
+  const sitesEnAlerte  = rows.filter(r=>r.pct<75 || r.nc>0).length;
   const ncActives      = recs.filter(r=>isNC(r)&&!isNCCloturee(r)).length;
   const sitesInactifs  = inactiveRows.length;
   const dernSaisie     = recs[0]?.recorded_at
@@ -2036,7 +2037,7 @@ function renderOverview(){
     <div class="ov-kpi-card" style="border-color:${sitesEnAlerte>0?'#fecaca':'#bbf7d0'}">
       <div class="ov-kpi-big" style="color:${sitesEnAlerte>0?'#dc2626':'#16a34a'}">${sitesEnAlerte}</div>
       <div class="ov-kpi-label">Sites en alerte</div>
-      <div class="ov-kpi-sub">score &lt; 75% · ${rows.length} actifs</div>
+      <div class="ov-kpi-sub">score &lt; 75% ou NC · ${rows.length} actifs</div>
     </div>
     <div class="ov-kpi-card" style="border-color:${ncActives>0?'#fca5a5':'#bbf7d0'}">
       <div class="ov-kpi-big" style="color:${ncActives>0?'#dc2626':'#16a34a'}">${ncActives}</div>
@@ -2201,6 +2202,44 @@ async function gmoToggleVerif(gmoId, ncIndex, checked) {
 let _adminTab = 'overview';
 let _adminModal = null; // {type, id, data}
 
+const DASH_DEFAULT_CORRECTIVE_ACTIONS = [
+  { id:'11111111-1111-4111-8111-111111111111', name:'Remise en température immédiate', description:'Rétablir immédiatement une température conforme.', category:'temperature', is_default:true },
+  { id:'11111111-1111-4111-8111-111111111112', name:'Destruction du produit', description:'Retirer et détruire le produit non conforme.', category:'temperature', is_default:true },
+  { id:'11111111-1111-4111-8111-111111111113', name:'Contrôle du matériel', description:'Vérifier sonde, enceinte ou équipement concerné.', category:'temperature', is_default:true },
+  { id:'11111111-1111-4111-8111-111111111114', name:'Isolement du lot', description:'Isoler le lot et empêcher sa distribution.', category:'temperature', is_default:true },
+  { id:'22222222-2222-4222-8222-222222222221', name:'Nettoyage et désinfection immédiate', description:'Réaliser immédiatement nettoyage + désinfection.', category:'hygiene', is_default:true },
+  { id:'22222222-2222-4222-8222-222222222222', name:'Renforcement du plan de nettoyage', description:'Augmenter la fréquence et les contrôles du plan.', category:'hygiene', is_default:true },
+  { id:'22222222-2222-4222-8222-222222222223', name:'Contrôle visuel par responsable', description:'Faire valider visuellement la remise en conformité.', category:'hygiene', is_default:true },
+  { id:'33333333-3333-4333-8333-333333333331', name:'Réorganisation des denrées', description:'Réorganiser les denrées pour éviter les contaminations croisées.', category:'storage', is_default:true },
+  { id:'33333333-3333-4333-8333-333333333332', name:'Vérification DLC/DDM', description:'Contrôler les DLC/DDM avant remise en stock.', category:'storage', is_default:true },
+  { id:'33333333-3333-4333-8333-333333333333', name:'Mise en quarantaine', description:'Mettre en quarantaine les produits concernés.', category:'storage', is_default:true },
+];
+const DASH_DEFAULT_NC_MAPPINGS = [
+  ['temperature','11111111-1111-4111-8111-111111111111'],
+  ['temperature','11111111-1111-4111-8111-111111111112'],
+  ['temperature','11111111-1111-4111-8111-111111111113'],
+  ['temperature','11111111-1111-4111-8111-111111111114'],
+  ['hygiene','22222222-2222-4222-8222-222222222221'],
+  ['hygiene','22222222-2222-4222-8222-222222222222'],
+  ['hygiene','22222222-2222-4222-8222-222222222223'],
+  ['storage','33333333-3333-4333-8333-333333333331'],
+  ['storage','33333333-3333-4333-8333-333333333332'],
+  ['storage','33333333-3333-4333-8333-333333333333'],
+];
+function _applyDashCorrectiveFallback(){
+  _correctiveActions = DASH_DEFAULT_CORRECTIVE_ACTIONS.map(a=>({...a}));
+  _ncActionMappings = DASH_DEFAULT_NC_MAPPINGS.map(([t,id])=>({non_conformity_type:t,corrective_action_id:id}));
+}
+async function seedDefaultCorrectiveActionsIfEmpty(){
+  try{
+    await supaAdmin('POST','/rest/v1/corrective_actions', DASH_DEFAULT_CORRECTIVE_ACTIONS, {'Prefer':'resolution=merge-duplicates,return=minimal'});
+  }catch(e){ console.warn('[seed corrective_actions]', e.message); }
+  try{
+    await supaAdmin('POST','/rest/v1/nc_action_mapping',
+      DASH_DEFAULT_NC_MAPPINGS.map(([t,id])=>({non_conformity_type:t,corrective_action_id:id})),
+      {'Prefer':'resolution=merge-duplicates,return=minimal'});
+  }catch(e){ console.warn('[seed nc_action_mapping]', e.message); }
+}
 async function loadAdminCorrectiveData(){
   try{
     const [actions, mappings] = await Promise.all([
@@ -2209,9 +2248,24 @@ async function loadAdminCorrectiveData(){
     ]);
     _correctiveActions = Array.isArray(actions) ? actions : [];
     _ncActionMappings = Array.isArray(mappings) ? mappings : [];
+    if(!_correctiveActions.length){
+      _applyDashCorrectiveFallback();
+      seedDefaultCorrectiveActionsIfEmpty().then(async()=>{
+        try{
+          const [a2,m2] = await Promise.all([
+            supaAdmin('GET','/rest/v1/corrective_actions?select=*&order=category.asc,name.asc',null),
+            supaAdmin('GET','/rest/v1/nc_action_mapping?select=*&order=non_conformity_type.asc',null),
+          ]);
+          if(Array.isArray(a2) && a2.length){
+            _correctiveActions = a2;
+            _ncActionMappings = Array.isArray(m2) ? m2 : [];
+            if(_adminTab==='corrective') renderAdmin();
+          }
+        }catch(_e){}
+      }).catch(()=>{});
+    }
   } catch(e){
-    _correctiveActions = [];
-    _ncActionMappings = [];
+    _applyDashCorrectiveFallback();
     console.warn('[admin corrective]', e.message);
   }
 }
@@ -2727,6 +2781,41 @@ async function renderAdmin(){
         <button onclick="sendPhotoRequestAlert()" style="padding:9px 14px;background:#1e3a8a;color:#fff;border:none;border-radius:10px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:var(--font)">📤 Envoyer la demande photo</button>
       </div>
     </div>`;
+
+    // ── Alertes opérationnelles = NC ouvertes du périmètre ──
+    try{
+      const scoped = new Set(getScopedSiteCodes());
+      const openNCs = (_records||[]).filter(r=>{
+        if(!isNC(r) || isNCCloturee(r)) return false;
+        if(scoped.size && !scoped.has(r.site_id)) return false;
+        return true;
+      }).slice(0,30);
+      html += `<div style="background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <div style="font-size:.86rem;font-weight:900;color:#991b1b">🚨 NC ouvertes (alertes cuisines)</div>
+          <button onclick="navTo('nc')" style="padding:6px 10px;background:#fee2e2;color:#991b1b;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:var(--font)">Voir toutes →</button>
+        </div>`;
+      if(!openNCs.length){
+        html += `<div style="font-size:.78rem;color:var(--muted)">Aucune NC ouverte sur le périmètre filtré.</div>`;
+      } else {
+        html += openNCs.map(r=>{
+          const d=r.data||{};
+          const site=_sites.find(x=>x.code===r.site_id);
+          const titre=d.desc||d.probleme||d.description||'Non-conformité';
+          const ac=(Array.isArray(d.corrective_action_names)?d.corrective_action_names.filter(Boolean).join(' · '):'') || d.action_custom || d.action || '';
+          const dt=r.recorded_at?new Date(r.recorded_at).toLocaleString('fr-FR',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'';
+          return `<div style="padding:10px 0;border-top:1px solid #fecaca;display:flex;gap:10px;align-items:flex-start">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:.8rem;font-weight:800;color:#7f1d1d">${escH(titre)}</div>
+              <div style="font-size:.7rem;color:var(--muted);margin-top:2px">🏠 ${escH(site?.name||r.site_id||'')} · 📅 ${escH(dt)}</div>
+              ${ac?`<div style="font-size:.72rem;color:#166534;margin-top:4px">🔧 ${escH(ac)}</div>`:`<div style="font-size:.72rem;color:#b45309;margin-top:4px;font-weight:700">⚠️ Sans action corrective</div>`}
+            </div>
+            <button onclick="navTo('nc')" style="padding:5px 9px;background:#fff;border:1px solid #fecaca;border-radius:8px;font-size:.68rem;font-weight:700;color:#991b1b;cursor:pointer;font-family:var(--font);flex-shrink:0">Détail</button>
+          </div>`;
+        }).join('');
+      }
+      html += `</div>`;
+    }catch(e){ console.warn('[alerts nc panel]', e.message); }
 
     html += _renderAlertsHistory();
   }
@@ -6062,7 +6151,13 @@ function renderNC() {
       <div style="padding:0 14px 12px">
         ${descHtml}
         <div style="background:${cloture?'#f1f5f9':'rgba(220,38,38,.06)'};border-radius:8px;padding:8px 10px;margin-bottom:6px">
-          ${tempsNC || '<div style="font-size:.75rem;color:var(--muted)">Champs non conformes</div>'}
+          ${tempsNC || (r.enr_type==='enr30'
+            ? `<div style="font-size:.75rem;color:#7f1d1d">
+                <div><strong>Type:</strong> ${escH(NC_TYPE_DISPLAY_LABELS[normalizeNCTypeLocal(d.non_conformity_type)]||d.non_conformity_type||'—')}</div>
+                ${d.lieu?`<div style="margin-top:3px"><strong>Lieu:</strong> ${escH(d.lieu)}</div>`:''}
+                ${(!actionSummary && d._auto)?`<div style="margin-top:3px;color:#b45309;font-weight:700">⚠️ Action corrective à compléter</div>`:''}
+              </div>`
+            : '<div style="font-size:.75rem;color:var(--muted)">Champs non conformes</div>')}
         </div>
         ${actionHtml}
         ${problemActionHtml}
