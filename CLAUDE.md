@@ -24,7 +24,7 @@ Supabase credentials are hardcoded in `js/supabaseconfig.js` (anon key — inten
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
 - `RESEND_API_KEY`, Stripe keys (`stripe-checkout.js`, `stripe-portal.js`, `stripe-webhook.js`)
 
-**Deployment:** Push to git → Netlify auto-deploys. No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v389'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
+**Deployment:** Push to git → Netlify auto-deploys. **Canonical host: `https://www.hacc.pro`.** GitHub homepage / README must not point at `haccpaisite.vercel.app` (dead Vercel deploy → `DEPLOYMENT_NOT_FOUND` / 404 on `/.netlify/functions/*` including `admin-proxy`). No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v417'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
 
 ---
 
@@ -216,9 +216,16 @@ Supported on Chrome (Android/Desktop), Edge, Samsung Internet. Each category has
 | `haccp_lifecycle_v1` | Dish HACCP timeline history |
 | `haccp_sub_cache_v1` (name approx., see `subscriptionguard.js`) | 1h cache of subscription check result — client-controlled, part of the paywall fail-open design |
 
+
+### Nutria / sync (b417)
+- **`admin-proxy` 404** : fonction OK sur Netlify (`www.hacc.pro`) ; 404 = mauvais host (Vercel mort). Corrective admin a un fallback REST si le proxy répond 404.
+- **401 `/rest/v1/sites`** : hydrate cuisine envoyait un JWT périmé (`userToken` truthy) sans passer par `_ensureFreshToken` (contrairement au flush). Corrigé + purge token si refresh 401/403.
+- **Badge « Non configuré »** : souvent conséquence du 401 sites (etab/siteNom non hydratés) + `saveSupaCfg` qui droppait `siteNom`. Corrigé.
+- **PMS « Token invalide »** : message serveur dans `stripe-portal.js` / sessions `haccpro_session` vides sur `pms-setup` — pas de correctif code si non reproduit ; reconnecter ou reprendre onboarding.
+
 ## PWA / Service Worker (`sw.js`)
 
-Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v389'`/`'haccpro-cdn-v389'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
+Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v417'`/`'haccpro-cdn-v417'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
 
 ---
 

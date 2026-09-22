@@ -2353,9 +2353,15 @@ async function loadCorrectiveActionsCatalog(force){
   if(!c.url || !c.anonKey || !c.siteId) return;
   _ncActionsCatalogLoading = true;
   try{
+    let authTok = c.userToken || c.anonKey;
+    try {
+      if (typeof SupaEngine._ensureFreshToken === 'function') {
+        authTok = await SupaEngine._ensureFreshToken(c) || c.anonKey;
+      }
+    } catch(_te) {}
     const headers = {
       'apikey': c.anonKey,
-      'Authorization': `Bearer ${c.userToken || c.anonKey}`,
+      'Authorization': `Bearer ${authTok || c.anonKey}`,
       'Accept': 'application/json'
     };
     const [actRes,mapRes] = await Promise.all([
@@ -10291,9 +10297,20 @@ async function _loadFromSupabase() {
     }
   }
 
+  // Rafraîchir JWT avant hydrate — un userToken périmé provoque 401 sur /sites
+  // (RLS authenticated) alors que le flush sync réussit via _ensureFreshToken.
+  let authTok = c.userToken || c.anonKey;
+  try {
+    if (SupaEngine && typeof SupaEngine._ensureFreshToken === 'function') {
+      authTok = await SupaEngine._ensureFreshToken(c) || c.anonKey;
+      // Relecture cfg au cas où purge/refresh a muté localStorage
+      const c2 = SupaEngine.cfg();
+      if (c2) { Object.assign(c, c2); }
+    }
+  } catch(e) { console.warn('[_loadFromSupabase] token refresh', e); }
   const headers = {
     'apikey': c.anonKey,
-    'Authorization': `Bearer ${c.userToken || c.anonKey}`,
+    'Authorization': `Bearer ${authTok || c.anonKey}`,
     'Accept': 'application/json'
   };
 
@@ -10313,10 +10330,27 @@ async function _loadFromSupabase() {
     await loadCorrectiveActionsCatalog(true);
 
     // ── 1. Config du site : cuisiniers, fournisseurs, thème, etc. ──
-    const siteRes = await fetch(
+    let siteRes = await fetch(
       `${c.url}/rest/v1/sites?code=eq.${encodeURIComponent(c.siteId)}&select=name,config&limit=1`,
       { headers }
     );
+    // 401 = JWT périmé encore en header — 1 retry après refresh forcé
+    if (siteRes.status === 401) {
+      try {
+        if (typeof SupaEngine._ensureFreshToken === 'function') {
+          const tok2 = await SupaEngine._ensureFreshToken(SupaEngine.cfg());
+          headers.Authorization = `Bearer ${tok2 || c.anonKey}`;
+          siteRes = await fetch(
+            `${c.url}/rest/v1/sites?code=eq.${encodeURIComponent(c.siteId)}&select=name,config&limit=1`,
+            { headers }
+          );
+        }
+      } catch(_re) { console.warn('[_loadFromSupabase] sites 401 retry', _re); }
+    }
+    if (!siteRes.ok && siteRes.status === 401) {
+      console.warn('[_loadFromSupabase] sites 401 — session à reconnecter');
+      try { if (typeof toast === 'function') toast('⚠️ Session expirée (401 sites) — reconnectez-vous pour synchroniser la config', 'warning', {force:true}); } catch(_t) {}
+    }
     if (siteRes.ok) {
       const sites = await siteRes.json();
       const site = sites?.[0];
@@ -10329,6 +10363,18 @@ async function _loadFromSupabase() {
         S.config = S.config || {};
         if (site.name) S.config.etab = site.name;
         if (c.siteId) S.config.code = c.siteId;
+        // Propager nom site vers cfg sync (évite badge « Non configuré » alors que sync OK)
+        try {
+          if (site.name) {
+            c.siteNom = site.name;
+            if (c.siteId) c.siteId = c.siteId;
+            SupaEngine.saveCfgLocal(c);
+            SupaEngine._updateBadge();
+            SupaEngine._refreshModalStats();
+          }
+          const nomEl = document.getElementById('etab-nom');
+          if (nomEl && site.name) nomEl.value = site.name;
+        } catch(_be) {}
         // Forcer l'application si cloud a une valeur (même si S[key] est déjà défini)
         CONFIG_KEYS.forEach(key => {
           // Pour nett_ref: appliquer si cloud a des données (même si S.nett_ref=[])
@@ -10839,11 +10885,17 @@ async function _saveConfigToSupabase() {
     } catch(e) { console.warn('[save config cloud] pin migrate', e); }
 
     // ── Étape 3 : Écrire le résultat mergé ──
+    let _saveTok = c.userToken || c.anonKey;
+    try {
+      if (typeof SupaEngine._ensureFreshToken === 'function') {
+        _saveTok = await SupaEngine._ensureFreshToken(c) || c.anonKey;
+      }
+    } catch(_te) {}
     const r = await fetch(`${c.url}/rest/v1/sites?code=eq.${c.siteId}`, {
       method: 'PATCH',
       headers: {
         'apikey': c.anonKey,
-        'Authorization': `Bearer ${c.userToken || c.anonKey}`,
+        'Authorization': `Bearer ${_saveTok || c.anonKey}`,
         'Content-Type': 'application/json',
         'Prefer': 'return=minimal'
       },
