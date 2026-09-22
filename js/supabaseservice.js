@@ -159,12 +159,29 @@ const SupaEngine = (() => {
             _supaLog('[TOKEN] Rafraichi via refresh_token');
             return d2.access_token;
           }
+        } else if (r.status === 401 || r.status === 403) {
+          // Refresh rejeté → JWT stocké inutilisable ; purger pour éviter 401 /sites en boucle
+          _supaLog('[TOKEN] refresh rejeté HTTP ' + r.status + ' — purge token périmé');
+          c.userToken = '';
+          c.refreshToken = '';
+          saveCfgLocal(c);
+        } else {
+          _supaLog('[TOKEN] refresh HTTP ' + r.status);
         }
       } catch(e) { _supaLog('[TOKEN] refresh_token erreur : ' + e.message); }
     }
 
-    // 3. Fallback : token stocke ou anon key
-    return freshToken(c);
+    // 3. Fallback SDK storage (peut encore être valide)
+    try {
+      var stored = localStorage.getItem('sb-lthxpucxjcwzphshdhmp-auth-token');
+      if (stored) {
+        var pTok = JSON.parse(stored);
+        if (pTok && pTok.access_token) return pTok.access_token;
+      }
+    } catch(e) {}
+
+    // 4. Anon uniquement — NE PAS renvoyer c.userToken périmé (cause 401 sites)
+    return c.anonKey || _PMS_KEY_DEFAULT;
   }
 
   function isEnabled() {
@@ -755,7 +772,7 @@ const SupaEngine = (() => {
     }
   }
 
-  return { init, enqueue, flush, testConnection, isEnabled, cfg, saveCfgLocal, qStats, _updateBadge, _refreshModalStats, _supaLog, getSignedPhotoUrl };
+  return { init, enqueue, flush, testConnection, isEnabled, cfg, saveCfgLocal, qStats, _updateBadge, _refreshModalStats, _supaLog, getSignedPhotoUrl, _ensureFreshToken };
 })();
 
 // ── Hydratation paresseuse des photos pms-photos (bucket privé) ──
@@ -994,10 +1011,12 @@ function saveSupaCfg() {
     url:       document.getElementById('supa-url')?.value || _PMS_URL_DEFAULT,
     anonKey:   document.getElementById('supa-anon-key')?.value || _PMS_KEY_DEFAULT,
     siteId:    (document.getElementById('supa-site-id')?.value||'').trim().toUpperCase(),
+    siteNom:   existing.siteNom || '',
     tenantId:  existing.tenantId || '',
     userToken: existing.userToken || '',
     refreshToken: existing.refreshToken || '',
     userEmail: existing.userEmail || '',
+    userRole:  existing.userRole || '',
     lastSync:  existing.lastSync || null,
   };
   SupaEngine.saveCfgLocal(c);

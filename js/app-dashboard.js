@@ -2241,21 +2241,45 @@ async function seedDefaultCorrectiveActionsIfEmpty(){
   }catch(e){ console.warn('[seed nc_action_mapping]', e.message); }
 }
 async function loadAdminCorrectiveData(){
-  try{
+  async function _fetchCorrectiveViaRest(){
     const [actions, mappings] = await Promise.all([
-      supaAdmin('GET','/rest/v1/corrective_actions?select=*&order=category.asc,name.asc',null),
-      supaAdmin('GET','/rest/v1/nc_action_mapping?select=*&order=non_conformity_type.asc',null),
+      supaGet('corrective_actions','select=*&order=category.asc,name.asc'),
+      supaGet('nc_action_mapping','select=*&order=non_conformity_type.asc'),
     ]);
+    return [actions, mappings];
+  }
+  try{
+    let actions, mappings;
+    try {
+      [actions, mappings] = await Promise.all([
+        supaAdmin('GET','/rest/v1/corrective_actions?select=*&order=category.asc,name.asc',null),
+        supaAdmin('GET','/rest/v1/nc_action_mapping?select=*&order=non_conformity_type.asc',null),
+      ]);
+    } catch(proxyErr) {
+      // admin-proxy 404 (mauvais host / deploy mort) → fallback REST direct (RLS select=true)
+      const msg = String(proxyErr && proxyErr.message || proxyErr || '');
+      if (/\b404\b/.test(msg) || /Failed to fetch/i.test(msg) || /NetworkError/i.test(msg)) {
+        console.warn('[admin corrective] admin-proxy indisponible, fallback REST', msg.slice(0,120));
+        [actions, mappings] = await _fetchCorrectiveViaRest();
+      } else {
+        throw proxyErr;
+      }
+    }
     _correctiveActions = Array.isArray(actions) ? actions : [];
     _ncActionMappings = Array.isArray(mappings) ? mappings : [];
     if(!_correctiveActions.length){
       _applyDashCorrectiveFallback();
       seedDefaultCorrectiveActionsIfEmpty().then(async()=>{
         try{
-          const [a2,m2] = await Promise.all([
-            supaAdmin('GET','/rest/v1/corrective_actions?select=*&order=category.asc,name.asc',null),
-            supaAdmin('GET','/rest/v1/nc_action_mapping?select=*&order=non_conformity_type.asc',null),
-          ]);
+          let a2, m2;
+          try {
+            [a2,m2] = await Promise.all([
+              supaAdmin('GET','/rest/v1/corrective_actions?select=*&order=category.asc,name.asc',null),
+              supaAdmin('GET','/rest/v1/nc_action_mapping?select=*&order=non_conformity_type.asc',null),
+            ]);
+          } catch(_pe) {
+            [a2,m2] = await _fetchCorrectiveViaRest();
+          }
           if(Array.isArray(a2) && a2.length){
             _correctiveActions = a2;
             _ncActionMappings = Array.isArray(m2) ? m2 : [];
