@@ -1079,7 +1079,7 @@ function renderSP(){
   const _sc=SupaEngine.cfg();
   if(nomEl) nomEl.value=_sc.siteNom||S.config?.etab||'';
   if(codeEl) codeEl.value=_sc.siteId||'';
-  if(moisEl)moisEl.value=new Date().toISOString().slice(0,7); // toujours le mois actuel
+  if(moisEl)moisEl.value=(typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7); // mois civil local
 
   // Bouton abonnement Stripe (solo plan uniquement)
   const _abEl = document.getElementById('sp-abonnement');
