@@ -1002,7 +1002,7 @@ async function loadData(){
     // Filtre période — par défaut 6 mois (rétention PMS réglementaire)
     const _loadPeriodSel = document.getElementById('filter-load-period');
     const _loadMonths = _loadPeriodSel ? parseInt(_loadPeriodSel.value)||6 : 6;
-    const _loadSince = new Date(Date.now() - _loadMonths*30*24*3600*1000).toISOString().slice(0,10);
+    const _loadSince = (typeof toLocalYMD==='function'?toLocalYMD(new Date(Date.now() - _loadMonths*30*24*3600*1000)):new Date(Date.now() - _loadMonths*30*24*3600*1000).toISOString().slice(0,10));
     _records=await _get('pms_records',`select=*&order=recorded_at.desc&limit=5000&recorded_at=gte.${_loadSince}${tenantFilter}`);
     // Charger la config des enceintes par site
     try {
@@ -1069,7 +1069,7 @@ async function loadData(){
 
 function populateFilters(){
   const moisSet=[...new Set(_records.map(r=>r.recorded_at?.slice(0,7)).filter(Boolean))].sort().reverse();
-  const curM=new Date().toISOString().slice(0,7);
+  const curM=(typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
   // Mois — par défaut "Tous les mois" si des données existent sur plusieurs mois
   [document.getElementById('filter-mois'),document.getElementById('filter-mois-m')].forEach(el=>{
     if(!el)return;
@@ -1621,8 +1621,13 @@ function _siteTerr(code){
 // ALERTES ENCEINTES — enceintes non relevées HIER
 // ════════════════════════════════════════════════════════════
 function getYesterdayStr(){
-  const d=new Date(); d.setDate(d.getDate()-1);
-  return d.toISOString().slice(0,10);
+  try {
+    const d=new Date(); d.setDate(d.getDate()-1);
+    return (typeof toLocalYMD==='function'?toLocalYMD(d):d.toISOString().slice(0,10));
+  } catch(e) {
+    const d=new Date(); d.setDate(d.getDate()-1);
+    return d.toISOString().slice(0,10);
+  }
 }
 
 function checkEnceinteAlerts(){
@@ -1711,7 +1716,7 @@ function renderOverview(){
   const nb    = recs.length;
   const _alertBanner = renderEnceinteAlerts();
   const f0    = getFilters();
-  const mois0 = f0.mois || new Date().toISOString().slice(0,7);
+  const mois0 = f0.mois || (typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
   const pct   = pmsWeightedScore(recs, mois0) ?? 100;
   const colGlob = pct>=90?'#16a34a':pct>=75?'#d97706':'#dc2626';
 
@@ -2014,8 +2019,8 @@ function renderOverview(){
     <div class="ov-period-btns">
       ${[
         {lbl:'Ce mois', val: mois0},
-        {lbl:'Mois préc.', val: (()=>{const d=new Date(mois0+'-01');d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})()},
-        {lbl:'3 mois',   val: (()=>{const d=new Date(mois0+'-01');d.setMonth(d.getMonth()-2);return d.toISOString().slice(0,7);})()},
+        {lbl:'Mois préc.', val: (()=>{try{const d=new Date(mois0+'-01T12:00');d.setMonth(d.getMonth()-1);return toLocalYMD(d).slice(0,7);}catch(e){return mois0;}})()},
+        {lbl:'3 mois',   val: (()=>{try{const d=new Date(mois0+'-01T12:00');d.setMonth(d.getMonth()-2);return toLocalYMD(d).slice(0,7);}catch(e){return mois0;}})()},
       ].map(p=>`<button class="ov-period-btn ${f0.mois===p.val||(!f0.mois&&p.val===mois0)?'on':''}" onclick="(function(){var el=document.getElementById('filter-mois');if(el){el.value='${p.val}';applyFilters();}})()">${p.lbl}</button>`).join('')}
     </div>
   </div>
@@ -4527,7 +4532,7 @@ function openResetPassword(userId, userName) {
 
 function generateComparePDF() {
   const f = getFilters();
-  const moisFilter = f.mois || new Date().toISOString().slice(0,7);
+  const moisFilter = f.mois || (typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
   const siteFilter = f.site || '';
   const secteurFilter = f.secteur || '';
 
@@ -5616,7 +5621,7 @@ function buildRequestedPhotoItems(){
         dateIso: dtIso,
         dateLabel: dt ? dt.toLocaleString('fr-FR') : '—',
         weekKey: _weekKeyFromIso(dtIso),
-        monthKey: dt && !Number.isNaN(dt.getTime()) ? dt.toISOString().slice(0,7) : 'Mois inconnu',
+        monthKey: dt && !Number.isNaN(dt.getTime()) ? (typeof toLocalYMD==='function'?toLocalYMD(dt):dt.toISOString().slice(0,10)).slice(0,7) : 'Mois inconnu',
       });
     });
   });
@@ -5713,7 +5718,7 @@ function renderPhotos() {
     var siteId   = r.site_id || '—';
     var siteName = site ? site.name : siteId;
     var dt = r.recorded_at ? new Date(r.recorded_at) : null;
-    var dateKey   = dt ? dt.toISOString().slice(0,10) : 'inconnu';
+    var dateKey   = dt ? (typeof toLocalYMD==='function'?toLocalYMD(dt):dt.toISOString().slice(0,10)) : 'inconnu';
     var dateLabel = dt ? dt.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}) : '—';
 
     var cat = ENR_LABELS[r.enr_type] || (r.enr_type ? r.enr_type.toUpperCase() : '—');
@@ -6510,8 +6515,8 @@ function renderGMO() {
             <div class="gmo-site-label">📅 Date de visite</div>
             <div style="position:relative">
               <input type="date" id="gmo-date" 
-                value="${new Date().toISOString().slice(0,10)}"
-                max="${new Date().toISOString().slice(0,10)}"
+                value="${typeof today==='function'?today():toLocalYMD(new Date())}"
+                max="${typeof today==='function'?today():toLocalYMD(new Date())}"
                 onchange="gmoUpdateDateDisplay(this.value)"
                 style="position:absolute;inset:0;opacity:0;cursor:pointer;z-index:2;width:100%;height:100%">
               <div class="gmo-date-btn has-date" id="gmo-date-btn" style="pointer-events:none">
@@ -6976,7 +6981,7 @@ function updateGmoLiveScore() {
 
 function renderCompare() {
   const f = getFilters();
-  const moisFilter = f.mois || new Date().toISOString().slice(0,7);
+  const moisFilter = f.mois || (typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
 
   // Appliquer le filtre site si sélectionné
   const siteFilter = f.site || '';
@@ -7532,7 +7537,7 @@ const PAGE_ENR_CFG = {
 
 function printTempPDF(){
   const f=getFilters();
-  const mois=f.mois||new Date().toISOString().slice(0,7);
+  const mois=f.mois||(typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
   const siteFilter=f.site||null;
   const [y,m]=mois.split('-').map(Number);
   const now=new Date();
@@ -7808,7 +7813,7 @@ function _initTempCharts(days) {
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(endDate);
     d.setDate(d.getDate() - i);
-    dateArr.push(d.toISOString().slice(0, 10));
+    dateArr.push(typeof toLocalYMD==='function'?toLocalYMD(d):d.toISOString().slice(0,10));
   }
 
   // Grouper par enc_id
@@ -7921,7 +7926,7 @@ function _initOverviewTrendChart() {
   for (let i = 13; i >= 0; i--) {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
-    dateArr.push(d.toISOString().slice(0, 10));
+    dateArr.push(typeof toLocalYMD==='function'?toLocalYMD(d):d.toISOString().slice(0,10));
   }
 
   const byDay = {};
@@ -7934,7 +7939,7 @@ function _initOverviewTrendChart() {
   _records.forEach(r => {
     if (r._deleted || (r.data && r.data._deleted)) return;
     if (scopedTrend && !scopedTrend.has(r.site_id)) return;
-    const day = r.recorded_at?.slice(0, 10);
+    const day = r.recorded_at ? (typeof toLocalYMD==='function'?toLocalYMD(new Date(r.recorded_at)):r.recorded_at.slice(0,10)) : null;
     if (day && byDay[day] !== undefined) {
       byDay[day].total++;
       if (isNC(r)) byDay[day].nc++;
@@ -7980,7 +7985,7 @@ function _initOverviewTrendChart() {
 }
 
 function _quickExportPDF() {
-  const curM = new Date().toISOString().slice(0, 7);
+  const curM = (typeof today==='function'?today():toLocalYMD(new Date())).slice(0, 7);
   const recs = _records.filter(r => r.recorded_at?.startsWith(curM));
   if (recs.length === 0) { showToast('Aucune saisie ce mois', 'warn'); return; }
 
@@ -8042,7 +8047,7 @@ function _renderCardsForType(type, cfg, recs) {
   if (type === 'temperatures' && recs.some(r=>r.enr_type==='enr19')) {
     const enr19 = recs.filter(r=>r.enr_type==='enr19');
     const autres = recs.filter(r=>r.enr_type!=='enr19');
-    const _mBan=getFilters().mois||new Date().toISOString().slice(0,7);
+    const _mBan=getFilters().mois||(typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
     const _a=calcEnr19Assiduite(recs, _mBan);
     let html = '';
     // Boutons PDF + toggle canicule
@@ -8402,7 +8407,7 @@ function _openFirstPhoto(recId, type) {
 }
 function renderRapports() {
   const moisSet = [...new Set(_records.map(r=>r.recorded_at?.slice(0,7)).filter(Boolean))].sort().reverse();
-  const curM = new Date().toISOString().slice(0,7);
+  const curM = (typeof today==='function'?today():toLocalYMD(new Date())).slice(0,7);
 
   const curMLabel = new Date().toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
   let html = `
@@ -8529,7 +8534,7 @@ async function generatePDF() {
     const siteCode   = siteObj?.code || site || '';
     const sectorObj  = siteObj ? _sectors.find(s => s.id === siteObj.sector_id) : null;
     const terrObj    = sectorObj ? _territories.find(t => t.id === sectorObj.territory_id) : null;
-    const periodeStr = dateFrom ? `${dateFrom} → ${dateTo||new Date().toISOString().slice(0,10)}` : (mois === 'all' ? 'Toutes périodes' : (mois || 'Toutes périodes'));
+    const periodeStr = dateFrom ? `${dateFrom} → ${dateTo||(typeof today==='function'?today():toLocalYMD(new Date()))}` : (mois === 'all' ? 'Toutes périodes' : (mois || 'Toutes périodes'));
     const genDate    = new Date().toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
     const genTime    = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
 

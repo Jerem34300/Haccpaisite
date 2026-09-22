@@ -18,8 +18,22 @@
         });
   }
 
-  // ── Date / heure ──
-  var today  = () => new Date().toISOString().slice(0, 10);
+  // ── Date / heure (calendrier local Europe/Paris — pas UTC) ──
+  // toLocalYMD : jour civil local YYYY-MM-DD (évite le décalage toISOString UTC).
+  // Ne pas utiliser pour recorded_at / _created (timestamps UTC réels).
+  function toLocalYMD(d) {
+    try {
+      d = (d instanceof Date) ? d : new Date(d == null ? Date.now() : d);
+      if (isNaN(d.getTime())) d = new Date();
+      var y = d.getFullYear();
+      var m = String(d.getMonth() + 1).padStart(2, '0');
+      var day = String(d.getDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    } catch (e) {
+      try { return new Date().toISOString().slice(0, 10); } catch (e2) { return ''; }
+    }
+  }
+  var today  = function () { return toLocalYMD(new Date()); };
   var nowT   = () => new Date().toTimeString().slice(0, 5);
   var nowDT  = () => new Date().toISOString().slice(0, 16);
 
