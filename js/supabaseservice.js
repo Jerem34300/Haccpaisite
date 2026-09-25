@@ -47,7 +47,7 @@ const SupaEngine = (() => {
         raw = String(detail || '');
       } else {
         raw = String(statusOrMsg || detail || '');
-        const m = raw.match(/\b(401|403|404|409)\b/);
+        const m = raw.match(/\b(400|401|403|404|409)\b/);
         if (m) status = parseInt(m[1], 10);
       }
       let human;
@@ -55,6 +55,9 @@ const SupaEngine = (() => {
       else if (status === 403) human = 'Accès refusé (403) — droits sync / Storage insuffisants';
       else if (status === 404) human = 'Ressource sync introuvable (404) — vérifiez la configuration Supabase';
       else if (status === 409) human = 'Conflit de synchronisation (409) — saisie déjà présente ou conflit';
+      else if (status === 400 && /23502|id_operateur|null value/i.test(raw))
+        human = 'Sync refusée (400) — opérateur manquant (id_operateur) — vérifiez la session cuisinier';
+      else if (status === 400) human = 'Sync refusée (400)' + (raw ? ' — ' + raw.slice(0, 80) : '');
       else human = 'Erreur de synchronisation' + (raw ? ' — ' + raw.slice(0, 80) : '');
       // force:true → visible même si pin-modal ouvert (toast cuisine ignore sinon)
       let shown = false;
@@ -92,6 +95,7 @@ const SupaEngine = (() => {
             anonKey: lc.anonKey || _PMS_KEY_DEFAULT,
             userToken: lc.userToken,
             refreshToken: lc.refreshToken || '',
+            userId: lc.userId || '',
             siteId: lc.siteId,
             siteNom: lc.siteNom || '',
             tenantId: lc.tenantId || '',
@@ -392,6 +396,62 @@ const SupaEngine = (() => {
     return { uploaded, failed };
   }
 
+
+  // Décode sub (user UUID) depuis un JWT — fallback si cfg.userId absent
+  function _jwtSub(token) {
+    try {
+      if (!token || typeof token !== 'string') return '';
+      const parts = token.split('.');
+      if (parts.length < 2) return '';
+      const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const pad = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+      const payload = JSON.parse(atob(pad));
+      return payload && payload.sub ? String(payload.sub) : '';
+    } catch (e) { return ''; }
+  }
+
+  // Résout nom + UUID opérateur (session PIN / profiles / JWT) pour les triggers
+  // typed-tables (ex. enr01_temp_stockage.id_operateur NOT NULL → 23502).
+  function _resolveOperateurMeta(data) {
+    const out = { name: '', id: '' };
+    try {
+      const d = data || {};
+      const name = String(
+        d.cuisinier || d.operateur || d.enc_chef || d.nom_fct || d.visa ||
+        (typeof getActiveSession === 'function' ? (getActiveSession() || '') : '') ||
+        ''
+      ).trim();
+      out.name = name;
+      const map = (typeof S !== 'undefined' && S.config && S.config.chefIds) ? S.config.chefIds : {};
+      if (name && map[name]) {
+        out.id = String(map[name]);
+      } else if (name && map && typeof map === 'object') {
+        const lower = name.toLowerCase();
+        for (const k of Object.keys(map)) {
+          if (String(k).toLowerCase() === lower) { out.id = String(map[k]); break; }
+        }
+      }
+      if (!out.id) {
+        const c = cfg();
+        out.id = String(c.userId || _jwtSub(c.userToken) || '');
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  }
+
+  function _enrichOperateur(data) {
+    try {
+      if (!data || typeof data !== 'object') return data;
+      const meta = _resolveOperateurMeta(data);
+      if (meta.name) {
+        if (!data.operateur) data.operateur = meta.name;
+        if (!data.cuisinier) data.cuisinier = meta.name;
+      }
+      if (meta.id && !data.id_operateur) data.id_operateur = meta.id;
+    } catch (e) { /* ignore */ }
+    return data;
+  }
+
   function enqueue(enrType, record) {
     if (!isEnabled()) {
       // Debug : afficher pourquoi on skip
@@ -413,6 +473,8 @@ const SupaEngine = (() => {
 
     // Copier les données telles quelles (photos incluses — thumb = ~5 Ko)
     const data = {...record};
+    // P0 : id_operateur / operateur pour triggers typed-tables (23502 enr01_temp_stockage)
+    _enrichOperateur(data);
 
     // Capturer la pleine résolution depuis _pendingPhotos (en mémoire, avant nettoyage)
     // _pendingPhotos est défini globalement dans le PMS
@@ -494,12 +556,22 @@ const SupaEngine = (() => {
     const c = cfg();
     // Toujours garantir un token valide avant d'envoyer (gere JWT expired)
     const authToken = await _ensureFreshToken(c);
+    // Anon key ≠ JWT user : RLS INSERT + triggers auth.uid()/id_operateur échouent (401/403/23502)
+    if (!authToken || authToken === c.anonKey || authToken === _PMS_KEY_DEFAULT) {
+      _supaLog('❌ Flush annulé — JWT session manquant/expiré (anon only)');
+      _toastSyncError(401, 'JWT manquant');
+      _flushing = false;
+      _updateBadge('error');
+      return;
+    }
     let hasError = false;
     let syncedCount = 0;
     let totalPhotos = 0;
 
     for (const entry of pending) {
       try {
+        // Ré-enrichir (queue ancienne / widget sans id_operateur)
+        try { entry.data = entry.data || {}; _enrichOperateur(entry.data); } catch (_e) {}
         // ── 1. Uploader les photos vers Storage ──────
         const hasPhotos = Object.values(entry.data||{}).some(_isB64Photo) || !!entry._fullPhotos;
         if (hasPhotos) {
@@ -572,7 +644,7 @@ const SupaEngine = (() => {
               continue;
             }
           }
-          if (r.status === 401 || r.status === 403 || r.status === 404 || r.status === 409) {
+          if (r.status === 400 || r.status === 401 || r.status === 403 || r.status === 404 || r.status === 409) {
             _toastSyncError(r.status, errTxt);
           }
           throw new Error(`HTTP ${r.status}${errTxt?' — '+errTxt.slice(0,80):''}`);
@@ -589,7 +661,7 @@ const SupaEngine = (() => {
         entry.next_retry_at = new Date(Date.now() + Math.min(3000 * Math.pow(2, entry.retries - 1), 48000)).toISOString();
         hasError = true;
         _supaLog(`⚠️ ${entry.enr_type} erreur (essai ${entry.retries}) : ${e.message}`);
-        if (/\b(401|403|404|409)\b/.test(String(e.message||''))) {
+        if (/\b(400|401|403|404|409)\b/.test(String(e.message||''))) {
           _toastSyncError(e.message);
         }
       }
@@ -630,38 +702,54 @@ const SupaEngine = (() => {
     } catch(e) {
       _supaLog(`❌ Impossible de joindre Supabase : ${e.message}`); ok=false;
     }
-    // Tester bucket Storage — upload d'un fichier test
+    // Tester bucket Storage — upload 1×1 JPEG (allowed_mime_types = jpeg/png/webp)
+    // Ancien text/plain → HTTP 400 MIME → toast 403 faux « droits Storage insuffisants »
     try {
-      const testBlob = new Blob(['ok'], { type: 'text/plain' });
-      const testPath = `_test/cnx_${Date.now()}.txt`;
+      const jpegB64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA8A/9k=';
+      const bin = atob(jpegB64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const testBlob = new Blob([arr], { type: 'image/jpeg' });
+      const testPath = `_test/cnx_${Date.now()}.jpg`;
       const testToken = await _ensureFreshToken(c);
-      const r2 = await fetch(`${c.url}/storage/v1/object/pms-photos/${testPath}`, {
-        method: 'POST',
-        headers: {
-          'apikey': c.anonKey,
-          'Authorization': `Bearer ${testToken}`,
-          'Content-Type': 'text/plain',
-          'x-upsert': 'true',
-        },
-        body: testBlob,
-      });
-      if (r2.ok || r2.status===200) {
-        _supaLog('✅ Bucket pms-photos OK — photos activees');
-      } else if (r2.status===404) {
-        _supaLog('⚠️ Bucket pms-photos introuvable — verifiez Supabase Storage');
-        _toastSyncError(404);
-        ok = false;
-      } else if (r2.status===403 || r2.status===400) {
-        const t2 = await r2.text().catch(()=>'');
-        _supaLog('❌ Bucket pms-photos : acces refuse (403) — ajoutez les 2 politiques RLS Storage dans Supabase');
-        _supaLog('SQL a coller dans Supabase SQL Editor :');
-        _supaLog("CREATE POLICY \"auth_upload\" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = \'pms-photos\');");
-        _supaLog("CREATE POLICY \"auth_update\" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = \'pms-photos\');");
-        _toastSyncError(r2.status === 400 ? 403 : r2.status);
+      if (!testToken || testToken === c.anonKey || testToken === _PMS_KEY_DEFAULT) {
+        _supaLog('⚠️ Storage non testé — JWT session manquant (reconnectez-vous)');
+        _toastSyncError(401, 'JWT manquant pour Storage');
         ok = false;
       } else {
-        const t2 = await r2.text().catch(()=>'');
-        _supaLog(`⚠️ Storage HTTP ${r2.status} — ${t2.slice(0,80)}`);
+        const r2 = await fetch(`${c.url}/storage/v1/object/pms-photos/${testPath}`, {
+          method: 'POST',
+          headers: {
+            'apikey': c.anonKey,
+            'Authorization': `Bearer ${testToken}`,
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true',
+          },
+          body: testBlob,
+        });
+        if (r2.ok || r2.status===200) {
+          _supaLog('✅ Bucket pms-photos OK — photos activees');
+        } else if (r2.status===404) {
+          _supaLog('⚠️ Bucket pms-photos introuvable — verifiez Supabase Storage');
+          _toastSyncError(404);
+          ok = false;
+        } else if (r2.status===403) {
+          const t2 = await r2.text().catch(()=>'');
+          _supaLog('❌ Bucket pms-photos : acces refuse (403) — politiques RLS Storage');
+          _supaLog('SQL a coller dans Supabase SQL Editor :');
+          _supaLog("CREATE POLICY \"auth_upload\" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = \'pms-photos\');");
+          _supaLog("CREATE POLICY \"auth_update\" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = \'pms-photos\');");
+          _toastSyncError(403, t2);
+          ok = false;
+        } else if (r2.status===400) {
+          const t2 = await r2.text().catch(()=>'');
+          _supaLog(`⚠️ Storage HTTP 400 (MIME/limites) — ${t2.slice(0,80)}`);
+          _toastSyncError(400, t2);
+          ok = false;
+        } else {
+          const t2 = await r2.text().catch(()=>'');
+          _supaLog(`⚠️ Storage HTTP ${r2.status} — ${t2.slice(0,80)}`);
+        }
       }
     } catch(e) {
       _supaLog(`⚠️ Storage : ${e.message}`);

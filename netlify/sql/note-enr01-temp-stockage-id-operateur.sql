@@ -1,0 +1,22 @@
+-- Note P0 (v419) — id_operateur sur enr01_temp_stockage
+-- -----------------------------------------------------------------
+-- Contexte : un trigger / mirror live (hors schema.sql versionné) copie
+-- les inserts pms_records (enr_type enr19/enr21 — T°C stockage) vers la
+-- table typée enr01_temp_stockage. La colonne id_operateur y est NOT NULL
+-- → Postgres 23502 si absente.
+--
+-- Client (v419+) pousse désormais dans pms_records.data :
+--   data.id_operateur  = UUID profil (match cuisinier/session) ou JWT sub
+--   data.operateur     = nom affiché (Samira, …)
+--   data.cuisinier     = idem
+--
+-- Côté trigger, lire en priorité :
+--   NEW.data->>'id_operateur'
+-- puis fallback auth.uid() si présent.
+-- Ne PAS laisser id_operateur NULL (contrainte 23502).
+--
+-- Storage 403 faux positif : le test connexion client uploadait du
+-- text/plain alors que allowed_mime_types = jpeg/png/webp
+-- (fix-pms-photos-limits.sql) → HTTP 400 mappé en toast 403.
+-- Corrigé client v419 (upload JPEG 1×1). Les policies
+-- pms_photos_auth_insert / update (schema.sql) restent la source de vérité.

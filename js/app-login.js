@@ -150,6 +150,7 @@ async function doLogin() {
         userToken: data.access_token,
         token: data.access_token,
         refreshToken: data.refresh_token || '',
+        userId: data.user?.id || '',
         userEmail: email,
         email: email,
         siteId: siteCode,
