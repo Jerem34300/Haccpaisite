@@ -163,8 +163,9 @@ const SupaEngine = (() => {
             _supaLog('[TOKEN] Rafraichi via refresh_token');
             return d2.access_token;
           }
-        } else if (r.status === 401 || r.status === 403) {
-          // Refresh rejeté → JWT stocké inutilisable ; purger pour éviter 401 /sites en boucle
+        } else if (r.status === 400 || r.status === 401 || r.status === 403) {
+          // 400 = refresh invalide / Already Used (GoTrue) — purger sinon boucle 400 à chaque flush
+          // 401/403 = session rejetée
           _supaLog('[TOKEN] refresh rejeté HTTP ' + r.status + ' — purge token périmé');
           c.userToken = '';
           c.refreshToken = '';
@@ -591,7 +592,7 @@ const SupaEngine = (() => {
           client_id: entry.qid,
           ...(entry.tenant_id ? { tenant_id: entry.tenant_id } : (c.tenantId ? { tenant_id: c.tenantId } : {})),
         };
-        const r = await fetch(`${c.url}/rest/v1/pms_records`, {
+        const r = await fetch(`${c.url}/rest/v1/pms_records?on_conflict=client_id`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -635,10 +636,13 @@ const SupaEngine = (() => {
               const patchErr = await rPatch.text().catch(()=>'');
               throw new Error(`PATCH HTTP ${rPatch.status}${patchErr?' — '+patchErr.slice(0,80):''}`);
             } catch(patchE) {
-              // Fallback : si le PATCH échoue aussi, marquer synced quand même (au moins le POST initial était en base)
-              entry.status = 'synced';
-              entry.synced_at = new Date().toISOString();
-              syncedCount++;
+              // Ne PAS marquer synced : POST 409 + PATCH échec = pas confirmé en cloud
+              // (sinon UI « N envoyées / Synchronisé » alors que cloud vide + lastSync jamais)
+              entry.status = 'error';
+              entry.retries = (entry.retries || 0) + 1;
+              entry.last_error = patchE.message;
+              entry.next_retry_at = new Date(Date.now() + Math.min(3000 * Math.pow(2, entry.retries - 1), 48000)).toISOString();
+              hasError = true;
               _supaLog(`⚠️ ${entry.enr_type} POST 409 + PATCH échec : ${patchE.message.slice(0,60)}`);
               _toastSyncError(409, patchE.message);
               continue;
@@ -816,9 +820,23 @@ const SupaEngine = (() => {
       if(txt) txt.textContent=`${st.pending} saisie(s) en attente d'envoi`;
     } else {
       const c2 = cfg();
-      const last = c2.lastSync ? new Date(c2.lastSync).toLocaleString('fr-FR') : 'jamais';
-      if(dot) dot.style.background='#16a34a';
-      if(txt) txt.textContent=`Synchronisé — dernière sync : ${last}`;
+      let lastIso = c2.lastSync || null;
+      // Login cuisinier reconstruit cfg sans lastSync → « jamais » alors que queue a des synced
+      if (!lastIso && st.synced > 0) {
+        try {
+          const times = getQueue().filter(e => e.status === 'synced' && e.synced_at).map(e => e.synced_at).sort();
+          if (times.length) lastIso = times[times.length - 1];
+        } catch (_e) {}
+      }
+      const last = lastIso ? new Date(lastIso).toLocaleString('fr-FR') : 'jamais';
+      if(dot) dot.style.background = (c2.lastSync || lastIso) ? '#16a34a' : '#94a3b8';
+      if(txt) {
+        if (!c2.lastSync && st.synced > 0 && lastIso) {
+          txt.textContent = `Queue locale OK (${st.synced}) — dernière sync cloud incertaine : ${last}`;
+        } else {
+          txt.textContent = `Synchronisé — dernière sync : ${last}`;
+        }
+      }
     }
   }
 
@@ -1001,7 +1019,24 @@ function startSupaTokenRefresh() {
   if (_supaRefreshTimer) clearInterval(_supaRefreshTimer);
   _supaRefreshTimer = setInterval(async () => {
     const c = SupaEngine.cfg();
-    if (!c.refreshToken || !c.url || !c.anonKey) return;
+    if (!c.url || !c.anonKey) return;
+    // Préférer le SDK (autoRefresh) pour éviter la course « Already Used » (HTTP 400)
+    // entre intervalle manuel et supabaseclientinit.js
+    try {
+      if (window._supaClient) {
+        const sess = await window._supaClient.auth.getSession();
+        const s = sess && sess.data && sess.data.session;
+        if (s && s.access_token) {
+          if (s.access_token !== c.userToken || (s.refresh_token && s.refresh_token !== c.refreshToken)) {
+            c.userToken = s.access_token;
+            if (s.refresh_token) c.refreshToken = s.refresh_token;
+            SupaEngine.saveCfgLocal(c);
+          }
+          return;
+        }
+      }
+    } catch (_sdkE) { /* fallback manuel ci-dessous */ }
+    if (!c.refreshToken) return;
     try {
       const r = await fetch(`${c.url}/auth/v1/token?grant_type=refresh_token`, {
         method: 'POST',
@@ -1015,6 +1050,11 @@ function startSupaTokenRefresh() {
           c.refreshToken = data.refresh_token || c.refreshToken;
           SupaEngine.saveCfgLocal(c);
         }
+      } else if (r.status === 400 || r.status === 401 || r.status === 403) {
+        c.userToken = '';
+        c.refreshToken = '';
+        SupaEngine.saveCfgLocal(c);
+        console.warn('[token refresh PMS] HTTP ' + r.status + ' — tokens purgés, reconnectez-vous');
       }
     } catch(e) { console.warn('[token refresh PMS]', e); }
   }, 50 * 60 * 1000);
