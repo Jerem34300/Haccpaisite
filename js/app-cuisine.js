@@ -4117,7 +4117,7 @@ function closeEncSaisie(){
 function saveEncSaisie(){
   if(roCheck())return;
   const temp=(S['enc_modal']?.draft?.enc_temp)||'';
-  const chef=(S['enc_modal']?.draft?.enc_chef)||'';
+  const chef=(S['enc_modal']?.draft?.enc_chef)||getActiveSession()||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
   const ok=encConforme(temp,_encSaisie.consigne);
   let ac={ids:[],names:[],action:''};
@@ -4274,7 +4274,7 @@ function openEncSaisie20(encId, moment){
 function saveEncSaisie20(){
   if(roCheck())return;
   var temp=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_temp)||'';
-  var chef=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_chef)||'';
+  var chef=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_chef)||getActiveSession()||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
   var ok=encConforme(temp,_encSaisie.consigne);
   var ac20={ids:[],names:[],action:''};
@@ -4407,7 +4407,7 @@ function openEncSaisie21(encId){
 function saveEncSaisie21(){
   if(roCheck())return;
   var temp=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_temp)||'';
-  var chef=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_chef)||'';
+  var chef=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_chef)||getActiveSession()||'';
   var motif=(S['enc_modal']&&S['enc_modal'].draft&&S['enc_modal'].draft.enc_motif)||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
   var ok=encConforme(temp,_encSaisie.consigne);
@@ -10483,18 +10483,26 @@ async function _loadFromSupabase() {
 
         // Guard: charger cuisiniers UNIQUEMENT si UUID connu → jamais mélanger les sites
         const profsRes = _siteUuid ? await fetch(
-          `${c.url}/rest/v1/profiles?role=in.(cuisinier,chef_secteur,directeur)&site_id=eq.${encodeURIComponent(_siteUuid)}&select=full_name&limit=100`,
+          `${c.url}/rest/v1/profiles?role=in.(cuisinier,chef_secteur,directeur)&site_id=eq.${encodeURIComponent(_siteUuid)}&select=id,full_name&limit=100`,
           { headers }
         ) : null;
         if (profsRes && profsRes.ok) {
           const profs = await profsRes.json();
           if (Array.isArray(profs) && profs.length > 0) {
             const noms = profs.map(p => p.full_name).filter(Boolean);
+            // Map nom → UUID profil (id_operateur pour triggers typed-tables)
+            const chefIds = {};
+            try {
+              profs.forEach(pr => {
+                if (pr && pr.full_name && pr.id) chefIds[pr.full_name] = pr.id;
+              });
+            } catch(e) {}
             if (noms.length > 0) {
               S.config = S.config || {};
               // Fusionner avec les chefs manuels existants, en gardant la priorité cloud
               const manuels = (S.config.chefs_manuels || []);
               S.config.chefs = [...new Set([...noms, ...manuels])];
+              S.config.chefIds = Object.assign({}, S.config.chefIds || {}, chefIds);
               // Session active hors liste du site courant → drop (visa Jeremie fantôme)
               try {
                 if (S.activeSession && !S.config.chefs.includes(S.activeSession)) {
@@ -10502,6 +10510,10 @@ async function _loadFromSupabase() {
                   if (typeof updateSessHeader === 'function') updateSessHeader();
                 }
               } catch(e){}
+              save();
+            } else if (Object.keys(chefIds).length) {
+              S.config = S.config || {};
+              S.config.chefIds = Object.assign({}, S.config.chefIds || {}, chefIds);
               save();
             }
           }
@@ -16611,6 +16623,7 @@ function init(){
         anonKey: _PMS_KEY_DEFAULT,
         userToken: session.userToken,
         refreshToken: session.refreshToken || '',
+        userId: session.userId || existing.userId || '',
         userEmail: session.userEmail || '',
         tenantId: session.tenantId || '',
         // siteId et siteNom : TOUJOURS depuis la session fraîche, jamais l'ancien
