@@ -146,6 +146,11 @@ async function doLogin() {
       window.location.href = 'dashboard.html';
 
     } else if (ROLES_PMS.includes(role)) {
+      // Préserver lastSync si même site — sinon UI « jamais » avec queue encore synced
+      let prevCfg = {};
+      try { prevCfg = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch (_e) {}
+      const sameSite = !!(prevCfg.siteId && siteCode &&
+        String(prevCfg.siteId).toUpperCase() === String(siteCode).toUpperCase());
       const supaCfg = {
         userToken: data.access_token,
         token: data.access_token,
@@ -161,6 +166,8 @@ async function doLogin() {
         plan: profile.plan || 'solo',
         url: url,
         anonKey: key,
+        lastSync: sameSite ? (prevCfg.lastSync || null) : null,
+        lastPhotoSync: sameSite ? (prevCfg.lastPhotoSync || null) : null,
       };
       localStorage.setItem('haccpro_supa_cfg', JSON.stringify(supaCfg));
       localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(supaCfg));

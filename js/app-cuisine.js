@@ -1449,6 +1449,13 @@ function initHeaderBranding(){
     } else {
       if (liveSite && !cfg.headerNom) cfg.headerNom = liveSite;
       if (liveGrp && !cfg.headerGroupe) cfg.headerGroupe = liveGrp;
+      // Groupe seul stale (headerNom déjà OK via openCuisine) — Restalliance stickait (b413 gap)
+      else if (liveGrp && cfg.headerGroupe && cfg.headerGroupe !== liveGrp &&
+               liveSite && (!cfg.headerNom || cfg.headerNom === liveSite)) {
+        cfg.headerGroupe = liveGrp;
+        try { delete cfg.headerLogo; } catch(e){}
+        S.config = cfg;
+      }
     }
   } catch(e){}
   if(elG&&cfg.headerGroupe)elG.textContent=cfg.headerGroupe;
@@ -3760,8 +3767,9 @@ function syncEnceinteConfig(list){
       data:list,
       updated_at:new Date().toISOString()
     };
-    // Upsert via POST + Prefer: resolution=merge-duplicates
-    fetch(c.url+'/rest/v1/pms_config',{
+    // Upsert : on_conflict requis (sinon Prefer merge-duplicates → HTTP 409)
+    var postUrl=c.url+'/rest/v1/pms_config?on_conflict=site_id,type';
+    fetch(postUrl,{
       method:'POST',
       headers:{
         'apikey':c.anonKey,
@@ -3771,7 +3779,25 @@ function syncEnceinteConfig(list){
       },
       body:JSON.stringify(payload)
     }).then(function(r){
-      if(r.ok) console.log('[HACCPro] Config enceintes synchronisée →',c.siteId);
+      if(r.ok){ console.log('[HACCPro] Config enceintes synchronisée →',c.siteId); return null; }
+      if(r.status===409){
+        return fetch(c.url+'/rest/v1/pms_config?site_id=eq.'+encodeURIComponent(c.siteId)+'&type=eq.enceintes',{
+          method:'PATCH',
+          headers:{
+            'apikey':c.anonKey,
+            'Authorization':'Bearer '+token,
+            'Content-Type':'application/json',
+            'Prefer':'return=minimal'
+          },
+          body:JSON.stringify({ data:list, updated_at:payload.updated_at, tenant_id:payload.tenant_id })
+        });
+      }
+      console.warn('[HACCPro] pms_config enceintes HTTP', r.status);
+      return null;
+    }).then(function(r2){
+      if(!r2) return;
+      if(r2.ok) console.log('[HACCPro] Config enceintes PATCH →',c.siteId);
+      else console.warn('[HACCPro] pms_config enceintes PATCH HTTP', r2.status);
     }).catch(function(){});
   }catch(e){}
 }
