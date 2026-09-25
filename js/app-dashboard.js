@@ -1262,7 +1262,7 @@ const PAGE_TITLES={
   super:'🌐 Super Admin',
   photos:'📷 Photos',nc:'🚨 Non-conformités',
   'pg-reception':'📦 Réceptions ENR23',
-  'pg-tracabilite':'📋 Traçabilité MP ENR31',
+  'pg-tracabilite':'📋 Traçabilité & Étiquetage',
   'pg-ccp':'❄️ CCP',
   'pg-temperatures':'🌡️ Températures',
   'pg-nettoyage':'🧹 Nettoyage',
@@ -1602,7 +1602,7 @@ const CAT_GROUPS = [
   {key:'cuisson',label:'🥘 Cuisson',     ico:'🥘', enrs:['enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr52','enr_tc_distrib','enr_distrib_midi','enr_distrib_soir'], page:'pg-cuisson'},
   {key:'recep',  label:'📦 Réception',   ico:'📦', enrs:['enr23'],                             page:'pg-reception'},
   {key:'nett',   label:'🧹 Nettoyage',   ico:'🧹', enrs:['enr28'],                             page:'pg-nettoyage'},
-  {key:'trac',   label:'📋 Traçabilité', ico:'📋', enrs:['enr31'],                             page:'pg-tracabilite'},
+  {key:'trac',   label:'📋 Traçabilité', ico:'📋', enrs:['enr31','enr34','enr35'],             page:'pg-tracabilite'},
   {key:'temp',   label:'🌡️ Températures',ico:'🌡️', enrs:['enr19','enr20','enr21','enr27','enr26'], page:'pg-temperatures'},
   {key:'suivi',  label:'📋 Suivi',         ico:'📋', enrs:['enr24','enr25','enr_allergenes'],       page:'pg-suivi'},
 ];
@@ -5343,7 +5343,7 @@ const ENR_LABELS = {
 
 // Labels lisibles pour les champs data
 const FIELD_LABELS = {
-  date:'📅 Date', heure:'⏰ Heure', cuisinier:'👤 Cuisinier',
+  date:'📅 Date', heure:'⏰ Heure', cuisinier:'👤 Cuisinier', operateur:'👤 Opérateur', cuisinier34:'👤 Opérateur',
   enc_id:'🧊 Enceinte', enc_label:'🧊 Enceinte', enc_consigne:'🎯 Consigne', motif:'📝 Motif', moment:'⏱ Moment',
   midi_froid_temp:'🌞 T° froid Midi', midi_chaud_temp:'🌞 T° chaud Midi',
   soir_froid_temp:'🌙 T° froid Soir', soir_chaud_temp:'🌙 T° chaud Soir',
@@ -5458,7 +5458,7 @@ function renderSaisies() {
     html += `<tr style="cursor:pointer" onclick="openDetail('${r.id}')" title="Voir le détail">
       <td>
         <div style="font-family:var(--mono);font-size:.78rem;font-weight:700">${dateStr}</div>
-        <div style="font-size:.68rem;color:var(--muted)">${timeStr} · ${d.cuisinier||d.agent||''}</div>
+        <div style="font-size:.68rem;color:var(--muted)">${timeStr} · ${d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||''}</div>
       </td>
       <td><span class="site-badge"><span class="site-dot"></span>${site?.name||r.site_id}</span></td>
       <td><span class="tag tag-info" style="white-space:nowrap">${ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||'—'}</span></td>
@@ -6167,7 +6167,7 @@ function renderNC() {
             <span class="tag tag-info" style="font-size:.68rem">${enrL}</span>
           </div>
           <div style="font-size:.9rem;font-weight:800;color:${cloture?'var(--text)':'#7f1d1d'}">${escH(produit)}</div>
-          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">🏠 ${site?.name||r.site_id} · 📅 ${dateStr} ${timeStr}${d.cuisinier?' · 👤 '+d.cuisinier:''}</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:2px">🏠 ${site?.name||r.site_id} · 📅 ${dateStr} ${timeStr}${(d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent)?' · 👤 '+(d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent):''}</div>
         </div>
         <span style="color:var(--muted);font-size:1rem;flex-shrink:0">›</span>
       </div>
@@ -7398,9 +7398,9 @@ const PAGE_ENR_CFG = {
     },
   },
   tracabilite: {
-    ico:'📋', title:'Traçabilité Matières Premières — ENR31',
-    desc:'Suivi des matières premières : lots, DLC, estampilles, photos étiquettes',
-    enrTypes:['enr31'],
+    ico:'📋', title:'Traçabilité & Étiquetage — ENR31 / 34 / 35',
+    desc:'Matières premières (ENR31), étiquettes de production (ENR34), origine des viandes (ENR35)',
+    enrTypes:['enr31','enr34','enr35'],
     colonnes:[
       {key:'date',        label:'Date',          mono:true},
       {key:'produit',     label:'Produit',       bold:true},
@@ -7408,15 +7408,29 @@ const PAGE_ENR_CFG = {
       {key:'lot',         label:'N° Lot',        mono:true},
       {key:'dlc',         label:'DLC/DDM',       mono:true},
       {key:'estampille',  label:'Estampille'},
+      {key:'statut',      label:'Statut'},
+      {key:'origine',     label:'Origine'},
+      {key:'ne_eleve',    label:'Né/élevé'},
+      {key:'abattu',      label:'Abattu'},
       {key:'tc',          label:'T° réception',  temp:true},
       {key:'cuisinier',   label:'Agent'},
+      {key:'operateur',   label:'Opérateur'},
+      {key:'cuisinier34', label:'Opérateur'},
     ],
     photoFields:['photo','photo2','photo3'],
     confFields:['conforme'],
     cardTitle: r => r.data?.produit || '—',
     cardSub:   r => {
       const d=r.data||{};
-      return [d.fournisseur, d.lot?'Lot:'+d.lot:'', d.dlc?'DLC:'+d.dlc:''].filter(Boolean).join(' · ');
+      const enrL = ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||'';
+      const op = d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||'';
+      if(r.enr_type==='enr34'){
+        return [enrL, d.statut, d.dlc?'DLC:'+d.dlc:'', op?('👤 '+op):''].filter(Boolean).join(' · ');
+      }
+      if(r.enr_type==='enr35'){
+        return [enrL, d.origine||d.ne_eleve||'', op?('👤 '+op):''].filter(Boolean).join(' · ');
+      }
+      return [d.fournisseur, d.lot?'Lot:'+d.lot:'', d.dlc?'DLC:'+d.dlc:'', op?('👤 '+op):''].filter(Boolean).join(' · ');
     },
   },
   ccp: {

@@ -56,6 +56,7 @@ const TRACE_ENR = {
   enr30:           { ico:'🚨', label:'Non-conformité',  color:'#dc2626' },
   enr33:           { ico:'🍱', label:'Plat témoin',     color:'#7c3aed' },
   enr34:           { ico:'🏷️', label:'Étiquette prod.',color:'#1e40af' },
+  enr35:           { ico:'🥩', label:'Origine viandes', color:'#991b1b' },
   enr_tc_distrib:  { ico:'🌡️', label:'T°C Distribution',color:'#16a34a' },
 };
 
@@ -88,6 +89,21 @@ function getMenusForSite(siteCode){
   return getAllMenus()
     .filter(m => !siteCode || m.site_id === siteCode)
     .sort((a,b) => b.menu_date.localeCompare(a.menu_date));
+}
+
+
+function _menuOpName(d){
+  d = d || {};
+  return d.cuisinier || d.operateur || d.cuisinier34 || d.visa || d.agent || '';
+}
+function getMenuScopedCodes(){
+  try {
+    if (typeof getScopedSiteCodes === 'function') {
+      const codes = getScopedSiteCodes();
+      if (Array.isArray(codes) && codes.length) return codes;
+    }
+  } catch (e) {}
+  return (typeof _sites !== 'undefined' ? _sites : []).map(s => s.code).filter(Boolean);
 }
 
 function flatPlats(menu){
@@ -129,10 +145,22 @@ function getEnrLinkedToMenu(menuId, siteCode, menuDate){
 // 2) RENDER : page principale Menus
 // ════════════════════════════════════════════════════
 function renderMenusPage(){
-  const allMenus = getAllMenus();
-  const sites = (typeof _sites !== 'undefined' ? _sites : []);
+  // Scope au filtre siège (site / secteur / territoire) — pas de fuite multi-sites
+  const scopedCodes = getMenuScopedCodes();
+  const scopedSet = new Set(scopedCodes);
+  try {
+    const f = typeof getFilters === 'function' ? getFilters() : {};
+    if (f.site && scopedSet.has(f.site)) {
+      _menuPage.selectedSite = f.site;
+    } else if (_menuPage.selectedSite && !scopedSet.has(_menuPage.selectedSite)) {
+      _menuPage.selectedSite = '';
+    }
+  } catch (e) {}
 
-  // Sélecteur de site (défaut : tous)
+  const allMenus = getAllMenus().filter(m => !scopedSet.size || scopedSet.has(m.site_id));
+  const sites = (typeof _sites !== 'undefined' ? _sites : []).filter(s => !scopedSet.size || scopedSet.has(s.code));
+
+  // Sélecteur de site (défaut : tous les sites du scope)
   const siteOptions = `<option value="">Tous les sites</option>` +
     sites.map(s => `<option value="${escAttr(s.code)}" ${_menuPage.selectedSite===s.code?'selected':''}>${escH(s.name||s.code)}</option>`).join('');
 
@@ -401,7 +429,7 @@ function renderTimelineStep(rec){
   const d = rec.data || {};
   const bits = [];
   if(d.heure) bits.push('🕐 '+d.heure);
-  if(d.cuisinier) bits.push('👨‍🍳 '+d.cuisinier);
+  const op=_menuOpName(d); if(op) bits.push('👨‍🍳 '+escH(op));
   if(d.produit) bits.push('<strong>'+escH(d.produit)+'</strong>');
   if(d.t_debut !== undefined && d.t_debut !== '') bits.push('Début '+escH(d.t_debut)+'°C');
   if(d.t_fin   !== undefined && d.t_fin   !== '') bits.push('Fin '+escH(d.t_fin)+'°C');
@@ -525,7 +553,7 @@ window._menuDashExportPlat = function(platId, menuId){
     const d = r.data || {};
     const bits = [];
     if(d.produit) bits.push(escH(d.produit));
-    if(d.cuisinier) bits.push('👨‍🍳 '+escH(d.cuisinier));
+    const op=_menuOpName(d); if(op) bits.push('👨‍🍳 '+escH(op));
     if(d.t_debut!==undefined&&d.t_debut!=='') bits.push('Début '+escH(d.t_debut)+'°C');
     if(d.t_fin!==undefined&&d.t_fin!=='') bits.push('Fin '+escH(d.t_fin)+'°C');
     if(d.temp_coeur!==undefined&&d.temp_coeur!=='') bits.push('Cœur '+escH(d.temp_coeur)+'°C');

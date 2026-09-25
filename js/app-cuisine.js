@@ -3630,10 +3630,12 @@ const FDEFS={
   enr34:{id:'enr34',title:'🏷️ Étiquettes de production',tag:'ÉTIQUETTE',tagCat:'etiq',
     regle:'Conserver entre 0°C et +3°C.',
     fields:[{id:'produit',label:'Nom du produit',type:'prod'},{id:'statut',label:'Statut',type:'select',opts:['Fabriqué','Entamé','Décongélation']},
-      {id:'date_fab',label:'Date fabrication',inputType:'date',autoDate:true},{id:'heure_fab',label:'Heure',type:'time',autoTime:true},{id:'dlc',label:"À consommer jusqu'au",inputType:'date'}]},
+      {id:'date_fab',label:'Date fabrication',inputType:'date',autoDate:true},{id:'heure_fab',label:'Heure',type:'time',autoTime:true},{id:'dlc',label:"À consommer jusqu'au",inputType:'date'},
+      {id:'operateur',label:"Nom de l'opérateur",type:'chef'}]},
   enr35:{id:'enr35',title:'🥩 Origine des viandes',tag:'ÉTIQUETTE',tagCat:'etiq',
     regle:'Bœuf, porc, ovin, volaille.',
-    fields:[{id:'produit',label:'Nom du produit',type:'prod'},{id:'ne_eleve',label:'Né et élevé'},{id:'abattu',label:'Abattu'},{id:'origine',label:'Origine'}]},
+    fields:[{id:'produit',label:'Nom du produit',type:'prod'},{id:'ne_eleve',label:'Né et élevé'},{id:'abattu',label:'Abattu'},{id:'origine',label:'Origine'},
+      {id:'operateur',label:"Nom de l'opérateur",type:'chef'}]},
   enr36:{id:'enr36',title:'♻️ Étiquettes excédents',tag:'ÉTIQUETTE',tagCat:'etiq',
     regle:'Conserver 0°C–+3°C ou ≥+63°C.',
     fields:[{id:'produit',label:'Nom du produit',type:'prod'},{id:'dlc',label:"À consommer jusqu'au",inputType:'date',autoDate:true},{id:'remise',label:'1ère remise en T°C ?',type:'conf'}]},
@@ -9550,7 +9552,8 @@ function buildGeneralPDF(site,code,mois,moisLabel,dateGen,respName,respRole,sigD
     {id:'enr01',lbl:'❄️ Refroidissements'},{id:'enr02',lbl:'🔥 Remises T°C'},{id:'enr03',lbl:'🔄 Refroid.+Remise'},
     {id:'enr04',lbl:'🥩 Steaks hachés'},{id:'enr05',lbl:'🍟 Fritures'},{id:'enr23',lbl:'📦 Réceptions'},
     {id:'enr26',lbl:'🌡️ Thermomètres'},{id:'enr29',lbl:'👥 Sensibilisation'},{id:'enr30',lbl:'🚨 NC'},
-    {id:'enr31',lbl:'📋 Traçabilité'},{id:'enr33',lbl:'🍱 Plats témoins'},{id:'enr36',lbl:'♻️ Excédents'},
+    {id:'enr31',lbl:'📋 Traçabilité'},{id:'enr33',lbl:'🍱 Plats témoins'},{id:'enr34',lbl:'🏷️ Étiq. prod.'},
+    {id:'enr35',lbl:'🥩 Origine viandes'},{id:'enr36',lbl:'♻️ Excédents'},
   ];
   const recapRows=ALL_SECS.map(s=>{
     const nb=(S[s.id]?.lignes||[]).filter(r=>r.date?.startsWith(mois)).length;
@@ -10175,7 +10178,7 @@ const CONFIG_KEYS = [
 // Clés de saisies à stocker dans pms_records (avec date)
 const SAISIE_SECTIONS = [
   'enr01','enr02','enr03','enr04','enr05','enr06','enr07',
-  'enr19','enr20','enr21','enr23','enr24','enr25','enr26','enr28','enr30','enr31','enr33','enr34','enr36','enr39','enr52','enr53',
+  'enr19','enr20','enr21','enr23','enr24','enr25','enr26','enr28','enr30','enr31','enr33','enr34','enr35','enr36','enr39','enr52','enr53',
   'enr_allergenes','enr_tc_distrib','nett_val','nuisibles_val','notes_home','nc_auto_pending',
 ];
 
@@ -13095,7 +13098,8 @@ function e34qty(delta){
 function e34AddBatch(){
   const d=e34d();
   if(!d.produit){toast('⚠️ Saisissez le nom du produit','warning');return;}
-  const batchEntry={...d, nb:_e34qty, _sel:_e34sel};
+  const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
+  const batchEntry={...d, nb:_e34qty, _sel:_e34sel, cuisinier34:op, cuisinier:op, operateur:op};
   _e34batch.push(batchEntry);
   // Sauvegarder immédiatement dans l'historique (sans attendre l'impression)
   const rec=stampEntry({...batchEntry,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:_e34qty,_dans_lot:true});
@@ -13113,7 +13117,8 @@ function e34Save(){
   const d=e34d();
   if(!d.produit){toast('⚠️ Saisissez le nom du produit','warning');return;}
   const nb=_e34qty;
-  const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb};
+  const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
+  const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb,cuisinier34:op,cuisinier:op,operateur:op};
   const sim=etiqSimule(nb+printAllTotal());
   function doSave(){
     S['enr34']=S['enr34']||{};
@@ -13271,7 +13276,7 @@ function e34RenderHisto(lignes){
         <div style="flex:1;min-width:0">
           <div style="font-size:.92rem;font-weight:800;color:var(--gris)">${escH(r.produit||'—')} <span style="font-size:.72rem;font-weight:600;color:#b89ab6">${r.statut||''}</span></div>
           <div style="font-size:.75rem;color:#b89ab6;margin-top:3px">
-            Fab: ${fabDate} ${r.heure_fab?'à '+r.heure_fab:''}
+            Fab: ${fabDate} ${r.heure_fab?'à '+r.heure_fab:''} · ${escH(r.cuisinier34||r.operateur||r.cuisinier||'')}
           </div>
           <div style="font-size:.78rem;font-weight:700;margin-top:3px">
             <span style="color:#c62828">DLC: ${dlcDate}</span>
