@@ -2619,6 +2619,46 @@ function _enr30HistoTitle(r){
   }catch(e){ return 'NC'; }
 }
 
+function _histoLabel(v){
+  try{
+    const s=String(v==null?'':v).replace(/\s+/g,' ').trim();
+    if(!s||s==='—'||s==='–'||s==='-'||s==='?') return '';
+    return s;
+  }catch(e){ return ''; }
+}
+function _searchHistoTitle(s,r){
+  try{
+    if(s&&s.id==='enr30') return _enr30HistoTitle(r);
+    const direct=_histoLabel(r&&r.produit)||_histoLabel(r&&r.fournisseur)||_histoLabel(r&&r.association)||_histoLabel(r&&r.theme)||_histoLabel(r&&r.num);
+    if(direct) return direct;
+    let zone=_histoLabel(r&&r.zone)||_histoLabel(r&&r.lieu)||_histoLabel(r&&r.place)||_histoLabel(r&&r.salle);
+    let mat=_histoLabel(r&&r.materiel)||_histoLabel(r&&r.equipement);
+    if((!zone||!mat)&&r&&r.ref_id){
+      try{
+        const it=(typeof nettRef==='function'?nettRef():[]).find(x=>x&&x.id===r.ref_id);
+        if(it){
+          if(!zone) zone=_histoLabel(it.zone);
+          if(!mat) mat=_histoLabel(it.materiel);
+        }
+      }catch(e){}
+    }
+    if(zone&&mat) return zone+' — '+mat;
+    if(zone||mat) return zone||mat;
+    return '—';
+  }catch(e){ return '—'; }
+}
+function _nettResolveOperateur(raw){
+  try{
+    const named=_histoLabel(raw);
+    if(named) return named;
+    try{
+      const sess=_histoLabel(typeof getActiveSession==='function'?getActiveSession():'');
+      if(sess) return sess;
+    }catch(e){}
+    return '';
+  }catch(e){ return ''; }
+}
+
 
 // ── Lier un refroidissement (ENR01) à son origine BF + pré-remplir la fiche ──
 function lierRefroid(idx, type) {
@@ -5331,7 +5371,11 @@ function nettNCHandlePhoto(input){
 function saveNettVal(){
   if(!_nettModalId)return;
   const heure=document.getElementById('nett-modal-heure').value;
-  const cuisinier=document.getElementById('nett-modal-chef').value;
+  const cuisinier=_nettResolveOperateur(document.getElementById('nett-modal-chef')&&document.getElementById('nett-modal-chef').value);
+  if(!cuisinier){
+    try{toast('👤 Indiquez le cuisinier (profil en haut) avant d\'enregistrer','warning');}catch(e){}
+    return;
+  }
   const conforme=document.getElementById('nett-modal-conf').value;
   const commentaire=document.getElementById('nett-modal-comment').value.trim();
   // Si NC : photo recommandée mais non-bloquante
@@ -5347,6 +5391,11 @@ function saveNettVal(){
   _doSaveNettVal(heure,cuisinier,conforme,commentaire);
 }
 function _doSaveNettVal(heure,cuisinier,conforme,commentaire){
+  try{ cuisinier=_nettResolveOperateur(cuisinier); }catch(e){ cuisinier=''; }
+  if(!cuisinier){
+    try{toast('👤 Indiquez le cuisinier (profil en haut) avant d\'enregistrer','warning');}catch(e){}
+    return;
+  }
   const nettItems = nettRef();
   const item = nettItems.find(r=>r.id===_nettModalId)||{materiel:'?',zone:'',produit:''};
   const val={
@@ -6161,7 +6210,7 @@ function doSearch(){
     const ncc=items.filter(({r})=>CONF_FIDS.some(f=>r[f]==='NON')).length;
     const keyDisp=gr==='month'?fmtM(k):gr==='day'?fmtDay(k):k;
     const rows=items.slice(0,60).map(({s,r})=>{
-      const prod=s.id==='enr30'?_enr30HistoTitle(r):(r.produit||r.fournisseur||r.association||r.theme||r.num||'—');
+      const prod=(function(){try{return _searchHistoTitle(s,r);}catch(e){return '—';}})();
       const heure=r.heure||r.h||r.h_deb||'';
       const cuisinier=r.cuisinier||r.operateur||r.visa||'';
       const confBadges=CONF_FIDS.filter(f=>r[f]==='OUI'||r[f]==='NON').slice(0,4)
