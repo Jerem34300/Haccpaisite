@@ -5957,18 +5957,47 @@ function nc30Save(forceCloture){
       }
     }
   } catch(e){ try{SupaEngine.enqueue('enr30',S['enr30']?.lignes?.[0]);}catch{} }
-  goTo('enr30');toast(cloture==='OUI'?'✅ NC clôturée':'✅ NC enregistrée (ouverte)','success');
+  // Badge historique « NC ouvertes (N) » : même source que le chip, sans les lignes cloture OUI
+  try{ if(cloture==='OUI') refreshNcOuvertesChip(); }catch(e){}
+  var _ncFromSearch=false;
+  try{ _ncFromSearch=!!(history.state&&history.state.prev==='search'); }catch(e){}
+  if(cloture==='OUI' && _ncFromSearch){
+    try{
+      cur='search';
+      try{ history.pushState({page:'search',prev:'enr30'},'',' '); }catch(e){}
+      renderNav();
+      renderMain();
+      refreshNcOuvertesChip();
+    }catch(e){ goTo('enr30'); }
+  } else {
+    goTo('enr30');
+  }
+  toast(cloture==='OUI'?'✅ NC clôturée':'✅ NC enregistrée (ouverte)','success');
 }
 function nc30Reset(){S['enr30']=S['enr30']||{};S['enr30'].draft={};save();goTo('enr30');}
 
 // ════════════════════════════════════════════════════
 // HISTORIQUE & RECHERCHE AVANCÉE
 // ════════════════════════════════════════════════════
+function ncOuvertesCount(){
+  try{
+    return ((S['enr30']&&S['enr30'].lignes)||[]).filter(r=>r&&r.cloture!=='OUI').length;
+  }catch(e){ return 0; }
+}
+function refreshNcOuvertesChip(){
+  try{
+    const n=ncOuvertesCount();
+    const btn=document.getElementById('nc-ouvertes-chip');
+    if(!btn) return;
+    if(n>0) btn.textContent='📋 NC ouvertes ('+n+')';
+    else btn.remove();
+  }catch(e){}
+}
 function renderSearch(){
-  const ncOuvertes=((S['enr30']&&S['enr30'].lignes)||[]).filter(r=>r.cloture!=='OUI').length;
+  const ncOuvertes=ncOuvertesCount();
   const temoinsPerimes=((S['enr33']&&S['enr33'].lignes)||[]).filter(r=>r.date_destruct&&r.date_destruct<=today()&&!r._jete).length;
   const quickFilters=[
-    ncOuvertes>0?`<button onclick="document.getElementById('sq').value='';document.getElementById('sc').value='ponctuel';document.getElementById('sf-hidden')&&(document.getElementById('sf-hidden').value='');doSearch();setTimeout(()=>{const r=document.getElementById('sr');if(r){[...r.querySelectorAll('.hdi-item')].filter(el=>!el.innerText.includes('clôturée')||el.innerText.includes('ouvert')).forEach(el=>el.style.outline='2px solid #dc2626');}},200)" style="padding:5px 12px;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:20px;font-size:.71rem;font-weight:800;color:#991b1b;cursor:pointer;font-family:inherit;white-space:nowrap">📋 NC ouvertes (${ncOuvertes})</button>`:null,
+    ncOuvertes>0?`<button onclick="document.getElementById('sq').value='';document.getElementById('sc').value='ponctuel';document.getElementById('sf-hidden')&&(document.getElementById('sf-hidden').value='');doSearch();setTimeout(()=>{const r=document.getElementById('sr');if(r){[...r.querySelectorAll('.hdi-item')].filter(el=>!el.innerText.includes('clôturée')||el.innerText.includes('ouvert')).forEach(el=>el.style.outline='2px solid #dc2626');}},200)" style="padding:5px 12px;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:20px;font-size:.71rem;font-weight:800;color:#991b1b;cursor:pointer;font-family:inherit;white-space:nowrap" id="nc-ouvertes-chip">📋 NC ouvertes (${ncOuvertes})</button>`:null,
     temoinsPerimes>0?`<button onclick="document.getElementById('sq').value='';document.getElementById('sc').value='etiq';doSearch()" style="padding:5px 12px;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:20px;font-size:.71rem;font-weight:800;color:#991b1b;cursor:pointer;font-family:inherit;white-space:nowrap">🍱 Témoins périmés (${temoinsPerimes})</button>`:null,
     `<button onclick="document.getElementById('sq').value='';document.getElementById('sc').value='';const hid=document.getElementById('sf-hidden');if(hid)hid.value='${today()}';document.getElementById('sf').value='${today()}';const btn=document.getElementById('dpf-sf-search');if(btn){const sp=btn.querySelector('.dp-val');if(sp){sp.textContent='Aujourd\\'hui';sp.classList.remove('empty');}}doSearch()" style="padding:5px 12px;background:#f0e4f0;border:1.5px solid var(--plum);border-radius:20px;font-size:.71rem;font-weight:800;color:var(--plum);cursor:pointer;font-family:inherit;white-space:nowrap">📅 Aujourd'hui</button>`,
     `<button onclick="document.getElementById('sq').value='';document.getElementById('sc').value='ccp';doSearch()" style="padding:5px 12px;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:20px;font-size:.71rem;font-weight:800;color:#991b1b;cursor:pointer;font-family:inherit;white-space:nowrap">🔴 CCP seulement</button>`,
@@ -6014,6 +6043,7 @@ const fmtDay=s=>{try{return new Date(s+'T12:00:00').toLocaleDateString('fr-FR',{
 
 function doSearch(){
   try{
+  try{ refreshNcOuvertesChip(); }catch(e){}
   const q=(document.getElementById('sq')?.value||'').toLowerCase().trim();
   const cat=document.getElementById('sc')?.value||'';
   // Lire les filtres date depuis sf-hidden OU sf (sf-hidden peut persister entre navigations)
