@@ -2606,8 +2606,53 @@ function _histoRawHidden(v){
     if(s.indexOf('data:image')>=0) return true;
     if(s.length>180 && /base64/i.test(s)) return true;
     if(_HISTO_UUID.test(s.trim())) return true;
+    if(_looksLikePhotoValue(v)) return true;
   }catch(e){}
   return false;
+}
+function _isHistoPhotoKey(k){
+  try{
+    if(!k || k==='signature') return false;
+    if(k==='photo'||k==='photo_nc'||k==='photo2'||k==='photo3'||k==='thumb'||k==='p1_photo'||k==='p2_photo') return true;
+    if(/(^|_)photo\d*$/.test(k) || /_photo$/.test(k)) return true;
+    return false;
+  }catch(e){ return false; }
+}
+function _isStoragePhotoRef(s){
+  try{
+    if(typeof s!=='string') return false;
+    const t=s.trim();
+    if(!t || t.length>500 || /\s/.test(t)) return false;
+    if(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/pms-photos\//.test(t)) return true;
+    if(/^[A-Za-z0-9_.%-]+\/[A-Za-z0-9_.%-]+\/\d{4}-\d{2}-\d{2}\/[^/]+\.(jpe?g|png|webp|gif)$/i.test(t)) return true;
+    return false;
+  }catch(e){ return false; }
+}
+function _looksLikePhotoValue(v){
+  try{
+    if(v==null || v==='') return false;
+    if(typeof v==='object'){
+      if(Array.isArray(v)) return false;
+      const bits=[v.thumb,v.thumb_url,v.url,v.src,v.photo].filter(x=>typeof x==='string'&&x);
+      if(!bits.length) return false;
+      return bits.some(t=>t.indexOf('data:image')===0 || _isStoragePhotoRef(t) || /\/pms-photos\//.test(t));
+    }
+    const s=String(v).trim();
+    if(!s) return false;
+    if(s.indexOf('data:image')>=0) return true;
+    if(_isStoragePhotoRef(s)) return true;
+    if(s.charAt(0)==='{'){
+      try{ return _looksLikePhotoValue(JSON.parse(s)); }catch(e){ return false; }
+    }
+    return false;
+  }catch(e){ return false; }
+}
+function _histoSkipText(k,v){
+  try{
+    if(_histoRawHidden(v) || _looksLikePhotoValue(v)) return true;
+    if(_isHistoPhotoKey(k) && _photoResolve(v)) return true;
+    return false;
+  }catch(e){ return false; }
 }
 function _enr30HistoTitle(r){
   try{
@@ -2749,7 +2794,8 @@ function renderHistoCard(secId,fieldDefs,opts){
         const dataKeys=Object.keys(r).filter(k=>{
           try{
             if(SKIP.includes(k)||IS_NC_RAISON(k)||!r[k]||!String(r[k]).trim()) return false;
-            if(secId==='enr30' && (k==='photo_nc'||k==='photo'||k==='signature'||_histoRawHidden(r[k]))) return false;
+            if(_histoSkipText(k, r[k])) return false;
+            if(k==='signature') return false;
             return true;
           }catch(e){ return false; }
         });
@@ -2761,8 +2807,9 @@ function renderHistoCard(secId,fieldDefs,opts){
           let cls='';
           if(flagConf)cls=val==='OUI'?'conf-oui':'conf-non';
           let disp=IS_TEMP_FID(k)&&val!=='OUI'&&val!=='NON'?`${val}°C`:val;
+          try{ if(_histoSkipText(k, r[k]) || _histoRawHidden(val) || _looksLikePhotoValue(val)) return ''; }catch(e){ return ''; }
           if(secId==='enr30'){
-            try{ if(_histoRawHidden(val)) return ''; disp=escH(disp); }catch(e){ return ''; }
+            try{ disp=escH(disp); }catch(e){ return ''; }
           }
           const raisonNC=flagConf&&val==='NON'?r['nc_raison__'+k]||'':'';
           return`<div class="hdi">
@@ -2772,6 +2819,8 @@ function renderHistoCard(secId,fieldDefs,opts){
           </div>`;
         };
         const grid=[...dataItems.map(k=>mkItem(k,false)),...confItems.map(k=>mkItem(k,true))].join('');
+        let photoCompact='', photoFull='';
+        try{ photoCompact=_histoPhotosHtml(r,true); photoFull=_histoPhotosHtml(r,false); }catch(e){ photoCompact=''; photoFull=''; }
         // Badge auto-NC à compléter
         const isAutoNC=secId==='enr30'&&r._auto===true&&r.cloture!=='OUI';
         const autoNCBadge=isAutoNC?`<span style="background:#dc2626;color:#fff;border-radius:8px;padding:2px 7px;font-size:.62rem;font-weight:900;margin-right:4px">⚡ AUTO — À compléter</span>`:'';
@@ -2788,6 +2837,7 @@ function renderHistoCard(secId,fieldDefs,opts){
               <div class="hr-card-meta">
                 ${r.date_refroid?`❄️ Refr. ${r.date_refroid} → 🔥 Réchauffé ${r.date_rechauff||date}`:date}${heure?' · ⏰'+heure:''}${cuisinier?' · 👨‍🍳'+escH(cuisinier):''}${secId==='enr30'&&r.cloture!=='OUI'?' · <b style="color:#991b1b">Ouverte</b>':''}</div>
               <div class="conf-badges" style="margin-top:5px">${confBadges}</div>
+              ${photoCompact?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${photoCompact}</div>`:''}
             </div>
             <div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">
               ${editNcBtn||''}
@@ -2801,9 +2851,8 @@ function renderHistoCard(secId,fieldDefs,opts){
           </div>
           <div class="hr-card-data">
             <div class="hr-data-grid">${grid}</div>
-            ${r.photo?photoThumb(r.photo,'📷 Étiquette'):''}
-            ${secId==='enr30'&&r.photo_nc?photoThumb(r.photo_nc,'📷 Photo NC'):''}
-            ${r.signature&&r.signature.startsWith('data:')?`<div style="margin-top:6px"><div style="font-size:.65rem;font-weight:700;color:#b89ab6;margin-bottom:3px">✍️ SIGNATURE</div><img src="${r.signature}" style="max-height:50px;max-width:100%;border:1px solid var(--brd);border-radius:8px;background:#fdf8fd" alt="Signature"></div>`:r.signature?`<div style="font-size:.72rem;color:#7A6579;margin-top:4px">✍️ ${escH(r.signature)}</div>`:''}
+            ${photoFull}
+            ${(function(){try{const sig=r.signature; if(!sig||typeof sig!=='string') return ''; if(sig.startsWith('data:image')) return '<div style="margin-top:6px"><div style="font-size:.65rem;font-weight:700;color:#b89ab6;margin-bottom:3px">✍️ SIGNATURE</div><img src="'+escAttr(sig)+'" style="max-height:50px;max-width:100%;border:1px solid var(--brd);border-radius:8px;background:#fdf8fd;cursor:pointer" alt="Signature" onclick="event.stopPropagation();histoPhotoOpen(this)"></div>'; if(_histoSkipText('signature', sig)) return ''; return '<div style="font-size:.72rem;color:#7A6579;margin-top:4px">✍️ '+escH(sig)+'</div>';}catch(e){return '';}})()}
           </div>
         </div>`;
       }).join('')
@@ -3430,14 +3479,26 @@ function renderENR01Histo(){
     const conf=r.conforme==='OUI'?'<span class="bo oui" style="font-size:.65rem">✓ Conforme</span>':r.conforme==='NON'?'<span class="bo non" style="font-size:.65rem">✗ NC</span>':'';
 
     // Data grid pour le détail
-    const dataKeys=Object.keys(r).filter(k=>!['_ts','_sec','_orig','_statut','_enr01_idx','_enr01_ts'].includes(k)&&r[k]&&String(r[k]).trim());
+    const dataKeys=Object.keys(r).filter(k=>{
+      try{
+        if(['_ts','_sec','_orig','_statut','_enr01_idx','_enr01_ts'].includes(k)) return false;
+        if(!r[k]||!String(r[k]).trim()) return false;
+        if(_histoSkipText(k,r[k])) return false;
+        return true;
+      }catch(e){ return false; }
+    });
     const grid=dataKeys.map(k=>{
-      const lbl=FLAB[k]||k;const val=String(r[k]);
-      const isT=IS_TEMP_FID(k)&&val!=='OUI'&&val!=='NON';
-      const isC=IS_CONF_FID(k);
-      const cls=isC?(val==='OUI'?'conf-oui':val==='NON'?'conf-non':''):'';
-      return`<div class="hdi"><div class="hdi-label">${lbl}</div><div class="hdi-val ${cls}">${isT?val+'°C':val}</div></div>`;
+      try{
+        const lbl=FLAB[k]||k;const val=String(r[k]);
+        if(_histoRawHidden(val)||_looksLikePhotoValue(val)) return '';
+        const isT=IS_TEMP_FID(k)&&val!=='OUI'&&val!=='NON';
+        const isC=IS_CONF_FID(k);
+        const cls=isC?(val==='OUI'?'conf-oui':val==='NON'?'conf-non':''):'';
+        return`<div class="hdi"><div class="hdi-label">${lbl}</div><div class="hdi-val ${cls}">${isT?val+'°C':escH(val)}</div></div>`;
+      }catch(e){ return ''; }
     }).join('');
+    let photoCompact='', photoFull='';
+    try{ photoCompact=_histoPhotosHtml(r,true); photoFull=_histoPhotosHtml(r,false); }catch(e){}
 
     return`<div class="hr-card">
       <div class="hr-card-top" onclick="toggleHR(this)">
@@ -3447,6 +3508,7 @@ function renderENR01Histo(){
           <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
             ${stBadge(r._statut)}
             ${bfBadge(r)}
+            ${photoCompact?`<span style="display:inline-flex;gap:6px;flex-wrap:wrap">${photoCompact}</span>`:''}
             <button onclick="event.stopPropagation();etiq33FromENR01(${orig})"
               style="display:inline-flex;align-items:center;gap:4px;font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:20px;background:#fef9c3;border:1.5px solid #ca8a04;color:#78350f;cursor:pointer;font-family:inherit;white-space:nowrap">
               🍱 Témoin
@@ -3463,7 +3525,7 @@ function renderENR01Histo(){
           <span class="hr-expand">▼</span>
         </div>
       </div>
-      <div class="hr-card-data"><div class="hr-data-grid">${grid}</div></div>
+      <div class="hr-card-data"><div class="hr-data-grid">${grid}</div>${photoFull}</div>
     </div>`;
   }).join('');
 
@@ -5268,6 +5330,7 @@ function renderNettHisto(){
           <div style="flex:1;min-width:0">
             <div class="hr-card-main">${escH(materiel)} <span style="font-size:.7rem;font-weight:500;color:#b89ab6">— ${escH(zone)}</span></div>
             <div class="hr-card-meta">${(v.date?v.date.slice(8,10)+'/'+v.date.slice(5,7)+'/'+v.date.slice(0,4):'—')} ${v.heure||''} · 👨‍🍳 ${escH(v.cuisinier||'—')} · <span class="${v.conforme==='OUI'?'conf-oui':'conf-non'}">${v.conforme||'—'}</span></div>
+            ${v.photo_nc?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${photoThumb(v.photo_nc,'📸 Photo NC',true)}</div>`:''}
           </div>
           <div style="display:flex;gap:4px;align-items:flex-start">
             <button onclick="event.stopPropagation();nettDelVal(${i})" style="background:none;border:none;color:#ccc;font-size:.8rem;cursor:pointer;padding:4px;flex-shrink:0" title="Supprimer">🗑</button>
@@ -5280,7 +5343,7 @@ function renderNettHisto(){
             <div class="hdi"><div class="hdi-label">Fréquence</div><div class="hdi-val">${NETT_FREQ_LABEL[item?.freq]||''}</div></div>
             <div class="hdi"><div class="hdi-label">Conforme</div><div class="hdi-val ${v.conforme==='OUI'?'conf-oui':'conf-non'}">${v.conforme||'—'}</div></div>
             ${v.commentaire?`<div class="hdi" style="grid-column:1/-1"><div class="hdi-label">Commentaire NC</div><div class="hdi-val">${escH(v.commentaire)}</div></div>`:''}
-            ${v.photo_nc?(()=>{let src=v.photo_nc;try{const o=JSON.parse(v.photo_nc);src=o.thumb||src;}catch(e){}return`<div class="hdi" style="grid-column:1/-1"><div class="hdi-label">📸 Photo NC</div><div class="hdi-val"><img src="${src}" style="max-width:100%;max-height:150px;border-radius:8px;border:1.5px solid #fca5a5;margin-top:4px">${typeof v.photo_nc==='string'&&v.photo_nc.startsWith('{')?(()=>{try{const o=JSON.parse(v.photo_nc);return o.file?'<div style="font-size:.62rem;color:#6b7280;margin-top:2px">📁 '+o.file+'</div>':'';}catch(e){return'';}})():''}</div></div>`;})():''}
+            ${v.photo_nc?`<div class="hdi" style="grid-column:1/-1">${photoThumb(v.photo_nc,'📸 Photo NC')}</div>`:''}
           </div>
         </div>
       </div>`;
@@ -6215,31 +6278,34 @@ function doSearch(){
       const cuisinier=r.cuisinier||r.operateur||r.visa||'';
       const confBadges=CONF_FIDS.filter(f=>r[f]==='OUI'||r[f]==='NON').slice(0,4)
         .map(f=>`<span class="bo ${r[f]==='OUI'?'oui':'non'}">${FLAB[f]||f}: ${r[f]}</span>`).join(' ');
-      const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&r[f]&&String(r[f]).trim()&&!(s.id==='enr30'&&(f==='photo_nc'||f==='photo'||f==='signature'||_histoRawHidden(r[f])));}catch{return false;}});
+      const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&f!=='signature'&&r[f]&&String(r[f]).trim()&&!_histoSkipText(f,r[f]);}catch{return false;}});
       const dataGrid=dataKeys.map(f=>{
         try{
         const lbl=FLAB[f]||f;const val=String(r[f]);
-        if(s.id==='enr30'&&_histoRawHidden(val)) return '';
+        if(_histoRawHidden(val)||_looksLikePhotoValue(val)||_isHistoPhotoKey(f)) return '';
         const isConf=IS_CONF_FID(f);const isT=IS_TEMP_FID(f);
         const cls=isConf?(val==='OUI'?'conf-oui':val==='NON'?'conf-non':''):'';
         let disp=isT&&val!=='OUI'&&val!=='NON'?`${val}°C`:val;
-        if(s.id==='enr30') disp=escH(disp);
+        disp=escH(disp);
         return`<div class="hdi"><div class="hdi-label">${lbl}</div><div class="hdi-val ${cls}">${disp}</div></div>`;
         }catch{return'';}
       }).join('');
+      let photoCompact='', photoFull='';
+      try{ photoCompact=_histoPhotosHtml(r,true); photoFull=_histoPhotosHtml(r,false); }catch(e){}
       return`<div class="hr-card">
         <div class="hr-card-top" onclick="toggleHR(this)">
           <div>
             <div class="hr-card-main">${escH(prod)}</div>
             <div class="hr-card-meta">${s.short}${heure?' · ⏰'+heure:''}${cuisinier?' · 👨‍🍳'+escH(cuisinier):''}</div>
             <div class="conf-badges" style="margin-top:5px">${confBadges}</div>
+            ${photoCompact?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${photoCompact}</div>`:''}
           </div>
           <div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">
             <span style="font-size:.8rem;color:#b89ab6;cursor:pointer" onclick="${escAttr(s.id==='enr30'?('event.stopPropagation();nc30EditFromHist('+JSON.stringify(String(r._ts||''))+')'):('event.stopPropagation();goTo(\''+s.id+'\')'))}">✏️</span>
             <span class="hr-expand">▼</span>
           </div>
         </div>
-        <div class="hr-card-data"><div class="hr-data-grid">${dataGrid}</div>${s.id==='enr30'&&r.photo_nc?photoThumb(r.photo_nc,'📷 Photo NC'):''}</div>
+        <div class="hr-card-data"><div class="hr-data-grid">${dataGrid}</div>${photoFull}</div>
       </div>`;
     }).join('');
     return`<div style="margin-bottom:14px">
@@ -8303,50 +8369,151 @@ function _photoUpdateFilename(stored, fname){
   } catch{ return stored; }
 }
 
-// Lire une photo stockée (miniature ou base64 legacy)
+// Lire une photo stockée : data URL, JSON {thumb|url|thumb_url}, ou chemin pms-photos
+function _photoResolve(stored){
+  try{
+    if(stored==null || stored==='') return null;
+    if(typeof stored==='string'){
+      const s=stored.trim();
+      if(!s) return null;
+      if(s.charAt(0)==='{'){
+        try{ return _photoResolve(JSON.parse(s)); }catch(e){ return null; }
+      }
+      if(s.indexOf('data:image')===0 || /^https?:\/\//.test(s) || _isStoragePhotoRef(s)) return {src:s, file:''};
+      return null;
+    }
+    if(typeof stored!=='object' || Array.isArray(stored)) return null;
+    const file=(typeof stored.file==='string' && stored.file.indexOf('data:')<0 && stored.file.length<100 && !_HISTO_UUID.test(stored.file.trim())) ? stored.file : '';
+    const cands=[stored.thumb, stored.thumb_url, stored.url, stored.src, stored.photo];
+    let dataSrc='', pathSrc='';
+    cands.forEach(function(c){
+      try{
+        if(typeof c!=='string') return;
+        const t=c.trim();
+        if(!t) return;
+        if(t.indexOf('data:image')===0){ if(!dataSrc) dataSrc=t; return; }
+        if(/^https?:\/\//.test(t) || _isStoragePhotoRef(t) || t.indexOf('/pms-photos/')>=0){ if(!pathSrc) pathSrc=t; }
+      }catch(e){}
+    });
+    const src=dataSrc || pathSrc;
+    if(!src) return null;
+    return {src:src, file:file};
+  }catch(e){ return null; }
+}
+function _photoImgAttrs(src){
+  try{
+    if(!src) return '';
+    if(src.indexOf('data:image')===0) return 'src="'+escAttr(src)+'"';
+    if(/^https?:\/\//.test(src) && src.indexOf('/pms-photos/')<0 && src.indexOf('/storage/v1/')<0) return 'src="'+escAttr(src)+'"';
+    return 'data-psrc="'+escAttr(src)+'"';
+  }catch(e){ return ''; }
+}
 function _photoGetThumb(stored){
-  if(!stored) return '';
-  if(stored.startsWith('{')){ try{ return JSON.parse(stored).thumb||''; }catch{return '';} }
-  return stored; // legacy base64 plein
+  try{ const p=_photoResolve(stored); return p?p.src:''; }catch(e){ return ''; }
 }
 function _photoGetFile(stored){
-  if(!stored) return '';
-  if(stored.startsWith('{')){ try{ return JSON.parse(stored).file||''; }catch{return '';} }
-  return ''; // legacy sans nom
+  try{
+    const p=_photoResolve(stored);
+    if(p && p.file) return p.file;
+    if(!stored || typeof stored!=='string' || !stored.startsWith('{')) return '';
+    const o=JSON.parse(stored);
+    const f=o&&o.file||'';
+    if(!f || f.indexOf('data:')>=0 || _HISTO_UUID.test(String(f).trim())) return '';
+    return f;
+  }catch(e){ return ''; }
+}
+const _HISTO_PHOTO_LABELS={
+  photo:'📷 Photo', photo_nc:'📷 Photo NC', photo2:'📷 Photo 2', photo3:'📷 Photo 3',
+  thumb:'📷 Photo', p1_photo:'📷 Étiquette produit 1', p2_photo:'📷 Étiquette produit 2'
+};
+function _histoPhotoEntries(r){
+  const out=[];
+  try{
+    if(!r || typeof r!=='object') return out;
+    Object.keys(r).forEach(function(k){
+      try{
+        if(k==='signature') return;
+        const v=r[k];
+        if(v==null || v==='') return;
+        if(!_isHistoPhotoKey(k) && !_looksLikePhotoValue(v)) return;
+        if(!_photoResolve(v)) return;
+        const lbl=_HISTO_PHOTO_LABELS[k] || ('📷 '+((typeof FLAB!=='undefined' && FLAB[k]) ? FLAB[k] : k));
+        out.push({key:k, label:lbl, stored:v});
+      }catch(e){}
+    });
+  }catch(e){}
+  return out;
+}
+function _histoPhotosHtml(r, compact){
+  try{
+    return _histoPhotoEntries(r).map(function(p){ return photoThumb(p.stored, p.label, !!compact); }).join('');
+  }catch(e){ return ''; }
 }
 
-// Mini-vignette photo pour afficher dans les fiches
-function photoThumb(stored, label) {
-  if (!stored) return '';
-  const thumb = _photoGetThumb(stored);
-  const fname = _photoGetFile(stored);
-  if(!thumb) return '';
-  const finfo = fname
-    ? '<div style="font-size:.62rem;color:#b89ab6;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📁 '+escH(fname)+'</div>'
-    : '';
-  return `<div style="margin:8px 0">
-    <div style="font-size:.68rem;font-weight:700;color:#b89ab6;margin-bottom:4px">${label||'📷 Photo étiquette'}</div>
-    <img src="${thumb}" style="max-width:100%;max-height:140px;border-radius:8px;border:1.5px solid #e0d0e0;cursor:pointer;object-fit:contain"
-      onclick="photoFullscreen(this.src)" title="Agrandir — photo pleine taille dans Téléchargements">
-    ${finfo}
-  </div>`;
+// Mini-vignette photo (data URL ou chemin storage signé à la volée)
+function photoThumb(stored, label, compact) {
+  try{
+    if (!stored) return '';
+    const resolved = _photoResolve(stored);
+    if(!resolved || !resolved.src) return '';
+    const attrs = _photoImgAttrs(resolved.src);
+    if(!attrs) return '';
+    const fname = resolved.file || '';
+    const finfo = (!compact && fname)
+      ? '<div style="font-size:.62rem;color:#b89ab6;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">📁 '+escH(fname)+'</div>'
+      : '';
+    if(compact){
+      return '<img '+attrs+' alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;border:1.5px solid #e0d0e0;cursor:pointer;flex-shrink:0;background:#f8f0f8" onclick="event.stopPropagation();histoPhotoOpen(this)" title="Agrandir la photo">';
+    }
+    return '<div style="margin:8px 0">'+
+      '<div style="font-size:.68rem;font-weight:700;color:#b89ab6;margin-bottom:4px">'+escH(label||'📷 Photo')+'</div>'+
+      '<img '+attrs+' alt="'+escAttr(label||'Photo')+'" style="max-width:100%;max-height:160px;border-radius:8px;border:1.5px solid #e0d0e0;cursor:pointer;object-fit:contain;background:#fdf8fd" onclick="event.stopPropagation();histoPhotoOpen(this)" title="Agrandir la photo">'+
+      finfo+
+    '</div>';
+  }catch(e){ return ''; }
+}
+
+function histoPhotoOpen(el){
+  try{
+    if(!el) return;
+    const attr=el.getAttribute('src')||'';
+    const psrc=el.getAttribute('data-psrc')||'';
+    const shown=el.currentSrc||'';
+    if(attr.indexOf('data:image')===0){ photoFullscreen(attr); return; }
+    if(shown && /^https?:\/\//.test(shown)){ photoFullscreen(shown); return; }
+    if(psrc){ photoFullscreen(psrc); return; }
+    if(attr && attr.indexOf('data:')!==0) photoFullscreen(attr);
+  }catch(e){}
 }
 
 function photoFullscreen(src) {
-  // src peut être un thumb ou un stored JSON — on prend le thumb
-  const realSrc = src.startsWith('{') ? _photoGetThumb(src) : src;
-  const ov = document.createElement('div');
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;cursor:pointer';
-  ov.onclick = () => document.body.removeChild(ov);
-  const img = document.createElement('img');
-  img.src = realSrc;
-  img.style.cssText = 'max-width:100%;max-height:80vh;border-radius:12px;object-fit:contain';
-  ov.appendChild(img);
-  const close = document.createElement('div');
-  close.style.cssText = 'position:absolute;top:16px;right:16px;color:#fff;font-size:2rem;cursor:pointer;line-height:1';
-  close.textContent = '✕';
-  ov.appendChild(close);
-  document.body.appendChild(ov);
+  try{
+    const raw = (src && String(src).charAt(0)==='{') ? (_photoGetThumb(src)||'') : String(src||'');
+    const show=function(realSrc){
+      try{
+        if(!realSrc) return;
+        const ov = document.createElement('div');
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;cursor:pointer';
+        ov.onclick = function(){ try{ if(ov.parentNode) ov.parentNode.removeChild(ov); }catch(e){} };
+        const img = document.createElement('img');
+        img.src = realSrc;
+        img.alt = 'Photo';
+        img.style.cssText = 'max-width:100%;max-height:85vh;border-radius:12px;object-fit:contain';
+        ov.appendChild(img);
+        const close = document.createElement('div');
+        close.style.cssText = 'position:absolute;top:16px;right:16px;color:#fff;font-size:2rem;cursor:pointer;line-height:1';
+        close.textContent = '✕';
+        ov.appendChild(close);
+        document.body.appendChild(ov);
+      }catch(e){}
+    };
+    if(!raw) return;
+    if(raw.indexOf('data:image')===0 || /^https?:\/\//.test(raw)){ show(raw); return; }
+    if(typeof SupaEngine!=='undefined' && SupaEngine.getSignedPhotoUrl){
+      SupaEngine.getSignedPhotoUrl(raw).then(function(signed){ show(signed||''); }).catch(function(){});
+      return;
+    }
+  }catch(e){}
 }
 
 // ENR23 — Contrôle réception (2 produits par livraison)
@@ -8836,9 +9003,10 @@ function r23HistoCard(){
         <div style="flex:1;min-width:0">
           <div class="hr-card-main">📦 ${escH(r.fournisseur||'—')}</div>
           <div class="hr-card-meta">${dateF} · ${r.cuisinier||''}</div>
-          <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap">
+          <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             <span class="bo ${conf?'oui':'non'}">${conf?'✓ Conforme':'✗ Non conforme'}</span>
             ${r.vehicule==='OUI'?'<span class="bo oui" style="font-size:.6rem">🚚 Véhicule OK</span>':r.vehicule==='NON'?'<span class="bo non" style="font-size:.6rem">🚚 Véhicule ✗</span>':''}
+            ${(function(){try{return _histoPhotosHtml(r,true);}catch(e){return '';}})()}
           </div>
         </div>
         <div style="display:flex;gap:4px;align-items:flex-start">
