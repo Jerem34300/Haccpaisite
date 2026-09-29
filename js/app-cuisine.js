@@ -2775,11 +2775,10 @@ function renderHistoCard(secId,fieldDefs,opts){
         if(secId==='enr35'){
           try{
             const op35=r.cuisinier||r.operateur||r.cuisinier34||r.visa||'';
-            if(op35){
-              const base=(prod&&prod!=='Saisie')?prod:'Origine viandes';
-              if(String(base).indexOf(op35)<0) prod=base+' · '+op35;
-            }
-          }catch(e){}
+            const base=(prod&&prod!=='Saisie')?prod:'Origine viandes';
+            const label=op35||'non renseigné';
+            if(String(base).indexOf(label)<0) prod=base+' · '+label;
+          }catch(e){ console.warn('enr35 histo op', e); }
         }
         const date=r.date||r.dt?.slice(0,10)||'';
         const heure=r.heure||r.h||r.h_deb||r.h_ref_deb||(isEnr19?r.heure:'');

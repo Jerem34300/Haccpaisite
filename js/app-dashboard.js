@@ -7425,7 +7425,8 @@ const PAGE_ENR_CFG = {
       try{
         if(r.enr_type==='enr35'){
           const op=d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||'';
-          if(op && String(base).indexOf(op)<0) return base+' · '+op;
+          const label=op||'non renseigné';
+          if(String(base).indexOf(label)<0) return base+' · '+label;
         }
       }catch(e){}
       return base;
@@ -7438,7 +7439,7 @@ const PAGE_ENR_CFG = {
         return [enrL, d.statut, d.dlc?'DLC:'+d.dlc:'', op?('👤 '+op):''].filter(Boolean).join(' · ');
       }
       if(r.enr_type==='enr35'){
-        return [enrL, d.origine||d.ne_eleve||'', op?('👤 '+op):''].filter(Boolean).join(' · ');
+        return [enrL, d.origine||d.ne_eleve||'', op?('👤 '+op):'non renseigné'].filter(Boolean).join(' · ');
       }
       return [d.fournisseur, d.lot?'Lot:'+d.lot:'', d.dlc?'DLC:'+d.dlc:'', op?('👤 '+op):''].filter(Boolean).join(' · ');
     },
