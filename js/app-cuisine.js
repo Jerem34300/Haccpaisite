@@ -7738,53 +7738,153 @@ function distribSvcSD(svcId,key,val){
 function distribSvcSlotSD(svcId,slot,field,val){ distribSvcSD(svcId,slot+'_'+field,val); }
 function distribSvcSlotGD(svcId,slot,field){ return distribSvcGD(svcId,slot+'_'+field); }
 
-// Sauvegarder un slot (midi ou soir) — structure identique à enr_tc_distrib
-function distribSvcSaveRow(svcId, slot){
-  const svc = getDistribServices().find(s=>s.id===svcId);
-  if(!svc) return;
-  const d = distribSvcDraft(svcId);
-  const date = d.date||today();
-  const k = distribSvcKey(svcId);
-  S[k]=S[k]||{}; S[k].lignes=S[k].lignes||[];
-  const lignes=S[k].lignes;
-  const existIdx=lignes.findIndex(r=>r.date===date);
-  // Pour les distributions, on utilise date+siteId comme clé déterministe
-  // Si la ligne existe déjà (ex: midi déjà sauvé), on garde son _ts MAIS on force un nouvel _ts
-  // pour que SupaEngine re-enqueue avec les données complètes
-  // _ts déterministe basé sur la date → même client_id pour midi et soir du même jour
-  // Quand la ligne existe déjà (midi sauvé), on garde son _ts : même client_id → upsert Supabase
-  const deterministicTs = date + 'T00:00:00.000Z';
-  const existing = existIdx>=0
-    ? {...lignes[existIdx]}             // Garder le _ts original → même client_id → merge
-    : {_ts:deterministicTs,_sec:k,date}; // Nouveau : _ts basé sur date, pas l'heure
-  const confF=distribTempConf(d[slot+'_froid_temp'],'froid');
-  const confC=distribTempConf(d[slot+'_chaud_temp'],'chaud');
-  existing[slot+'_froid_plat']=d[slot+'_froid_plat']||'';
-  existing[slot+'_froid_temp']=d[slot+'_froid_temp']||'';
-  existing[slot+'_froid_conf']=confF==='ok'?'OUI':'NON';
-  existing[slot+'_chaud_plat']=d[slot+'_chaud_plat']||'';
-  existing[slot+'_chaud_temp']=d[slot+'_chaud_temp']||'';
-  existing[slot+'_chaud_conf']=confC==='ok'?'OUI':'NON';
-  existing[slot+'_valide']='OUI';
-  existing[slot+'_cuisinier']=d[slot+'_cuisinier']||getActiveSession()||'';
-  existing[slot+'_heure']=d[slot+'_heure']||nowT();
-  if(existIdx>=0) lignes[existIdx]=existing; else lignes.unshift(existing);
-  save(); autoBackup();
-  try { SupaEngine.enqueue(k, existing); } catch(e){}
-  if(confF==='nc') autoCreateNC(k,'T°C froid NC : '+svc.label+' '+slot,svc.label,'Contrôler');
-  if(confC==='nc') autoCreateNC(k,'T°C chaud NC : '+svc.label+' '+slot,svc.label,'Contrôler');
+// T°C réellement saisie (le curseur affiche 4 / 70 sans écrire le brouillon)
+function distribSvcHasTemp(v){
+  try {
+    if(v===undefined||v===null||v==='') return false;
+    return !isNaN(parseFloat(v));
+  } catch(e){ return false; }
+}
+// 'ok'→OUI, 'nc'→NON, 'nd' (vide) reste vide — ne jamais transformer nd en NON
+function distribSvcConfStored(temp, type){
+  try {
+    if(!distribSvcHasTemp(temp)) return '';
+    const c = distribTempConf(temp, type);
+    if(c==='ok') return 'OUI';
+    if(c==='nc') return 'NON';
+    return '';
+  } catch(e){ return ''; }
+}
+// Ne pas écraser une valeur déjà posée (midi) par un champ vide du slot en cours
+function distribOverlayFilled(base, extra){
+  try {
+    if(!extra || typeof extra!=='object') return base;
+    Object.keys(extra).forEach(function(key){
+      try {
+        const v = extra[key];
+        if(v===undefined||v===null||v==='') return;
+        base[key] = v;
+      } catch(e){}
+    });
+  } catch(e){}
+  return base;
+}
+function distribQueueDayRow(enrType, ts, date){
+  try {
+    const q = JSON.parse(localStorage.getItem('haccp_supa_queue_v1')||'[]');
+    if(!Array.isArray(q)) return null;
+    const hit = q.find(function(e){
+      try {
+        if(!e || e.enr_type!==enrType || !e.data) return false;
+        if(e.data._ts===ts || e.recorded_at===ts) return true;
+        return e.data.date===date;
+      } catch(err){ return false; }
+    });
+    return hit && hit.data ? Object.assign({}, hit.data) : null;
+  } catch(e){ return null; }
+}
+async function distribCloudDayRow(enrType, ts, date){
+  try {
+    if(typeof SupaEngine==='undefined' || !SupaEngine.isEnabled || !SupaEngine.isEnabled()) return null;
+    const c = SupaEngine.cfg();
+    if(!c || !c.url || !c.siteId || !c.anonKey) return null;
+    let authTok = c.userToken || c.anonKey;
+    try {
+      if(typeof SupaEngine._ensureFreshToken==='function')
+        authTok = (await SupaEngine._ensureFreshToken(c)) || c.anonKey;
+    } catch(e){}
+    const headers = { apikey:c.anonKey, Authorization:'Bearer '+(authTok||c.anonKey), Accept:'application/json' };
+    const base = c.url+'/rest/v1/pms_records?site_id=eq.'+encodeURIComponent(c.siteId)
+      +'&enr_type=eq.'+encodeURIComponent(enrType)+'&select=data,recorded_at&limit=5';
+    let rows = [];
+    try {
+      const r1 = await fetch(base+'&recorded_at=eq.'+encodeURIComponent(ts), { headers:headers });
+      if(r1.ok){ const j = await r1.json(); if(Array.isArray(j)) rows = rows.concat(j); }
+    } catch(e){}
+    if(!rows.length){
+      try {
+        const r2 = await fetch(base+'&data->>date=eq.'+encodeURIComponent(date)+'&order=recorded_at.desc', { headers:headers });
+        if(r2.ok){ const j = await r2.json(); if(Array.isArray(j)) rows = rows.concat(j); }
+      } catch(e){}
+    }
+    let best = null, bestScore = -1;
+    rows.forEach(function(row){
+      try {
+        const d = row && row.data;
+        if(!d) return;
+        if(d.date && d.date!==date && row.recorded_at!==ts && d._ts!==ts) return;
+        let score = 0;
+        ['midi_froid_temp','midi_chaud_temp','midi_froid_plat','midi_chaud_plat','midi_froid_conf','midi_chaud_conf','soir_froid_temp','soir_chaud_temp','soir_froid_plat','soir_chaud_plat','soir_froid_conf','soir_chaud_conf'].forEach(function(key){
+          if(d[key]!==undefined && d[key]!==null && d[key]!=='') score++;
+        });
+        if(d._ts===ts || row.recorded_at===ts) score += 10;
+        if(score>bestScore){ bestScore = score; best = d; }
+      } catch(e){}
+    });
+    return best ? Object.assign({}, best) : null;
+  } catch(e){ return null; }
 }
 
-function distribSvcValidate(svcId, slot){
-  if(roCheck()) return;
-  const d = distribSvcDraft(svcId);
-  if(!d[slot+'_froid_temp'] && !d[slot+'_chaud_temp']){ toast('⚠️ Saisissez au moins une T°C','warning'); return; }
-  distribSvcSD(svcId,slot+'_valide','OUI');
-  if(!d[slot+'_cuisinier']) distribSvcSD(svcId,slot+'_cuisinier',getActiveSession()||'');
-  if(!d[slot+'_heure']) distribSvcSD(svcId,slot+'_heure',nowT());
-  distribSvcSaveRow(svcId,slot);
-  toast('✅ Validé et enregistré','success');
-  renderMain();
+// Sauvegarder un slot (midi ou soir) — un jour = un client_id (date T00:00:00.000Z)
+async function distribSvcSaveRow(svcId, slot){
+  try {
+    const svc = getDistribServices().find(s=>s.id===svcId);
+    if(!svc) return;
+    const d = distribSvcDraft(svcId);
+    const date = d.date||today();
+    const k = distribSvcKey(svcId);
+    S[k]=S[k]||{}; S[k].lignes=S[k].lignes||[];
+    const lignes=S[k].lignes;
+    // Un jour, une ligne : midi et soir sont des champs de la même row
+    const deterministicTs = date + 'T00:00:00.000Z';
+    const existIdx=lignes.findIndex(r=>r&&(r.date===date||r._ts===deterministicTs));
+    const localRow = existIdx>=0 ? Object.assign({}, lignes[existIdx]) : null;
+    let cloudRow = null;
+    try { cloudRow = await distribCloudDayRow(k, deterministicTs, date); } catch(e){ cloudRow = null; }
+    let queueRow = null;
+    try { queueRow = distribQueueDayRow(k, deterministicTs, date); } catch(e){ queueRow = null; }
+    // Cloud puis file puis local : un champ vide n'efface pas le service déjà saisi
+    const existing = { _ts:deterministicTs, _sec:k, date:date };
+    distribOverlayFilled(existing, cloudRow);
+    distribOverlayFilled(existing, queueRow);
+    distribOverlayFilled(existing, localRow);
+    existing._ts = deterministicTs;
+    existing._sec = k;
+    existing.date = date;
+    // Curseur 4°C / 70°C = affichage seul. N'écrire la T°C que si le brouillon a une saisie.
+    const tempF = d[slot+'_froid_temp'];
+    const tempC = d[slot+'_chaud_temp'];
+    const confF = distribSvcConfStored(tempF, 'froid');
+    const confC = distribSvcConfStored(tempC, 'chaud');
+    existing[slot+'_froid_plat']=d[slot+'_froid_plat']||'';
+    if(distribSvcHasTemp(tempF)) existing[slot+'_froid_temp']=String(parseFloat(tempF));
+    existing[slot+'_froid_conf']=confF;
+    existing[slot+'_chaud_plat']=d[slot+'_chaud_plat']||'';
+    if(distribSvcHasTemp(tempC)) existing[slot+'_chaud_temp']=String(parseFloat(tempC));
+    existing[slot+'_chaud_conf']=confC;
+    existing[slot+'_valide']='OUI';
+    existing[slot+'_cuisinier']=d[slot+'_cuisinier']||getActiveSession()||existing[slot+'_cuisinier']||'';
+    existing[slot+'_heure']=d[slot+'_heure']||existing[slot+'_heure']||nowT();
+    if(existIdx>=0) lignes[existIdx]=existing; else lignes.unshift(existing);
+    save(); autoBackup();
+    try { SupaEngine.enqueue(k, existing); } catch(e){}
+    if(confF==='NON') autoCreateNC(k,'T°C froid NC : '+svc.label+' '+slot,svc.label,'Contrôler');
+    if(confC==='NON') autoCreateNC(k,'T°C chaud NC : '+svc.label+' '+slot,svc.label,'Contrôler');
+  } catch(e){ console.warn('[distribSvcSaveRow]', e); }
+}
+
+async function distribSvcValidate(svcId, slot){
+  try {
+    if(roCheck()) return;
+    const d = distribSvcDraft(svcId);
+    if(!distribSvcHasTemp(d[slot+'_froid_temp']) && !distribSvcHasTemp(d[slot+'_chaud_temp'])){ toast('⚠️ Saisissez au moins une T°C','warning'); return; }
+    distribSvcSD(svcId,slot+'_valide','OUI');
+    if(!d[slot+'_cuisinier']) distribSvcSD(svcId,slot+'_cuisinier',getActiveSession()||'');
+    if(!d[slot+'_heure']) distribSvcSD(svcId,slot+'_heure',nowT());
+    await distribSvcSaveRow(svcId,slot);
+    toast('✅ Validé et enregistré','success');
+    renderMain();
+  } catch(e){ console.warn('[distribSvcValidate]', e); }
 }
 
 function distribSvcReset(svcId, slot){
@@ -10699,7 +10799,35 @@ async function _loadFromSupabase() {
           try { delete S.config.headerNom; } catch(e){}
           try { delete S.config.headerLogo; } catch(e){}
           S.config.etab = '';
+          // Reliquats site (sinon un PATCH ~10s plus tard réécrit l'ancien site)
+          try { S.config.poubelles = []; } catch(e){}
+          try { S.config.poubellesDone = {}; } catch(e){}
+          try { S.config.enceintes = []; } catch(e){}
+          try { delete S.config.navPort; } catch(e){}
+          try { delete S.config.navLand; } catch(e){}
+          try { delete S.config.themeColor; } catch(e){}
+          try { delete S.config.darkMode; } catch(e){}
+          try { delete S.config.etiqA4Fmt; } catch(e){}
+          try { delete S.config.etiqRestantes; } catch(e){}
+          try { delete S.config.mois; } catch(e){}
+          try { S.config.chefIds = {}; } catch(e){}
+          try { delete S.config.weekAB_offset; } catch(e){}
+          try { delete S.config.caniculeMode; } catch(e){}
+          try { delete S.config.responsable; } catch(e){}
+          try { delete S.config.responsableRole; } catch(e){}
+          try { delete S.config.code; } catch(e){}
+          // d_* déjà retirés ci-dessus ; vider le reste des widgets + version
+          try { S.config.homeWidgets = []; } catch(e){}
+          try { delete S.config.homeWidgetsVer; } catch(e){}
         }
+        try { S.navCfg = {}; } catch(e){}
+        try { S.menus = {}; } catch(e){}
+        try { S.menu_history = []; } catch(e){}
+        try { S.expCfg = {}; } catch(e){}
+        try { delete S._navCollapsed; } catch(e){}
+        try { delete S.adminPin; } catch(e){}
+        try { delete S.adminQ; } catch(e){}
+        try { delete S.adminA; } catch(e){}
         if (S['enr19']) S['enr19'].enceintes = [];
       }
       // Queues / timers liés aux saisies ENR (même origine localStorage)

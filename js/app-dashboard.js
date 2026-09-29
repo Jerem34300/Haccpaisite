@@ -30,7 +30,8 @@ if ('serviceWorker' in navigator) {
 // ── Fonctions isNC déclarées en PREMIER (utilisées dans les 3 blocs) ──────────
 const CONF_KEYS = ['conf_r','conf_rt','conforme','conf_fin','conf_deb','conf_t3',
   'conf1','conf2','conf_f','conf_c','conf_cuisson','conf_glac','conf_prod',
-  'conf_prem','conf_dern','conf_premier','conf_pre','conf_test'];
+  'conf_prem','conf_dern','conf_premier','conf_pre','conf_test',
+  'midi_froid_conf','midi_chaud_conf','soir_froid_conf','soir_chaud_conf'];
 function isNC(r){
   const d=r.data||{};
   // Soft-deleted : exclus des KPIs / scores (restent visibles en histo avec badge)
@@ -1359,9 +1360,18 @@ function showToast(msg,type='info',duration=3000){
 // Utilisé : CCP×20%, Cuisson×20%, Réception×15%, Nettoyage×10%, Traçabilité×10%
 // Total utilisé = 75% → normalisé sur 100
 // ════════════════════════════════════════════════════
+function _pmsEnrInCat(cat, enrType){
+  try {
+    if(!cat || !enrType) return false;
+    if(cat.enrs.indexOf(enrType)>=0) return true;
+    // Services distribution dynamiques : même coefficient que la cuisson
+    if(cat.catKey==='cuisson' && String(enrType).indexOf('enr_distrib_')===0) return true;
+    return false;
+  } catch(e){ return false; }
+}
 const PMS_WEIGHTED_MAP = [
   { catKey:'ccp',     enrs:['enr01','enr02','enr03'],                                                                  coeff:20 },
-  { catKey:'cuisson', enrs:['enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr52'], coeff:20 },
+  { catKey:'cuisson', enrs:['enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr52','enr_tc_distrib','enr_distrib_midi','enr_distrib_soir'], coeff:20 },
   { catKey:'recep',   enrs:['enr23'],                                                                                  coeff:15 },
   { catKey:'nett',    enrs:['enr28'],                                                                                  coeff:10 },
   { catKey:'trac',    enrs:['enr31'],                                                                                  coeff:10 },
@@ -1566,7 +1576,7 @@ function _catPct(catRecs) {
 function pmsWeightedScore(recs, mois) {
   let totalWeight = 0, weightedSum = 0;
   PMS_WEIGHTED_MAP.forEach(cat => {
-    const catRecs = recs.filter(r => cat.enrs.includes(r.enr_type));
+    const catRecs = recs.filter(r => _pmsEnrInCat(cat, r.enr_type));
     if (catRecs.length === 0) return;
     const pct = _catPct(catRecs);
     weightedSum += pct * cat.coeff;
@@ -1582,7 +1592,7 @@ function pmsWeightedScore(recs, mois) {
 function pmsWeightedByCategory(recs, mois) {
   const result = {};
   PMS_WEIGHTED_MAP.forEach(cat => {
-    const catRecs = recs.filter(r => cat.enrs.includes(r.enr_type));
+    const catRecs = recs.filter(r => _pmsEnrInCat(cat, r.enr_type));
     const nb = catRecs.length;
     const nc = catRecs.filter(r => isNC(r)).length;
     const ncClosed = catRecs.filter(r => isNCCloturee(r)).length;
@@ -5973,15 +5983,20 @@ const CONF_LABELS = {
   conf_cuisson:'Cuisson',conf_glac:'Glacière',conf_prod:'Produit',
   conf_premier:'1er plateau',conf_pre:'Pré-refroid.',conf_test:'Test',
   conf_dern:'Dernier plateau',conf_duree:'Durée',conf_prem:'Premier',
+  midi_froid_conf:'T° froid Midi',midi_chaud_conf:'T° chaud Midi',
+  soir_froid_conf:'T° froid Soir',soir_chaud_conf:'T° chaud Soir',
 };
 const CONF_TEMP_MAP = {
   conf_r:'t_ref_fin',conf_rt:'t_fin',conforme:'tc',conf_fin:'t_fin',
   conf_deb:'t_deb',conf_t3:'t3',conf1:'t1',conf2:'t2',
   conf_f:'t_f',conf_c:'t_c',conf_cuisson:'tc',conf_glac:'t_glac',conf_prod:'t_prod',
+  midi_froid_conf:'midi_froid_temp',midi_chaud_conf:'midi_chaud_temp',
+  soir_froid_conf:'soir_froid_temp',soir_chaud_conf:'soir_chaud_temp',
 };
 const ALL_CONF_KEYS=['conf_r','conf_rt','conforme','conf_fin','conf_deb','conf_t3',
   'conf1','conf2','conf_f','conf_c','conf_cuisson','conf_glac','conf_prod',
-  'conf_premier','conf_pre','conf_test','conf_dern','conf_duree','conf_prem'];
+  'conf_premier','conf_pre','conf_test','conf_dern','conf_duree','conf_prem',
+  'midi_froid_conf','midi_chaud_conf','soir_froid_conf','soir_chaud_conf'];
 // ── Variables état Saisies PMS ───────────────────────────────────────────────
 let _filterEnr = '';
 let _sortField = 'date_desc';
@@ -6143,7 +6158,15 @@ function renderNC() {
 
     const actionNames = Array.isArray(d.corrective_action_names) ? d.corrective_action_names.filter(Boolean) : [];
     const actionCustom = d.corrective_action_custom || d.action_custom || '';
-    const actionSummary = d.action || [...actionNames, ...(actionCustom?[actionCustom]:[])].join(' | ');
+    let actionSummary = d.action || [...actionNames, ...(actionCustom?[actionCustom]:[])].join(' | ');
+    try {
+      // NC clôturée : action_cloture d'abord, action seulement si action_cloture est vide
+      if(cloture){
+        const clotAct = (d.action_cloture==null?'':String(d.action_cloture)).trim();
+        const openAct = (d.action==null?'':String(d.action)).trim();
+        actionSummary = clotAct || openAct;
+      }
+    } catch(e){}
     const mainProblem = d.probleme||d.desc||d.description||produit||'';
     const jsArg = (v)=>String(v||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,' ');
     const actionHtml = actionSummary ? `<div style="margin-top:8px;padding:8px;background:#fff;border-radius:8px;border:1px solid #fecaca">
