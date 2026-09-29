@@ -2675,21 +2675,33 @@ function _searchHistoTitle(s,r){
   try{
     if(s&&s.id==='enr30') return _enr30HistoTitle(r);
     const direct=_histoLabel(r&&r.produit)||_histoLabel(r&&r.fournisseur)||_histoLabel(r&&r.association)||_histoLabel(r&&r.theme)||_histoLabel(r&&r.num);
-    if(direct) return direct;
-    let zone=_histoLabel(r&&r.zone)||_histoLabel(r&&r.lieu)||_histoLabel(r&&r.place)||_histoLabel(r&&r.salle);
-    let mat=_histoLabel(r&&r.materiel)||_histoLabel(r&&r.equipement);
-    if((!zone||!mat)&&r&&r.ref_id){
-      try{
-        const it=(typeof nettRef==='function'?nettRef():[]).find(x=>x&&x.id===r.ref_id);
-        if(it){
-          if(!zone) zone=_histoLabel(it.zone);
-          if(!mat) mat=_histoLabel(it.materiel);
-        }
-      }catch(e){}
+    let out=direct;
+    if(!out){
+      let zone=_histoLabel(r&&r.zone)||_histoLabel(r&&r.lieu)||_histoLabel(r&&r.place)||_histoLabel(r&&r.salle);
+      let mat=_histoLabel(r&&r.materiel)||_histoLabel(r&&r.equipement);
+      if((!zone||!mat)&&r&&r.ref_id){
+        try{
+          const it=(typeof nettRef==='function'?nettRef():[]).find(x=>x&&x.id===r.ref_id);
+          if(it){
+            if(!zone) zone=_histoLabel(it.zone);
+            if(!mat) mat=_histoLabel(it.materiel);
+          }
+        }catch(e){}
+      }
+      if(zone&&mat) out=zone+' — '+mat;
+      else if(zone||mat) out=zone||mat;
+      else out='—';
     }
-    if(zone&&mat) return zone+' — '+mat;
-    if(zone||mat) return zone||mat;
-    return '—';
+    if(s&&s.id==='enr35'){
+      try{
+        const op35=(r&&(r.cuisinier||r.operateur||r.cuisinier34||r.visa))||'';
+        const base=(out&&out!=='—')?out:'Origine viandes';
+        const label=op35||'non renseigné';
+        if(String(base).indexOf(label)<0) out=base+' · '+label;
+        else out=base;
+      }catch(e){ console.warn('enr35 search histo op', e); }
+    }
+    return out;
   }catch(e){ return '—'; }
 }
 function _nettResolveOperateur(raw){
