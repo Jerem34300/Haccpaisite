@@ -644,27 +644,52 @@ function _menuAutoOnSave(menu){
                     : _menuState.service === 'petitdej' ? 'Petit-déjeuner' : 'Goûter';
 
   S.enr33 = S.enr33 || {}; S.enr33.lignes = S.enr33.lignes || [];
-  const deja = (S.enr33.lignes||[]).filter(l =>
-    l._menu_id === menu.menu_id && (l.date === today() || (l._ts||'').slice(0,10) === today())
-  );
   let count33 = 0;
-  if(deja.length === 0){
+  // Ne pas sauter tout le menu si AU MOINS un témoin existe : n'enqueue que les plats
+  // (plat_id + variante) absents pour ce menu aujourd'hui. Les 4 déjà créés ne sont pas dupliqués.
+  try {
+    const day = today();
+    const varKey = function(v){ return (v == null || v === '') ? '' : String(v); };
+    const hasTemoin = function(platId, variant){
+      if (!platId) return false;
+      const vk = varKey(variant);
+      return (S.enr33.lignes||[]).some(function(l){
+        try {
+          if (!l || l._menu_id !== menu.menu_id || l._plat_id !== platId) return false;
+          if (varKey(l._variant) !== vk) return false;
+          return l.date === day || String(l._ts||'').slice(0,10) === day;
+        } catch (e) { return false; }
+      });
+    };
     CATS.forEach(c => {
       (menu.categories[c.id]||[]).forEach(plat => {
-        addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
-        count33++;
-        if(plat.variants?.mixe){
-          const mxProfil = plat.variants.mixe_profil || mixeProfil(plat);
-          addPlatTemoin(plat.nom+' (mixé)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé', mxProfil);
-          count33++;
-        }
-        if(plat.variants?.sans_sel){ addPlatTemoin(plat.nom+' (sans sel)',plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'sans_sel'); count33++; }
-        if(plat.variants?.hp)      { addPlatTemoin(plat.nom+' (HP)',      plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'hp');       count33++; }
+        try {
+          if (!plat) return;
+          if (!hasTemoin(plat.plat_id, '')) {
+            addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
+            count33++;
+          }
+          if (plat.variants?.mixe && !hasTemoin(plat.plat_id, 'mixé')) {
+            const mxProfil = plat.variants.mixe_profil || mixeProfil(plat);
+            addPlatTemoin(plat.nom+' (mixé)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'mixé', mxProfil);
+            count33++;
+          }
+          if (plat.variants?.sans_sel && !hasTemoin(plat.plat_id, 'sans_sel')) {
+            addPlatTemoin(plat.nom+' (sans sel)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'sans_sel');
+            count33++;
+          }
+          if (plat.variants?.hp && !hasTemoin(plat.plat_id, 'hp')) {
+            addPlatTemoin(plat.nom+' (HP)', plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, 'hp');
+            count33++;
+          }
+        } catch (e) { console.warn('[_menuAutoOnSave] plat témoin', e); }
       });
     });
-    save();
-    try { if(typeof SupaEngine !== 'undefined' && SupaEngine.flush) SupaEngine.flush(); } catch(e){}
-  }
+    if (count33 > 0) {
+      save();
+      try { if (typeof SupaEngine !== 'undefined' && SupaEngine.flush) SupaEngine.flush(); } catch (e) {}
+    }
+  } catch (e) { console.warn('[_menuAutoOnSave] témoins manquants', e); }
 
   // Ajouter les plats témoins au lot d'impression ENR33 (_e33batch)
   let count34 = 0;
