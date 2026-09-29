@@ -10881,7 +10881,20 @@ async function _loadFromSupabase() {
     } catch(e){}
   }
 
+  // Recovery enr33 APRÈS reconstruction des lignes, pas pendant le wipe.
+  // N'enqueue pas ici : _recoverUnqueuedEnr33 le fait (même boot, flush/init).
+  async function _recoverEnr33AfterRebuild(){
+    try { window._enr33CloudPulling = false; } catch(e) {}
+    try {
+      if (typeof SupaEngine !== 'undefined' && SupaEngine && typeof SupaEngine._recoverUnqueuedEnr33 === 'function') {
+        await SupaEngine._recoverUnqueuedEnr33();
+      }
+    } catch(e) { console.warn('[_loadFromSupabase] enr33 recover', e); }
+  }
+
   try {
+    // Bloque _recoverUnqueuedEnr33 du flush ~5s tant que les lignes ne sont pas reconstruites.
+    try { window._enr33CloudPulling = true; } catch(e) {}
     // ── 0. Référentiel actions correctives HACCP (catalogue + mapping) ──
     await loadCorrectiveActionsCatalog(true);
 
@@ -11097,6 +11110,7 @@ async function _loadFromSupabase() {
           toast('⚠️ Synchronisation en attente — données locales conservées', 'warning');
           _stampLastSiteUser();
           window._supaLoadDone = true;
+          await _recoverEnr33AfterRebuild();
           return;
         }
       } catch(e) { /* si la lecture de la queue échoue, on continue normalement */ }
@@ -11105,6 +11119,14 @@ async function _loadFromSupabase() {
     // ── CLOUD = SOURCE DE VÉRITÉ ──
     // On vide toutes les saisies locales avant d'injecter le cloud
     // pour éviter tout doublon (le localStorage était un cache temporaire)
+    // Snapshot enr33 AVANT le clear : un témoin local absent du cloud doit survivre au save().
+    var _enr33KeepLocal = [];
+    try {
+      if (S.enr33 && Array.isArray(S.enr33.lignes)) {
+        _enr33KeepLocal = S.enr33.lignes.filter(function(l){ return l && !l._deleted; }).map(function(l){ return Object.assign({}, l); });
+      }
+    } catch(e) { console.warn('[_loadFromSupabase] enr33 snapshot', e); }
+
     const SAISIE_KEYS_TO_CLEAR = [
       'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending',
     ];
@@ -11132,6 +11154,7 @@ async function _loadFromSupabase() {
       toast('☁️ PMS synchronisé (aucune saisie récente)', 'info');
       _stampLastSiteUser();
       window._supaLoadDone = true;
+      await _recoverEnr33AfterRebuild();
       return;
     }
 
@@ -11252,6 +11275,101 @@ async function _loadFromSupabase() {
       S['enr19'].saisies = [...seen19.values()];
     }
 
+    // enr33 seulement : réinjecter les lignes locales absentes du payload cloud.
+    // Identité = _ts + plat (produit ou _plat_id). _ts partagé mais plat différent
+    // → nouveau _ts (sinon on_conflict=client_id écrase la ligne cloud).
+    try {
+      if (_enr33KeepLocal.length) {
+        S.enr33 = S.enr33 || {};
+        S.enr33.lignes = Array.isArray(S.enr33.lignes) ? S.enr33.lignes : [];
+        var cloudLines = S.enr33.lignes;
+        var normPlat = function(s){ return (s == null || s === '') ? '' : String(s).trim().toLowerCase(); };
+        var platMatch = function(a, b){
+          try {
+            var ap = normPlat(a && a._plat_id), bp = normPlat(b && b._plat_id);
+            if (ap && bp && ap === bp) return true;
+            var an = normPlat(a && a.produit), bn = normPlat(b && b.produit);
+            if (an && bn && an === bn) return true;
+            return false;
+          } catch(e) { return false; }
+        };
+        var differentPlat = function(a, b){
+          try {
+            var ap = normPlat(a && a._plat_id), bp = normPlat(b && b._plat_id);
+            if (ap && bp && ap !== bp) return true;
+            var an = normPlat(a && a.produit), bn = normPlat(b && b.produit);
+            if (an && bn && an !== bn) return true;
+            return false;
+          } catch(e) { return false; }
+        };
+        var deletedTs = {};
+        try {
+          ((typeof byType !== 'undefined' && byType && byType.enr33) || []).forEach(function(r){
+            try {
+              var d = r && r.data;
+              if (!d || !d._deleted) return;
+              var dts = d._ts || r.recorded_at;
+              if (dts) deletedTs[dts] = 1;
+            } catch(e) {}
+          });
+        } catch(e) { console.warn('[_loadFromSupabase] enr33 deleted', e); }
+        var usedTs = {};
+        try { cloudLines.forEach(function(l){ if (l && l._ts) usedTs[l._ts] = 1; }); } catch(e) {}
+        try {
+          var qTs = JSON.parse(localStorage.getItem('haccp_supa_queue_v1') || '[]');
+          if (Array.isArray(qTs)) qTs.forEach(function(e){
+            if (!e) return;
+            if (e.recorded_at) usedTs[e.recorded_at] = 1;
+            if (e.data && e.data._ts) usedTs[e.data._ts] = 1;
+          });
+        } catch(e) { console.warn('[_loadFromSupabase] enr33 queue ts', e); }
+        var nextEnr33Ts = function(ts){
+          try {
+            var ms = Date.parse(ts);
+            if (isNaN(ms)) ms = Date.now();
+            var n = ms + 1;
+            var iso = new Date(n).toISOString();
+            var guard = 0;
+            while (usedTs[iso] && guard < 5000) { n += 1; iso = new Date(n).toISOString(); guard += 1; }
+            usedTs[iso] = 1;
+            return iso;
+          } catch(e) {
+            return new Date(Date.now() + 1).toISOString();
+          }
+        };
+        var kept = [];
+        _enr33KeepLocal.forEach(function(local){
+          try {
+            if (!local || local._deleted) return;
+            if (local._ts && deletedTs[local._ts]) return;
+            var cloudsAtTs = [];
+            try {
+              cloudsAtTs = cloudLines.filter(function(c){ return c && local._ts && c._ts === local._ts; });
+            } catch(e) { cloudsAtTs = []; }
+            if (!local._ts || !cloudsAtTs.length) {
+              if (local._ts && kept.some(function(k){ return k && k._ts === local._ts && platMatch(k, local) && !differentPlat(k, local); })) return;
+              if (local._ts && (usedTs[local._ts] && kept.some(function(k){ return k && k._ts === local._ts && differentPlat(k, local); }))) {
+                local._ts = nextEnr33Ts(local._ts);
+              } else if (local._ts) {
+                usedTs[local._ts] = 1;
+              }
+              kept.push(local);
+              return;
+            }
+            if (cloudsAtTs.some(function(c){ return platMatch(local, c); })) return;
+            if (cloudsAtTs.some(function(c){ return differentPlat(local, c); })) {
+              local._ts = nextEnr33Ts(local._ts);
+              kept.push(local);
+            }
+          } catch(e) { console.warn('[_loadFromSupabase] enr33 keep', e); }
+        });
+        if (kept.length) {
+          S.enr33.lignes = cloudLines.concat(kept);
+          console.log('[_loadFromSupabase] enr33: '+kept.length+' ligne(s) locale(s) conservée(s) hors cloud');
+        }
+      }
+    } catch(e) { console.warn('[_loadFromSupabase] enr33 preserve', e); }
+
     save();
     // ── Charger la config enceintes depuis pms_config (par site) ──
     // CRITIQUE : chaque site a ses propres enceintes stockées dans pms_config
@@ -11330,6 +11448,7 @@ async function _loadFromSupabase() {
     // Flag : le chargement initial a bien eu lieu → les saves vers cloud sont maintenant sûrs
     window._supaLoadDone = true;
     _stampLastSiteUser(); // MT-01: stamp seulement après hydrate OK
+    await _recoverEnr33AfterRebuild();
 
   } catch(e) {
     console.warn('[_loadFromSupabase]', e);
@@ -11342,6 +11461,9 @@ async function _loadFromSupabase() {
       // lastUser: clear aussi si compte changé, pour retenter la purge au prochain boot
       if (userChanged) { try { localStorage.removeItem(lastUserKey); } catch(_lu){} }
     }
+    // Après le wipe/purge seulement : ne pas enqueuer l'ancien site, mais
+    // rattraper un témoin local si le fetch a échoué avant le clear.
+    try { await _recoverEnr33AfterRebuild(); } catch(_r) {}
   }
 }
 
