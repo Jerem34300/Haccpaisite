@@ -787,6 +787,17 @@ window._menuGenerateTemoins = function(){
   if(typeof renderMain === 'function') renderMain();
 };
 
+var _enr33TsCursor = 0;
+function _nextEnr33Ts(){
+  try {
+    var ms = Date.now();
+    if (ms <= _enr33TsCursor) ms = _enr33TsCursor + 1;
+    _enr33TsCursor = ms;
+    return new Date(ms).toISOString();
+  } catch (e) {
+    try { return new Date().toISOString(); } catch (e2) { return ''; }
+  }
+}
 function addPlatTemoin(nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menuId, variant, overrideProfil){
   const rec = stampEntry({
     produit:        nom,
@@ -798,7 +809,7 @@ function addPlatTemoin(nom, plat, chef, datePrelev, heure, dateDestruct, service
     service:        serviceTxt,
     nb_etiq:        1,
     _sec:          'enr33',
-    _ts:           new Date().toISOString(),
+    _ts:           _nextEnr33Ts(),
     _plat_id:       plat.plat_id,
     _plat_nom:      plat.nom,
     _plat_profil:   overrideProfil || plat.profil_haccp,
