@@ -418,7 +418,7 @@ const SupaEngine = (() => {
     try {
       const d = data || {};
       const name = String(
-        d.cuisinier || d.operateur || d.enc_chef || d.nom_fct || d.visa ||
+        d.cuisinier || d.operateur || d.cuisinier34 || d.enc_chef || d.nom_fct || d.visa ||
         (typeof getActiveSession === 'function' ? (getActiveSession() || '') : '') ||
         ''
       ).trim();

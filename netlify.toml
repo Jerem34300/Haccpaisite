@@ -11,6 +11,11 @@
     Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
 
 [[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
   for = "/*.html"
   [headers.values]
     X-Frame-Options = "DENY"

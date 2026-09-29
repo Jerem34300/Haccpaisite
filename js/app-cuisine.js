@@ -2772,9 +2772,18 @@ function renderHistoCard(secId,fieldDefs,opts){
           ? (enc19?.label || r.enc_id || 'Enceinte')
           : (r.produit||r.fournisseur||r.association||r.theme||r.num||r.enceinte||'Saisie');
         if(secId==='enr30'){ try{ prod=_enr30HistoTitle(r); }catch(e){ prod='NC'; } }
+        if(secId==='enr35'){
+          try{
+            const op35=r.cuisinier||r.operateur||r.cuisinier34||r.visa||'';
+            if(op35){
+              const base=(prod&&prod!=='Saisie')?prod:'Origine viandes';
+              if(String(base).indexOf(op35)<0) prod=base+' · '+op35;
+            }
+          }catch(e){}
+        }
         const date=r.date||r.dt?.slice(0,10)||'';
         const heure=r.heure||r.h||r.h_deb||r.h_ref_deb||(isEnr19?r.heure:'');
-        const cuisinier=r.cuisinier||r.operateur||r.visa||'';
+        const cuisinier=r.cuisinier||r.operateur||r.cuisinier34||r.visa||'';
         // ENR19 : badges température et conformité
         let confBadges;
         if (isEnr19) {
@@ -3024,6 +3033,12 @@ function saveRow(id){
       return;
     }
     try{const el=document.getElementById('enr31-err');if(el){el.textContent='';el.style.display='none';}}catch(e){}
+  }
+  if(id==='enr35'){
+    try{
+      const op35=String(draft.operateur||draft.cuisinier||(typeof getActiveSession==='function'?(getActiveSession()||''):'')||'').trim();
+      if(op35){ draft.operateur=op35; draft.cuisinier=op35; }
+    }catch(e){}
   }
   if(Object.values(draft).filter(v=>v&&String(v).trim()).length===0){toast('⚠️ Aucune donnée saisie','warning');return;}
   const prod=draft.produit||draft.fournisseur||draft.association||draft.theme||'';
@@ -3504,7 +3519,7 @@ function renderENR01Histo(){
       <div class="hr-card-top" onclick="toggleHR(this)">
         <div style="flex:1;min-width:0">
           <div class="hr-card-main">${escH(prod)}</div>
-          <div class="hr-card-meta">${date}${heure?' · ⏰ '+heure:''}${tFin?' · '+tFin:''} ${conf}</div>
+          <div class="hr-card-meta">${date}${heure?' · ⏰ '+heure:''}${tFin?' · '+tFin:''} ${conf}${(r.cuisinier||r.operateur)?' · 👨‍🍳'+escH(r.cuisinier||r.operateur):''}</div>
           <div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;align-items:center">
             ${stBadge(r._statut)}
             ${bfBadge(r)}
@@ -6275,7 +6290,7 @@ function doSearch(){
     const rows=items.slice(0,60).map(({s,r})=>{
       const prod=(function(){try{return _searchHistoTitle(s,r);}catch(e){return '—';}})();
       const heure=r.heure||r.h||r.h_deb||'';
-      const cuisinier=r.cuisinier||r.operateur||r.visa||'';
+      const cuisinier=r.cuisinier||r.operateur||r.cuisinier34||r.visa||'';
       const confBadges=CONF_FIDS.filter(f=>r[f]==='OUI'||r[f]==='NON').slice(0,4)
         .map(f=>`<span class="bo ${r[f]==='OUI'?'oui':'non'}">${FLAB[f]||f}: ${r[f]}</span>`).join(' ');
       const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&f!=='signature'&&r[f]&&String(r[f]).trim()&&!_histoSkipText(f,r[f]);}catch{return false;}});
