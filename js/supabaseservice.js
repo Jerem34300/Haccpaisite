@@ -614,8 +614,17 @@ const SupaEngine = (() => {
     if (existingInQueue >= 0) {
       const existing = q[existingInQueue];
       if (existing.status === 'pending') {
-        // Encore en attente : mettre à jour les données (ex: soir après midi)
-        q[existingInQueue].data = data;
+        // Distribution : midi puis soir partagent le client_id. Fusionner les clés,
+        // ne pas remplacer data (sinon le soir efface le midi encore pending).
+        try {
+          if (typeof enrType === 'string' && enrType.indexOf('enr_distrib_') === 0) {
+            q[existingInQueue].data = Object.assign({}, existing.data || {}, data);
+          } else {
+            q[existingInQueue].data = data;
+          }
+        } catch (e) {
+          q[existingInQueue].data = data;
+        }
         setQueue(q);
         console.log('[SupaEngine] entrée mise à jour (pending):', stableClientId.slice(0,60));
         return;
