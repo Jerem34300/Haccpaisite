@@ -506,16 +506,63 @@ const SupaEngine = (() => {
     }
   }
 
+  function _enr33ProduitMatch(line, cloud) {
+    try {
+      if (!line || !cloud || typeof cloud !== 'object') return false;
+      var norm = function(s){ return (s == null || s === '') ? '' : String(s).trim().toLowerCase(); };
+      var lp = norm(line._plat_id), cp = norm(cloud._plat_id);
+      if (lp && cp && lp === cp) return true;
+      var lpr = norm(line.produit), cpr = norm(cloud.produit);
+      if (lpr && cpr && lpr === cpr) return true;
+      return false;
+    } catch (e) { return false; }
+  }
+
+  // Ligne cloud déjà postée sous ce client_id. null = échec ou vide : ne rien envoyer.
+  async function _fetchEnr33CloudByClientId(qid, token) {
+    try {
+      var c = cfg();
+      if (!c || !c.url || !c.anonKey || !token || !qid) return null;
+      if (token === c.anonKey || token === _PMS_KEY_DEFAULT) return null;
+      var r = await fetch(
+        c.url + '/rest/v1/pms_records?client_id=eq.' + encodeURIComponent(qid) + '&select=data',
+        { headers: { 'apikey': c.anonKey, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' } }
+      );
+      if (!r.ok) return null;
+      var rows = await r.json();
+      if (!Array.isArray(rows) || !rows.length || !rows[0]) return null;
+      var data = rows[0].data;
+      if (data == null) return null;
+      if (typeof data === 'string') {
+        try { data = JSON.parse(data); } catch (e2) { return null; }
+      }
+      if (!data || typeof data !== 'object') return null;
+      return data;
+    } catch (e) { return null; }
+  }
+
   // Témoin présent dans S.enr33 mais sans entrée de queue (son client_id a été
-  // écrasé par le plat suivant, puis marqué synced). Au flush, l'envoyer seul,
-  // sous un _ts distinct, sans reposer les lignes déjà dans la queue.
-  function _recoverUnqueuedEnr33() {
+  // pris par le plat créé dans la même milliseconde, puis marqué synced).
+  // Ne pas réutiliser ce client_id : il est déjà l'autre plat dans le cloud.
+  // Ne pas sauter non plus : lire la ligne cloud, garder son _ts, décaler les autres.
+  async function _recoverUnqueuedEnr33() {
     try {
       if (typeof S === 'undefined' || !S || !S.enr33 || !Array.isArray(S.enr33.lignes)) return;
       if (!isEnabled()) return;
       var c = cfg();
       var cutoff = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString().slice(0, 10);
       var q = getQueue().filter(function(e){ return e && e.enr_type === 'enr33'; });
+      var claimed = [];
+      var groups = {};
+      function queueOwner(ts, base) {
+        return q.find(function(e){
+          if (!e) return false;
+          if (e.qid === base) return true;
+          if (ts && e.data && e.data._ts === ts) return true;
+          if (ts && e.recorded_at === ts) return true;
+          return false;
+        });
+      }
       S.enr33.lignes.forEach(function(line){
         try {
           if (!line || line._deleted) return;
@@ -523,20 +570,79 @@ const SupaEngine = (() => {
           if (day && day < cutoff) return;
           if (q.some(function(e){ return _enr33SameLine(e.data, line); })) return;
           var ts = line._ts || '';
+          if (!ts) return;
           var base = _qidSanitize([c.siteId, 'enr33', ts]);
-          var owner = q.find(function(e){
-            if (!e) return false;
-            if (e.qid === base) return true;
-            if (ts && e.data && e.data._ts === ts) return true;
-            if (ts && e.recorded_at === ts) return true;
-            return false;
+          if (queueOwner(ts, base)) return;
+          var hasSibling = S.enr33.lignes.some(function(o){
+            return o && o !== line && !o._deleted && o._ts && o._ts === ts && !_enr33SameLine(o, line);
           });
+          if (!hasSibling) return;
+          if (!groups[ts]) groups[ts] = [];
+          groups[ts].push(line);
+        } catch (e) {}
+      });
+
+      var tsList = Object.keys(groups);
+      var token = null;
+      if (tsList.length) {
+        try {
+          var fresh = await _ensureFreshToken(c);
+          if (fresh && fresh !== c.anonKey && fresh !== _PMS_KEY_DEFAULT) token = fresh;
+        } catch (e) {}
+        if (!token && c.userToken && c.userToken !== c.anonKey && c.userToken !== _PMS_KEY_DEFAULT) token = c.userToken;
+      }
+      for (var gi = 0; gi < tsList.length; gi++) {
+        var gts = tsList[gi];
+        var group = groups[gts];
+        group.forEach(function(line){ if (claimed.indexOf(line) < 0) claimed.push(line); });
+        var cloud = null;
+        try { cloud = await _fetchEnr33CloudByClientId(_qidSanitize([c.siteId, 'enr33', gts]), token); } catch (e) { cloud = null; }
+        if (!cloud) continue;
+        var matched = group.some(function(line){ return _enr33ProduitMatch(line, cloud); });
+        if (!matched) continue;
+        var shifted = false;
+        var sent = [];
+        group.forEach(function(line){
+          try {
+            if (_enr33ProduitMatch(line, cloud)) return;
+            var already = null;
+            for (var si = 0; si < sent.length; si++) {
+              if (_enr33SameLine(sent[si], line)) { already = sent[si]; break; }
+            }
+            if (already) {
+              if (already._ts) line._ts = already._ts;
+              return;
+            }
+            var newTs = _shiftEnr33Ts(gts);
+            line._ts = newTs;
+            enqueue('enr33', line);
+            sent.push(line);
+            shifted = true;
+          } catch (e) {}
+        });
+        if (shifted) {
+          try { if (typeof save === 'function') save(); } catch (e) {}
+        }
+      }
+
+      q = getQueue().filter(function(e){ return e && e.enr_type === 'enr33'; });
+      S.enr33.lignes.forEach(function(line){
+        try {
+          if (!line || line._deleted) return;
+          if (claimed.indexOf(line) >= 0) return;
+          var day = String(line.date || line._ts || '').slice(0, 10);
+          if (day && day < cutoff) return;
+          if (q.some(function(e){ return _enr33SameLine(e.data, line); })) return;
+          var ts = line._ts || '';
+          var base = _qidSanitize([c.siteId, 'enr33', ts]);
+          var owner = queueOwner(ts, base);
           if (!owner) {
             var sibling = S.enr33.lignes.some(function(o){
               return o && o !== line && o._ts && ts && o._ts === ts && !_enr33SameLine(o, line);
             });
             // Pas de propriétaire en queue : ne pas prendre le client_id partagé
-            // (il peut déjà être la ligne cloud de l'autre plat).
+            // (il peut déjà être la ligne cloud de l'autre plat). Le groupe
+            // partagé est traité plus haut après lecture cloud.
             if (sibling) return;
             enqueue('enr33', line);
           } else if (!_enr33SameLine(owner.data, line)) {
@@ -658,16 +764,16 @@ const SupaEngine = (() => {
 
   async function flush() {
     if (!isEnabled() || !navigator.onLine || _flushing) return;
-    try { _recoverUnqueuedEnr33(); } catch (e) {}
+    _flushing = true;
+    try { await _recoverUnqueuedEnr33(); } catch (e) {}
     const q = getQueue();
     const now = new Date().toISOString();
     const pending = q.filter(e =>
       e.status === 'pending' ||
       (e.status === 'error' && e.retries < 5 && (!e.next_retry_at || e.next_retry_at <= now))
     );
-    if (!pending.length) return;
+    if (!pending.length) { _flushing = false; return; }
 
-    _flushing = true;
     _updateBadge('syncing');
     const c = cfg();
     // Toujours garantir un token valide avant d'envoyer (gere JWT expired)
