@@ -2596,6 +2596,28 @@ const SKIP=['_ts','_sec','photo','p1_photo','p2_photo','signature','_key','_auto
 const IS_NC_RAISON=k=>k.startsWith('nc_raison__');
 const IS_TEMP_FID=k=>k.startsWith('t_')||k==='tc'||/^t[1-4]$/.test(k)||k==='ecart';
 const IS_CONF_FID=k=>CONF_FIDS.includes(k);
+const _HISTO_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function _histoRawHidden(v){
+  try{
+    if(v==null) return false;
+    if(Array.isArray(v)) return v.length>0 && v.every(x=>_HISTO_UUID.test(String(x).trim()));
+    const s=typeof v==='string'?v:JSON.stringify(v);
+    if(!s) return false;
+    if(s.indexOf('data:image')>=0) return true;
+    if(s.length>180 && /base64/i.test(s)) return true;
+    if(_HISTO_UUID.test(s.trim())) return true;
+  }catch(e){}
+  return false;
+}
+function _enr30HistoTitle(r){
+  try{
+    const num=String((r&&r.num)||'').trim();
+    const typ=(NC_TYPE_LABELS[normalizeNCType((r&&r.non_conformity_type)||'')]||'NC').replace(/^[^A-Za-zÀ-ÿ0-9]+/,'');
+    const dt=(r&&r.date)||((r&&r._ts)?String(r._ts).slice(0,10):'');
+    if(num && !_HISTO_UUID.test(num) && num.indexOf('data:image')<0 && num.length<48) return num;
+    return (typ||'NC')+(dt?(' · '+dt):'');
+  }catch(e){ return 'NC'; }
+}
 
 
 // ── Lier un refroidissement (ENR01) à son origine BF + pré-remplir la fiche ──
@@ -2661,9 +2683,10 @@ function renderHistoCard(secId,fieldDefs,opts){
         const encs19Cache = isEnr19 ? getEnceintes() : [];
         const enc19 = isEnr19 ? encs19Cache.find(e=>e.id===r.enc_id) : null;
 
-        const prod = isEnr19
+        let prod = isEnr19
           ? (enc19?.label || r.enc_id || 'Enceinte')
           : (r.produit||r.fournisseur||r.association||r.theme||r.num||r.enceinte||'Saisie');
+        if(secId==='enr30'){ try{ prod=_enr30HistoTitle(r); }catch(e){ prod='NC'; } }
         const date=r.date||r.dt?.slice(0,10)||'';
         const heure=r.heure||r.h||r.h_deb||r.h_ref_deb||(isEnr19?r.heure:'');
         const cuisinier=r.cuisinier||r.operateur||r.visa||'';
@@ -2683,7 +2706,13 @@ function renderHistoCard(secId,fieldDefs,opts){
             .map(k=>{const rNC=r[k]==='NON'&&r['nc_raison__'+k]?(' — '+r['nc_raison__'+k]):'';return`<span class="bo ${r[k]==='OUI'?'oui':'non'}">${FLAB[k]||k}: ${r[k]}${escH(rNC)}</span>`;}).join('');
         }
         // All data items (non-conf, non-skip)
-        const dataKeys=Object.keys(r).filter(k=>!SKIP.includes(k)&&!IS_NC_RAISON(k)&&r[k]&&String(r[k]).trim());
+        const dataKeys=Object.keys(r).filter(k=>{
+          try{
+            if(SKIP.includes(k)||IS_NC_RAISON(k)||!r[k]||!String(r[k]).trim()) return false;
+            if(secId==='enr30' && (k==='photo_nc'||k==='photo'||k==='signature'||_histoRawHidden(r[k]))) return false;
+            return true;
+          }catch(e){ return false; }
+        });
         const confItems=dataKeys.filter(k=>IS_CONF_FID(k));
         const dataItems=dataKeys.filter(k=>!IS_CONF_FID(k));
         const mkItem=(k,flagConf)=>{
@@ -2691,7 +2720,10 @@ function renderHistoCard(secId,fieldDefs,opts){
           const val=String(r[k]);
           let cls='';
           if(flagConf)cls=val==='OUI'?'conf-oui':'conf-non';
-          const disp=IS_TEMP_FID(k)&&val!=='OUI'&&val!=='NON'?`${val}°C`:val;
+          let disp=IS_TEMP_FID(k)&&val!=='OUI'&&val!=='NON'?`${val}°C`:val;
+          if(secId==='enr30'){
+            try{ if(_histoRawHidden(val)) return ''; disp=escH(disp); }catch(e){ return ''; }
+          }
           const raisonNC=flagConf&&val==='NON'?r['nc_raison__'+k]||'':'';
           return`<div class="hdi">
             <div class="hdi-label">${lbl}</div>
@@ -2704,6 +2736,7 @@ function renderHistoCard(secId,fieldDefs,opts){
         const isAutoNC=secId==='enr30'&&r._auto===true&&r.cloture!=='OUI';
         const autoNCBadge=isAutoNC?`<span style="background:#dc2626;color:#fff;border-radius:8px;padding:2px 7px;font-size:.62rem;font-weight:900;margin-right:4px">⚡ AUTO — À compléter</span>`:'';
         const autoCompleteBtn=isAutoNC?`<button onclick="event.stopPropagation();ncAutoFillFromLigne(${i})" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 10px;font-size:.7rem;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap">📋 Compléter</button>`:'';
+        const editNcBtn=secId==='enr30'?`<button type="button" title="Ouvrir cette NC" onclick="${escAttr('event.stopPropagation();nc30EditFromHist('+JSON.stringify(String(r._ts||''))+','+allLignes.indexOf(r)+')')}" style="background:#fff;border:1.5px solid #7f1d1d;color:#7f1d1d;border-radius:8px;padding:6px 8px;font-size:.85rem;font-weight:800;font-family:inherit;cursor:pointer;line-height:1">✏️</button>`:'';
         // Boutons lien BF Cuit / BF Cru pour ENR01 (Refroidissement)
         const lienBF = secId==='enr01' ? r._lienBF || '' : null;
         const bfCuitBtn = secId==='enr01' ? `<button onclick="event.stopPropagation();lierRefroid(${i},'cuit')" title="Lier à Bien Fait Cuit (ENR07)" style="background:${lienBF==='cuit'?'#1565c0':'#e3f2fd'};color:${lienBF==='cuit'?'#fff':'#1565c0'};border:1.5px solid #1565c0;border-radius:8px;padding:5px 8px;font-size:.68rem;font-weight:800;font-family:inherit;cursor:pointer;white-space:nowrap">${lienBF==='cuit'?'✅':'🔗'} BF Cuit</button>` : '';
@@ -2713,10 +2746,11 @@ function renderHistoCard(secId,fieldDefs,opts){
             <div style="flex:1;min-width:0">
               <div class="hr-card-main">${autoNCBadge}${escH(prod)}</div>
               <div class="hr-card-meta">
-                ${r.date_refroid?`❄️ Refr. ${r.date_refroid} → 🔥 Réchauffé ${r.date_rechauff||date}`:date}${heure?' · ⏰'+heure:''}${cuisinier?' · 👨‍🍳'+escH(cuisinier):''}</div>
+                ${r.date_refroid?`❄️ Refr. ${r.date_refroid} → 🔥 Réchauffé ${r.date_rechauff||date}`:date}${heure?' · ⏰'+heure:''}${cuisinier?' · 👨‍🍳'+escH(cuisinier):''}${secId==='enr30'&&r.cloture!=='OUI'?' · <b style="color:#991b1b">Ouverte</b>':''}</div>
               <div class="conf-badges" style="margin-top:5px">${confBadges}</div>
             </div>
             <div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">
+              ${editNcBtn||''}
               ${autoCompleteBtn}
               ${bfCuitBtn}
               ${bfCruBtn}
@@ -2728,6 +2762,7 @@ function renderHistoCard(secId,fieldDefs,opts){
           <div class="hr-card-data">
             <div class="hr-data-grid">${grid}</div>
             ${r.photo?photoThumb(r.photo,'📷 Étiquette'):''}
+            ${secId==='enr30'&&r.photo_nc?photoThumb(r.photo_nc,'📷 Photo NC'):''}
             ${r.signature&&r.signature.startsWith('data:')?`<div style="margin-top:6px"><div style="font-size:.65rem;font-weight:700;color:#b89ab6;margin-bottom:3px">✍️ SIGNATURE</div><img src="${r.signature}" style="max-height:50px;max-width:100%;border:1px solid var(--brd);border-radius:8px;background:#fdf8fd" alt="Signature"></div>`:r.signature?`<div style="font-size:.72rem;color:#7A6579;margin-top:4px">✍️ ${escH(r.signature)}</div>`:''}
           </div>
         </div>`;
@@ -5493,8 +5528,14 @@ function renderENR30(){
   }
   const causes=["Méthode","Milieu","Matériel","Matière première","Main d'œuvre","Autre"];
   const traits=["Produit jeté","Produit conservé","Bloqué reprise fournisseur","Autre"];
+  const editingOpen=(d._edit_ligne_idx!==undefined && String(d._edit_ligne_idx)!=='' && g('cloture')!=='OUI');
+  const clotureBar=editingOpen?`<div id="nc30-cloture-bar" style="position:sticky;top:6px;z-index:40;display:flex;align-items:center;justify-content:space-between;gap:8px;background:#7f1d1d;color:#fff;border-radius:12px;padding:10px 12px;margin:0 0 10px;box-shadow:0 6px 16px rgba(127,29,29,.35)">
+      <div style="font-size:.78rem;font-weight:800;line-height:1.3">NC ouverte${g('num')?' N° '+escH(String(g('num'))):''}<br><span style="font-weight:600;opacity:.9">Clôture cette fiche — pas une nouvelle saisie</span></div>
+      <button type="button" onclick="nc30Save('OUI')" style="background:#fff;color:#7f1d1d;border:none;border-radius:10px;padding:10px 12px;font-weight:900;font-family:inherit;cursor:pointer;white-space:nowrap">🔒 Clôturer</button>
+    </div>`:'';
   return pendingHtml+`<div class="card">
     <div class="card-title">🚨 Fiche de Non-Conformité</div>
+    ${clotureBar}
     <div class="regle danger">Compléter dès détection. Format N° : 2025/01</div>
     <div class="fgrid">
       <div class="fg"><label>N° NC</label><input class="fi" type="text" value="${escH(g('num'))}" placeholder="2025/01" oninput="nc30('num',this.value)"></div>
@@ -5541,8 +5582,8 @@ function renderENR30(){
     <div class="fgrid">
       ${chefSel('resp','enr30','Responsable informé')}
       <div class="fg"><div class="cfl">Gravité *</div><div class="cfg">
-        <button class="cfb${g('gravite')==='mineure'?' on':''}" onclick="nc30('gravite','mineure');this.parentElement.querySelectorAll('.cfb').forEach(b=>b.classList.remove('on'));this.classList.add('on')" style="flex:1">Mineure</button>
-        <button class="cfb${g('gravite')==='majeure'?' on':''}" onclick="nc30('gravite','majeure');this.parentElement.querySelectorAll('.cfb').forEach(b=>b.classList.remove('on'));this.classList.add('on')" style="flex:1;background:${g('gravite')==='majeure'?'#fee2e2':'transparent'}">Majeure</button>
+        <button type="button" class="cfb grav-min${g('gravite')==='mineure'?' on':''}" data-g="mineure" onclick="nc30Grav('mineure',this)" style="flex:1;border-color:#d97706;background:${g('gravite')==='mineure'?'#d97706':'#fff'};color:${g('gravite')==='mineure'?'#fff':'#92400e'}">Mineure</button>
+        <button type="button" class="cfb grav-maj${g('gravite')==='majeure'?' on':''}" data-g="majeure" onclick="nc30Grav('majeure',this)" style="flex:1;border-color:#dc2626;background:${g('gravite')==='majeure'?'#dc2626':'#fff'};color:${g('gravite')==='majeure'?'#fff':'#991b1b'}">Majeure</button>
       </div></div>
     </div>
     <div class="fg full" style="margin:10px 0"><label>Plan d'action correctif / préventif</label><textarea rows="3" class="fi" oninput="nc30('plan',this.value)">${escH(g('plan'))}</textarea></div>
@@ -5570,7 +5611,7 @@ function renderENR30(){
     </div>
     <div class="btn-row" style="flex-wrap:wrap;gap:8px">
       <button class="btn-save" onclick="nc30Save('NON')">✅ Enregistrer (ouverte)</button>
-      <button class="btn" style="background:#7f1d1d;color:#fff;border:none" onclick="nc30Save('OUI')">🔒 Clôturer</button>
+      <button type="button" id="nc30-cloture-btn" class="btn" style="background:#dc2626;color:#fff;border:none;font-weight:900;box-shadow:0 0 0 3px #fecaca" onclick="nc30Save('OUI')">🔒 Clôturer</button>
       <button class="btn btn-sec" onclick="nc30Reset()">🔄 Effacer</button>
     </div>
     <!-- Photo NC -->
@@ -5602,6 +5643,65 @@ function renderENR30(){
   ${renderHistoCard('enr30',null)}`;
 }
 function nc30(k,v){S['enr30']=S['enr30']||{};S['enr30'].draft=S['enr30'].draft||{};S['enr30'].draft[k]=v;save();}
+function nc30Grav(v, el){
+  try{
+    nc30('gravite', v);
+    const box=el&&el.parentElement;
+    if(!box) return;
+    box.querySelectorAll('.cfb').forEach(b=>{
+      const on=b===el;
+      b.classList.toggle('on', on);
+      const maj=b.dataset.g==='majeure';
+      b.style.background=on?(maj?'#dc2626':'#d97706'):'#fff';
+      b.style.color=on?'#fff':(maj?'#991b1b':'#92400e');
+      b.style.borderColor=maj?'#dc2626':'#d97706';
+    });
+  }catch(e){}
+}
+function nc30ScrollCloture(){
+  try{
+    const el=document.getElementById('nc30-cloture-bar')||document.getElementById('nc30-cloture-btn');
+    if(el) el.scrollIntoView({behavior:'smooth',block:'center'});
+  }catch(e){}
+}
+function nc30LoadLigne(i){
+  try{
+    const lignes=(S['enr30']||{}).lignes||[];
+    const r=lignes[i];
+    if(!r) return false;
+    const draft=Object.assign({}, r);
+    draft._edit_ligne_idx=String(i);
+    delete draft._deleted;
+    S['enr30']=S['enr30']||{};
+    S['enr30'].draft=draft;
+    save();
+    if(cur!=='enr30'){
+      const prev=cur; cur='enr30';
+      try{history.pushState({page:'enr30',prev},'',' ');}catch(e){}
+    }
+    renderNav();
+    renderMain();
+    return true;
+  }catch(e){ return false; }
+}
+function nc30EditFromHist(ts, idx){
+  try{
+    const lignes=(S['enr30']||{}).lignes||[];
+    let i=-1;
+    if(ts) i=lignes.findIndex(r=>r&&r._ts===ts);
+    if(i<0 && typeof idx==='number' && lignes[idx] && !lignes[idx]._deleted) i=idx;
+    if(i<0){ toast('NC introuvable','warning'); return; }
+    const r=lignes[i];
+    nettAdminGuard(()=>{
+      try{
+        if(!nc30LoadLigne(i)){ toast('Impossible d\'ouvrir la NC','warning'); return; }
+        try{ loadCorrectiveActionsCatalog(false); }catch(e){}
+        setTimeout(nc30ScrollCloture, 160);
+        if(r.cloture!=='OUI') toast('🔒 NC ouverte chargée — utilisez Clôturer','warning');
+      }catch(e){ toast('Impossible d\'ouvrir la NC','warning'); }
+    });
+  }catch(e){ toast('Impossible d\'ouvrir la NC','warning'); }
+}
 
 // ── Pad de signature ENR30 ────────────────────────────
 let _nc30SigDrawing=false,_nc30SigLast=null,_nc30SigPrev=null;
@@ -5761,36 +5861,60 @@ function nc30Save(forceCloture){
     }
   }
 
-  // ── Si la NC vient d'une ligne auto existante : mettre à jour au lieu d'ajouter ──
-  if(d._auto_ligne_idx!==undefined){
-    const li=parseInt(d._auto_ligne_idx);
-    if(S['enr30'].lignes[li]){
-      Object.assign(S['enr30'].lignes[li],{...d,_auto:false,cloture:cloture,_ts_completed:new Date().toISOString()});
-      delete S['enr30'].lignes[li]._auto_ligne_idx;
+  // ── Ligne existante (crayon ou auto) : mettre à jour, ne pas créer un doublon ──
+  let _nc30SavedIdx=-1;
+  try{
+    const lignes=S['enr30'].lignes;
+    const editing=(d._edit_ligne_idx!==undefined && String(d._edit_ligne_idx)!=='')||(d._auto_ligne_idx!==undefined && String(d._auto_ligne_idx)!=='');
+    let li=-1;
+    if(editing){
+      if(d._ts) li=lignes.findIndex(r=>r&&r._ts===d._ts);
+      if(li<0){
+        const bound=(d._edit_ligne_idx!==undefined && String(d._edit_ligne_idx)!=='')?parseInt(d._edit_ligne_idx,10):parseInt(d._auto_ligne_idx,10);
+        if(!isNaN(bound)&&lignes[bound]) li=bound;
+      }
     }
-    // Retirer du pending via _key
-    if(S['enr30'].lignes[li]?._key){
-      const key=S['enr30'].lignes[li]._key;
-      S.nc_auto_pending=(S.nc_auto_pending||[]).filter(p=>p._key!==key);
+    if(li>=0&&lignes[li]){
+      const prev=lignes[li];
+      const keepTs=prev._ts;
+      const payload={...d};
+      delete payload._edit_ligne_idx;
+      delete payload._auto_ligne_idx;
+      delete payload._auto_idx;
+      Object.assign(prev, payload, {_auto:false, cloture:cloture, _ts:keepTs||payload._ts});
+      if(cloture==='OUI') prev._ts_completed=new Date().toISOString();
+      delete prev._edit_ligne_idx;
+      delete prev._auto_ligne_idx;
+      if(prev._key) S.nc_auto_pending=(S.nc_auto_pending||[]).filter(p=>p._key!==prev._key);
+      _nc30SavedIdx=li;
+    } else {
+      const row={...d,_ts:new Date().toISOString()};
+      delete row._edit_ligne_idx;
+      delete row._auto_ligne_idx;
+      delete row._auto_idx;
+      S['enr30'].lignes.unshift(stampEntry(row));
+      if(d._auto_idx!==undefined){
+        const idx=parseInt(d._auto_idx);
+        const all=[...(S.nc_auto_pending||[])];
+        if(idx>=0&&idx<all.length)all.splice(idx,1);
+        S.nc_auto_pending=all;
+      }
+      _nc30SavedIdx=0;
     }
-  } else {
-    S['enr30'].lignes.unshift(stampEntry({...d,_ts:new Date().toISOString()}));
-    // Retirer la NC auto-pending par _auto_idx si présent
-    if(d._auto_idx!==undefined){
-      const idx=parseInt(d._auto_idx);
-      const all=[...(S.nc_auto_pending||[])];
-      if(idx>=0&&idx<all.length)all.splice(idx,1);
-      S.nc_auto_pending=all;
-    }
+  }catch(e){
+    try{
+      const row={...d,_ts:new Date().toISOString()};
+      delete row._edit_ligne_idx;
+      S['enr30'].lignes.unshift(stampEntry(row));
+      _nc30SavedIdx=0;
+    }catch(e2){}
   }
   S['enr30'].draft={};save();autoBackup();
   // ── Supabase : UPSERT par client_id déterministe ──────────
   // merge-duplicates = si le client_id existe déjà → UPDATE, sinon INSERT
   // Garantit qu'il n'y aura jamais un record ouvert + un fermé pour la même NC
   try {
-    const dernNC = d._auto_ligne_idx!==undefined
-      ? S['enr30'].lignes[parseInt(d._auto_ligne_idx)]
-      : S['enr30'].lignes[0];
+    const dernNC = (_nc30SavedIdx>=0 ? S['enr30'].lignes[_nc30SavedIdx] : null) || S['enr30'].lignes[0];
     if(dernNC && dernNC._ts){
       const c = SupaEngine.cfg();
       if(c.url && c.anonKey && c.siteId){
@@ -6007,18 +6131,20 @@ function doSearch(){
     const ncc=items.filter(({r})=>CONF_FIDS.some(f=>r[f]==='NON')).length;
     const keyDisp=gr==='month'?fmtM(k):gr==='day'?fmtDay(k):k;
     const rows=items.slice(0,60).map(({s,r})=>{
-      const prod=r.produit||r.fournisseur||r.association||r.theme||r.num||'—';
+      const prod=s.id==='enr30'?_enr30HistoTitle(r):(r.produit||r.fournisseur||r.association||r.theme||r.num||'—');
       const heure=r.heure||r.h||r.h_deb||'';
       const cuisinier=r.cuisinier||r.operateur||r.visa||'';
       const confBadges=CONF_FIDS.filter(f=>r[f]==='OUI'||r[f]==='NON').slice(0,4)
         .map(f=>`<span class="bo ${r[f]==='OUI'?'oui':'non'}">${FLAB[f]||f}: ${r[f]}</span>`).join(' ');
-      const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&r[f]&&String(r[f]).trim();}catch{return false;}});
+      const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&r[f]&&String(r[f]).trim()&&!(s.id==='enr30'&&(f==='photo_nc'||f==='photo'||f==='signature'||_histoRawHidden(r[f])));}catch{return false;}});
       const dataGrid=dataKeys.map(f=>{
         try{
         const lbl=FLAB[f]||f;const val=String(r[f]);
+        if(s.id==='enr30'&&_histoRawHidden(val)) return '';
         const isConf=IS_CONF_FID(f);const isT=IS_TEMP_FID(f);
         const cls=isConf?(val==='OUI'?'conf-oui':val==='NON'?'conf-non':''):'';
-        const disp=isT&&val!=='OUI'&&val!=='NON'?`${val}°C`:val;
+        let disp=isT&&val!=='OUI'&&val!=='NON'?`${val}°C`:val;
+        if(s.id==='enr30') disp=escH(disp);
         return`<div class="hdi"><div class="hdi-label">${lbl}</div><div class="hdi-val ${cls}">${disp}</div></div>`;
         }catch{return'';}
       }).join('');
@@ -6030,11 +6156,11 @@ function doSearch(){
             <div class="conf-badges" style="margin-top:5px">${confBadges}</div>
           </div>
           <div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">
-            <span style="font-size:.8rem;color:#b89ab6;cursor:pointer" onclick="event.stopPropagation();goTo('${s.id}')">✏️</span>
+            <span style="font-size:.8rem;color:#b89ab6;cursor:pointer" onclick="${escAttr(s.id==='enr30'?('event.stopPropagation();nc30EditFromHist('+JSON.stringify(String(r._ts||''))+')'):('event.stopPropagation();goTo(\''+s.id+'\')'))}">✏️</span>
             <span class="hr-expand">▼</span>
           </div>
         </div>
-        <div class="hr-card-data"><div class="hr-data-grid">${dataGrid}</div></div>
+        <div class="hr-card-data"><div class="hr-data-grid">${dataGrid}</div>${s.id==='enr30'&&r.photo_nc?photoThumb(r.photo_nc,'📷 Photo NC'):''}</div>
       </div>`;
     }).join('');
     return`<div style="margin-bottom:14px">
