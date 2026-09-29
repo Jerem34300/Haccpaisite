@@ -5594,7 +5594,7 @@ function openDetail(id) {
   }
 
   // Infos principales
-  const infoKeys = ['date','heure','cuisinier','agent','produit','fournisseur','plat','plat_midi','theme','association','lot','dlc'];
+  const infoKeys = ['date','heure','cuisinier','operateur','cuisinier34','agent','produit','fournisseur','plat','plat_midi','theme','association','lot','dlc'];
   const infos = infoKeys.filter(k=>d[k]).map(k=>`
     <div class="detail-field">
       <div class="detail-field-label">${FIELD_LABELS[k]||k}</div>
@@ -7419,7 +7419,17 @@ const PAGE_ENR_CFG = {
     ],
     photoFields:['photo','photo2','photo3'],
     confFields:['conforme'],
-    cardTitle: r => r.data?.produit || '—',
+    cardTitle: r => {
+      const d=r.data||{};
+      const base=d.produit||'—';
+      try{
+        if(r.enr_type==='enr35'){
+          const op=d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||'';
+          if(op && String(base).indexOf(op)<0) return base+' · '+op;
+        }
+      }catch(e){}
+      return base;
+    },
     cardSub:   r => {
       const d=r.data||{};
       const enrL = ENR_LABELS[r.enr_type]||r.enr_type?.toUpperCase()||'';
@@ -7469,7 +7479,8 @@ const PAGE_ENR_CFG = {
         d.t_fin     && `Remise:${d.t_fin}°C`,
         d.t2        && `T2:${d.t2}°C`,
       ].filter(Boolean).join(' · ');
-      return [enrL, temps].filter(Boolean).join(' — ');
+      const op = d.cuisinier||d.operateur||d.visa||'';
+      return [enrL, temps, op?('👤 '+op):''].filter(Boolean).join(' — ');
     },
   },
   temperatures: {
@@ -8422,8 +8433,18 @@ function _renderCardsStandard(cfg, recs) {
     const site=_sites.find(s=>s.code===r.site_id);
 
     let fieldsHtml='<div class="rec-fields">';
-    cfg.colonnes.filter(c=>!c.key.startsWith('/')&&d[c.key]&&d[c.key]!=='').forEach(col=>{
-      const val=d[col.key];
+    cfg.colonnes.filter(c=>{
+      if(!c||c.key.startsWith('/')) return false;
+      let v=d[c.key];
+      try{
+        if((c.key==='cuisinier'||c.key==='operateur') && !v) v=d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||'';
+      }catch(e){}
+      return v&&v!=='';
+    }).forEach(col=>{
+      let val=d[col.key];
+      try{
+        if((col.key==='cuisinier'||col.key==='operateur') && !val) val=d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||'';
+      }catch(e){}
       let valCls='';
       if(col.temp){const ck=col.conf;valCls=ck?(d[ck]==='OUI'?'temp-ok':d[ck]==='NON'?'temp-nc':''):'';}
       let displayVal=String(val);
@@ -8510,7 +8531,10 @@ function _renderTableForType(type, cfg, recs) {
       <td style="font-family:var(--mono);font-size:.75rem;white-space:nowrap">${dateStr}<br><span style="color:var(--muted)">${timeStr}</span></td>
       <td style="font-size:.78rem;font-weight:600">${site?.name||r.site_id}</td>
       ${cols.map(col => {
-        const val = d[col.key];
+        let val = d[col.key];
+        try{
+          if((col.key==='cuisinier'||col.key==='operateur') && !val) val=d.cuisinier||d.operateur||d.cuisinier34||d.visa||d.agent||'';
+        }catch(e){}
         if (!val) return '<td style="color:#cbd5e0">—</td>';
         let style = '';
         if (col.temp && col.conf) {

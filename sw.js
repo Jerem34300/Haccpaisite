@@ -8,8 +8,8 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v424';
-const CDN_CACHE_NAME = 'haccpro-cdn-v424';
+const CACHE_NAME = 'haccpro-v425';
+const CDN_CACHE_NAME = 'haccpro-cdn-v425';
 
 // Assets à mettre en cache dès l'installation
 // ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
@@ -91,6 +91,12 @@ self.addEventListener('activate', (event) => {
           .map((k) => caches.delete(k))
       )
     ).then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: 'window' }))
+      .then((clients) => {
+        clients.forEach((c) => {
+          try { c.postMessage({ cache: CACHE_NAME }); } catch (e) {}
+        });
+      })
   );
 });
 
@@ -102,6 +108,15 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
 
   const url = request.url;
+
+  // sw.js : jamais depuis le cache (sinon un ancien SW ne s'installe pas)
+  try {
+    const path = new URL(url).pathname;
+    if (path === '/sw.js') {
+      event.respondWith(fetch(request, { cache: 'no-store' }));
+      return;
+    }
+  } catch (e) {}
 
   // Appels API : réseau uniquement, pas de fallback cache
   if (isNetworkOnly(url)) {

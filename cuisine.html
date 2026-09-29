@@ -3,7 +3,7 @@
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>HACC.PRO — Cuisine v36.3 · b416</title>
+  <title>HACC.PRO — Cuisine v36.3 · haccpro-v425</title>
   <meta name="application-name" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-title" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -32,9 +32,18 @@
   <!-- Garde abonnement (trial / paywall) -->
   <script src="js/subscriptionguard.js"></script>
   <!-- Utilitaires partages -->
-  <script src="js/utils.js?v=424"></script>
+  <script src="js/utils.js?v=425"></script>
 
   <script>
+    // Libellé visible = CACHE_NAME du SW (haccpro-v425). Ne pas laisser un build figé (un ancien build).
+    var HACC_CACHE = 'haccpro-v425';
+    function haccApplyBuild(name){
+      try{
+        var v = String(name || HACC_CACHE);
+        document.title = 'HACC.PRO — Cuisine v36.3 · ' + v;
+      }catch(e){}
+    }
+    try{ haccApplyBuild(HACC_CACHE); }catch(e){}
     // Enregistrement du Service Worker (PWA offline)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
@@ -44,7 +53,19 @@
           refreshing = true;
           window.location.reload();
         });
-        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+        navigator.serviceWorker.addEventListener('message', function(ev){
+          try{
+            var c = ev.data && (ev.data.cache || ev.data.CACHE_NAME);
+            if (c) haccApplyBuild(c);
+          }catch(e){}
+        });
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(function(reg) {
+          function kick(worker){
+            try{
+              if (worker && navigator.serviceWorker.controller) worker.postMessage({ action: 'skipWaiting' });
+            }catch(e){}
+          }
+          try{ if (reg.waiting) kick(reg.waiting); }catch(e){}
           reg.addEventListener('updatefound', function() {
             var newWorker = reg.installing;
             if (!newWorker) return;
@@ -927,9 +948,9 @@
 
 
   <!-- Application Cuisine (ordre important: service avant app) -->
-  <script src="js/supabaseservice.js?v=424"></script>
+  <script src="js/supabaseservice.js?v=425"></script>
   <script src="js/printservice.js"></script>
-  <script src="js/app-cuisine.js?v=424"></script>
+  <script src="js/app-cuisine.js?v=425"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
   <script src="js/app-menu-cuisine.js?v=363"></script>
   <!-- Tracabilité HACCP bidirectionnelle + IA recettes -->
