@@ -453,6 +453,102 @@ const SupaEngine = (() => {
     return data;
   }
 
+  function _qidSanitize(parts) {
+    return parts.join('::').replace(/[^a-zA-Z0-9:._-]/g, '_').slice(0, 200);
+  }
+
+  // Même plat témoin (uuid, ou plat_id + variante + jour). Pas le simple _ts :
+  // deux plats créés dans la même milliseconde partagent _ts.
+  function _enr33SameLine(a, b) {
+    try {
+      if (!a || !b) return false;
+      if (a._uuid && b._uuid && a._uuid === b._uuid) return true;
+      var norm = function(s){ return (s == null || s === '') ? '' : String(s); };
+      var day = function(o){ return String((o && (o.date || o._ts)) || '').slice(0, 10); };
+      if (norm(a._plat_id) && norm(a._plat_id) === norm(b._plat_id) && norm(a._variant) === norm(b._variant) && day(a) === day(b)) return true;
+      if (!norm(a._plat_id) && !norm(b._plat_id) && a._ts && a._ts === b._ts && norm(a.produit) === norm(b.produit)) return true;
+      return false;
+    } catch (e) { return false; }
+  }
+
+  function _enr33IdentityConflict(enrType, existingData, record) {
+    try {
+      var is33 = enrType === 'enr33' || (record && record._sec === 'enr33') || (existingData && existingData._sec === 'enr33');
+      if (!is33 || !existingData || !record) return false;
+      return !_enr33SameLine(existingData, record);
+    } catch (e) { return false; }
+  }
+
+  function _shiftEnr33Ts(ts) {
+    try {
+      var ms = Date.parse(ts);
+      if (isNaN(ms)) ms = Date.now();
+      var used = {};
+      try {
+        if (typeof S !== 'undefined' && S && S.enr33 && Array.isArray(S.enr33.lignes)) {
+          S.enr33.lignes.forEach(function(o){ if (o && o._ts) used[o._ts] = 1; });
+        }
+      } catch (e) {}
+      try {
+        getQueue().forEach(function(e){
+          if (!e) return;
+          if (e.recorded_at) used[e.recorded_at] = 1;
+          if (e.data && e.data._ts) used[e.data._ts] = 1;
+        });
+      } catch (e2) {}
+      var n = ms + 1;
+      var iso = new Date(n).toISOString();
+      var guard = 0;
+      while (used[iso] && guard < 5000) { n += 1; iso = new Date(n).toISOString(); guard += 1; }
+      return iso;
+    } catch (e) {
+      return new Date(Date.now() + 1).toISOString();
+    }
+  }
+
+  // Témoin présent dans S.enr33 mais sans entrée de queue (son client_id a été
+  // écrasé par le plat suivant, puis marqué synced). Au flush, l'envoyer seul,
+  // sous un _ts distinct, sans reposer les lignes déjà dans la queue.
+  function _recoverUnqueuedEnr33() {
+    try {
+      if (typeof S === 'undefined' || !S || !S.enr33 || !Array.isArray(S.enr33.lignes)) return;
+      if (!isEnabled()) return;
+      var c = cfg();
+      var cutoff = new Date(Date.now() - 8 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      var q = getQueue().filter(function(e){ return e && e.enr_type === 'enr33'; });
+      S.enr33.lignes.forEach(function(line){
+        try {
+          if (!line || line._deleted) return;
+          var day = String(line.date || line._ts || '').slice(0, 10);
+          if (day && day < cutoff) return;
+          if (q.some(function(e){ return _enr33SameLine(e.data, line); })) return;
+          var ts = line._ts || '';
+          var base = _qidSanitize([c.siteId, 'enr33', ts]);
+          var owner = q.find(function(e){
+            if (!e) return false;
+            if (e.qid === base) return true;
+            if (ts && e.data && e.data._ts === ts) return true;
+            if (ts && e.recorded_at === ts) return true;
+            return false;
+          });
+          if (!owner) {
+            var sibling = S.enr33.lignes.some(function(o){
+              return o && o !== line && o._ts && ts && o._ts === ts && !_enr33SameLine(o, line);
+            });
+            // Pas de propriétaire en queue : ne pas prendre le client_id partagé
+            // (il peut déjà être la ligne cloud de l'autre plat).
+            if (sibling) return;
+            enqueue('enr33', line);
+          } else if (!_enr33SameLine(owner.data, line)) {
+            var payload = Object.assign({}, line, { _ts: _shiftEnr33Ts(ts || new Date().toISOString()) });
+            enqueue('enr33', payload);
+          }
+          q = getQueue().filter(function(e){ return e && e.enr_type === 'enr33'; });
+        } catch (e) {}
+      });
+    } catch (e) {}
+  }
+
   function enqueue(enrType, record) {
     if (!isEnabled()) {
       // Debug : afficher pourquoi on skip
@@ -498,14 +594,23 @@ const SupaEngine = (() => {
 
     // client_id DÉTERMINISTE = site_id + enr_type + _ts
     // Cela garantit que le même enregistrement ne peut JAMAIS être inséré deux fois
-    // même si supaBackupSync le re-enqueue, la contrainte UNIQUE client_id bloquera
-    const stableClientId = [c.siteId, enrType, record._ts || new Date().toISOString()]
-      .join('::')
-      .replace(/[^a-zA-Z0-9:._-]/g, '_')
-      .slice(0, 200);
+    // même si supaBackupSync le re-enqueue, la contrainte UNIQUE client_id bloquera.
+    // Exception enr33 : deux plats dans la même milliseconde ont le même _ts.
+    // On ne remplace PAS l'entrée de l'autre plat (sinon un seul POST, l'autre
+    // reste local et la file ne montre ni pending ni erreur).
+    const tsForId = record._ts || new Date().toISOString();
+    let stableClientId = _qidSanitize([c.siteId, enrType, tsForId]);
 
     // Vérifier si ce client_id est déjà en queue
-    const existingInQueue = q.findIndex(e => e.qid === stableClientId);
+    let existingInQueue = q.findIndex(e => e.qid === stableClientId);
+    if (existingInQueue >= 0 && _enr33IdentityConflict(enrType, q[existingInQueue].data, record)) {
+      try {
+        const disc = record._uuid || [record._plat_id || '', record._variant || '', record.produit || ''].join('|');
+        stableClientId = _qidSanitize([c.siteId, enrType, tsForId, disc]);
+        existingInQueue = q.findIndex(e => e.qid === stableClientId);
+        console.log('[SupaEngine] enr33 client_id distinct:', stableClientId.slice(0, 70));
+      } catch (e) { existingInQueue = -1; }
+    }
     if (existingInQueue >= 0) {
       const existing = q[existingInQueue];
       if (existing.status === 'pending') {
@@ -544,6 +649,7 @@ const SupaEngine = (() => {
 
   async function flush() {
     if (!isEnabled() || !navigator.onLine || _flushing) return;
+    try { _recoverUnqueuedEnr33(); } catch (e) {}
     const q = getQueue();
     const now = new Date().toISOString();
     const pending = q.filter(e =>
