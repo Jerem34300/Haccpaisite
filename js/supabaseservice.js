@@ -547,6 +547,9 @@ const SupaEngine = (() => {
   // Ne pas sauter non plus : lire la ligne cloud, garder son _ts, décaler les autres.
   async function _recoverUnqueuedEnr33() {
     try {
+      // Pull cloud en cours : les lignes sont vidées puis reconstruites.
+      // Revenir plus tard, après le rebuild (sinon le témoin local a déjà disparu).
+      if (window._enr33CloudPulling) return;
       if (typeof S === 'undefined' || !S || !S.enr33 || !Array.isArray(S.enr33.lignes)) return;
       if (!isEnabled()) return;
       var c = cfg();
@@ -1099,7 +1102,7 @@ const SupaEngine = (() => {
     }
   }
 
-  return { init, enqueue, flush, testConnection, isEnabled, cfg, saveCfgLocal, qStats, _updateBadge, _refreshModalStats, _supaLog, getSignedPhotoUrl, _ensureFreshToken };
+  return { init, enqueue, flush, testConnection, isEnabled, cfg, saveCfgLocal, qStats, _updateBadge, _refreshModalStats, _supaLog, getSignedPhotoUrl, _ensureFreshToken, _recoverUnqueuedEnr33 };
 })();
 
 // ── Hydratation paresseuse des photos pms-photos (bucket privé) ──
