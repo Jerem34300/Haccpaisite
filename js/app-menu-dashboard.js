@@ -270,6 +270,110 @@ function renderMenuCard(menu){
 // ════════════════════════════════════════════════════
 // 3) DETAIL : vue d'un menu (liste plats avec lien Fiche plat)
 // ════════════════════════════════════════════════════
+// Gluten + lait : mêmes clés que la fiche enr_allergenes (suivi détail).
+// Pas de nouvelles clés. Les plats menu ont allergenes:[] jamais rempli.
+const MENU_ALG_GLUTEN_LAIT = [
+  {id:'alg_gluten', label:'Gluten', ico:'🌾'},
+  {id:'alg_lait',   label:'Lait',   ico:'🥛'},
+];
+
+function _normAlgName(s){
+  try {
+    return String(s||'').trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/\s+/g,' ');
+  } catch(e) {
+    return String(s||'').trim().toLowerCase();
+  }
+}
+
+function _algServiceOk(ficheSvc, menuSvc){
+  try {
+    const s = _normAlgName(ficheSvc);
+    if(!s) return true;
+    const m = _normAlgName(menuSvc);
+    if(!m) return true;
+    if(s === m) return true;
+    if(m === 'petitdej' && (s === 'petit dejeuner' || s === 'petit-dejeuner' || s === 'pdej')) return true;
+    if(m === 'gouter' && s === 'gouter') return true;
+    if(s === 'buffet' || s === 'autre' || s === 'pique-nique' || s === 'piquenique') return true;
+    return false;
+  } catch(e) { return true; }
+}
+
+function _menuAllergenFiches(menu, enrs){
+  try {
+    if(!menu) return [];
+    const day = String(menu.menu_date||'').slice(0,10);
+    const site = menu.site_id || '';
+    const mid = menu.menu_id || '';
+    const byKey = new Map();
+    const add = (r) => {
+      if(!r || r.enr_type !== 'enr_allergenes') return;
+      if(site && r.site_id && r.site_id !== site) return;
+      const d = r.data || {};
+      const linked = !!(mid && d._menu_id && d._menu_id === mid);
+      const fd = String(d.date || d.alg_date || r.recorded_at || '').slice(0,10);
+      if(!linked && fd !== day) return;
+      if(!_algServiceOk(d.service, menu.service)) return;
+      const key = r.id || (fd + '|' + _normAlgName(d.plat) + '|' + (r.recorded_at||''));
+      byKey.set(key, r);
+    };
+    (enrs || []).forEach(add);
+    if(typeof _records !== 'undefined' && Array.isArray(_records)) _records.forEach(add);
+    return Array.from(byKey.values()).sort((a,b) => String(a.recorded_at||'').localeCompare(String(b.recorded_at||'')));
+  } catch(e) { return []; }
+}
+
+function _ficheForPlat(fiches, plat){
+  try {
+    const n = _normAlgName(plat && plat.nom);
+    if(!n || !fiches || !fiches.length) return null;
+    const hits = fiches.filter(r => _normAlgName((r.data||{}).plat) === n);
+    if(!hits.length) return null;
+    return hits[hits.length-1];
+  } catch(e) { return null; }
+}
+
+// Même rendu que le détail suivi (Présent / Traces), limité à alg_gluten et alg_lait.
+function _menuGlutenLaitHtml(data){
+  try {
+    const d = data || {};
+    const presents = MENU_ALG_GLUTEN_LAIT.filter(a => d[a.id] === 'Présent');
+    const traces = MENU_ALG_GLUTEN_LAIT.filter(a => d[a.id] === 'Traces');
+    const absents = MENU_ALG_GLUTEN_LAIT.filter(a => d[a.id] === 'Absent');
+    if(!presents.length && !traces.length && !absents.length) return '';
+    const chip = (a, bg, fg) => `<span style="background:${bg};color:${fg};border-radius:8px;padding:4px 10px;font-size:.75rem;font-weight:700">${a.ico} ${a.label}</span>`;
+    let html = '';
+    if(presents.length) html += `<div style="background:#fff5f5;border:1.5px solid #fecaca;border-radius:10px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.72rem;font-weight:800;color:#991b1b;margin-bottom:6px">⚠️ PRÉSENT (${presents.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${presents.map(a => chip(a,'#fee2e2','#991b1b')).join('')}</div></div>`;
+    if(traces.length) html += `<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.72rem;font-weight:800;color:#92400e;margin-bottom:6px">〰️ TRACES (${traces.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${traces.map(a => chip(a,'#fef3c7','#92400e')).join('')}</div></div>`;
+    if(absents.length) html += `<div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.72rem;font-weight:800;color:#166534;margin-bottom:6px">✓ ABSENT (${absents.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${absents.map(a => chip(a,'#dcfce7','#166534')).join('')}</div></div>`;
+    return html;
+  } catch(e) { return ''; }
+}
+
+function _menuAllergenSection(fiches, plats){
+  try {
+    if(!fiches || !fiches.length) return '';
+    const matched = new Set();
+    (plats||[]).forEach(p => {
+      const f = _ficheForPlat(fiches, p);
+      if(f) matched.add(f);
+    });
+    const orphans = fiches.filter(f => !matched.has(f));
+    if(!orphans.length) return '';
+    const blocks = orphans.map(r => {
+      const d = r.data || {};
+      const body = _menuGlutenLaitHtml(d);
+      if(!body) return '';
+      const who = d.plat ? escH(d.plat) : 'Fiche allergènes';
+      return `<div style="margin-bottom:8px"><div style="font-size:.75rem;font-weight:800;color:#5C1E5A;margin-bottom:4px">${who}</div>${body}</div>`;
+    }).join('');
+    if(!blocks) return '';
+    return `<div class="detail-section" style="margin-bottom:12px"><div style="font-size:.78rem;font-weight:900;color:#5C1E5A;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">⚠️ Allergènes INCO (gluten, lait)</div>${blocks}</div>`;
+  } catch(e) { return ''; }
+}
+
 window._menuDashOpenDetail = function(recId){
   const menu = getAllMenus().find(m => m.id === recId);
   if(!menu){ if(typeof showToast==='function') showToast('Menu introuvable','warning'); return; }
@@ -284,6 +388,8 @@ function renderMenuDetailPanel(menu){
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   const enrs = getEnrLinkedToMenu(menu.menu_id, menu.site_id, menu.menu_date);
   const plats = flatPlats(menu);
+  let algFiches = [];
+  try { algFiches = _menuAllergenFiches(menu, enrs); } catch(e) { algFiches = []; }
 
   document.getElementById('detail-title').textContent = `🍽️ Menu ${SERVICES[menu.service]||menu.service} — ${siteName}`;
   document.getElementById('detail-sub').textContent = dFr + ' • ' + plats.length + ' plat' + (plats.length>1?'s':'') + ' • ' + enrs.length + ' ENR liés';
@@ -308,6 +414,7 @@ function renderMenuDetailPanel(menu){
     <div class="md-summary-cnt">${menu.type_repas !== 'normal' ? '⚙️ Régime : '+menu.type_repas : 'Régime normal'}</div>
   </div>
   <button class="md-export-btn" onclick="window._menuDashExportMenu('${escAttr(menu.id)}')">📄 Exporter ce menu en PDF (rapport HACCP)</button>
+  ${_menuAllergenSection(algFiches, plats)}
   ${CATS.map(c => {
     const items = menu.categories?.[c.id] || [];
     if(!items.length) return '';
@@ -317,6 +424,11 @@ function renderMenuDetailPanel(menu){
       ${items.map(p => {
         const prof = PROFILS[p.profil_haccp] || PROFILS.BF_CUIT;
         const linked = enrs.filter(r => r.data?._plat_id === p.plat_id);
+        let algHtml = '';
+        try {
+          const af = _ficheForPlat(algFiches, p);
+          algHtml = af ? _menuGlutenLaitHtml(af.data) : '';
+        } catch(e) { algHtml = ''; }
         return `
         <div class="md-plat" onclick="window._menuDashOpenPlat('${escAttr(p.plat_id)}','${escAttr(menu.id)}')">
           <div class="md-plat-hd">
@@ -327,6 +439,7 @@ function renderMenuDetailPanel(menu){
             ${p.composants && p.composants.length ? '📝 '+p.composants.map(escH).join(', ')+' • ' : ''}
             ${linked.length} ENR lié${linked.length>1?'s':''} ${p.statut_auto==='preparé_minute'?'• ⚡ auto-validé':''}
           </div>
+          ${algHtml}
         </div>`;
       }).join('')}
     </div>`;
