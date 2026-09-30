@@ -10780,11 +10780,25 @@ async function _loadFromSupabase() {
       Object.keys(S).filter(k=>k.startsWith('enr_distrib_')).forEach(k=>{ S[k]={lignes:[]}; });
       (S.customPages||[]).forEach(cp=>{ if(cp.id) S[cp.id]={lignes:[]}; });
       if (opts.dropSiteScoped) {
+        // Ne pas pousser ENC_DEFAULT tant que la config du nouveau site n'est pas chargée
+        try { window._skipEncDefaultUpsert = true; } catch(e){}
         // MT-05: vider produits/fournisseurs — rétention v36 = fuite cross-site sur tablette réassignée
         S.produits = [];
         S.fournisseurs = [];
         S.nett_ref = []; S.nett_zones_extra = [];
         S.customPages = [];
+        // Fiches du site précédent : ALL/FDEFS/REND survivent au purge de S.customPages
+        try {
+          for (var _ci = ALL.length - 1; _ci >= 0; _ci--) {
+            if (ALL[_ci] && ALL[_ci].custom) {
+              var _cid = ALL[_ci].id;
+              try { delete FDEFS[_cid]; } catch(e){}
+              try { delete REND[_cid]; } catch(e){}
+              ALL.splice(_ci, 1);
+            }
+          }
+        } catch(e) { console.warn('[purge] custom fiches', e); }
+        try { registerCustomPages(); } catch(e) { console.warn('[purge] registerCustomPages', e); }
         S.chefPins = {}; S.chefPrefs = {}; S.chefSchedule = {};
         if (S.config) {
           S.config.chefs = [];
@@ -10813,6 +10827,8 @@ async function _loadFromSupabase() {
           try { S.config.chefIds = {}; } catch(e){}
           try { delete S.config.weekAB_offset; } catch(e){}
           try { delete S.config.caniculeMode; } catch(e){}
+          try { delete S.config.soundOn; } catch(e){}
+          try { delete S.config.vibrateOn; } catch(e){}
           try { delete S.config.responsable; } catch(e){}
           try { delete S.config.responsableRole; } catch(e){}
           try { delete S.config.code; } catch(e){}
@@ -10821,6 +10837,8 @@ async function _loadFromSupabase() {
           try { delete S.config.homeWidgetsVer; } catch(e){}
         }
         try { S.navCfg = {}; } catch(e){}
+        try { S.notes_home = []; } catch(e){}
+        try { delete S.syncCfg; } catch(e){}
         try { S.menus = {}; } catch(e){}
         try { S.menu_history = []; } catch(e){}
         try { S.expCfg = {}; } catch(e){}
@@ -10956,6 +10974,7 @@ async function _loadFromSupabase() {
           // customPages : toujours écraser avec le cloud du site courant ([] si absent)
           if (key === 'customPages') {
             S.customPages = Array.isArray(cloud[key]) ? cloud[key] : [];
+            try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
             return;
           }
           if (cloud[key] === undefined) return;
@@ -11148,7 +11167,35 @@ async function _loadFromSupabase() {
     // Pages custom : vider les saisies de chaque fiche créée dynamiquement
     (S.customPages||[]).forEach(cp=>{ if(cp.id && S[cp.id]?.lignes) S[cp.id].lignes = []; });
 
+    // Enceintes du site courant (pms_config) avant le return « 0 saisie ».
+    // Lecture seule du site_id courant. Pas d'UPSERT si la liste stockée est vide.
+    try {
+      const encCfgRes = await fetch(
+        `${c.url}/rest/v1/pms_config?site_id=eq.${encodeURIComponent(c.siteId)}&type=eq.enceintes&select=data&limit=1`,
+        { headers }
+      );
+      if (encCfgRes.ok) {
+        const encCfgData = await encCfgRes.json();
+        const encList = encCfgData?.[0]?.data;
+        if (Array.isArray(encList) && encList.length > 0) {
+          S['enr19'] = S['enr19'] || {};
+          S['enr19'].enceintes = encList;
+          save();
+        }
+        else if (!encCfgData?.[0]) {
+          // Jamais ENC_DEFAULT ici : getEnceintes() l'invente si les listes sont vides.
+          try {
+            var _encStored = null;
+            if (S.config && Array.isArray(S.config.enceintes) && S.config.enceintes.length) _encStored = S.config.enceintes;
+            else if (S['enr19'] && Array.isArray(S['enr19'].enceintes) && S['enr19'].enceintes.length) _encStored = S['enr19'].enceintes;
+            if (_encStored) syncEnceinteConfig(_encStored);
+          } catch(e) { console.warn('[cloud] push enceintes', e); }
+        }
+      }
+    } catch(e) { console.warn('[cloud] pms_config enceintes:', e.message); }
+
     if (recs.length === 0) {
+      try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
       save(); initTheme(); renderNav(); renderMain();
       if (typeof renderChefList === 'function') renderChefList();
       toast('☁️ PMS synchronisé (aucune saisie récente)', 'info');
@@ -11371,32 +11418,10 @@ async function _loadFromSupabase() {
     } catch(e) { console.warn('[_loadFromSupabase] enr33 preserve', e); }
 
     save();
-    // ── Charger la config enceintes depuis pms_config (par site) ──
-    // CRITIQUE : chaque site a ses propres enceintes stockées dans pms_config
-    // Ne pas lire depuis le localStorage global qui peut contenir la config d'un autre site
-    try {
-      const encCfgRes = await fetch(
-        `${c.url}/rest/v1/pms_config?site_id=eq.${encodeURIComponent(c.siteId)}&type=eq.enceintes&select=data&limit=1`,
-        { headers }
-      );
-      if (encCfgRes.ok) {
-        const encCfgData = await encCfgRes.json();
-        const encList = encCfgData?.[0]?.data;
-        if (Array.isArray(encList) && encList.length > 0) {
-          // Écraser la config locale avec celle du site Supabase
-          S['enr19'] = S['enr19'] || {};
-          S['enr19'].enceintes = encList;
-          save();
-        }
-        // Si aucune config en base → garder le local ET l'envoyer vers Supabase
-        else if (!encCfgData?.[0]) {
-          syncEnceinteConfig(getEnceintes());
-        }
-      }
-    } catch(e) { console.warn('[cloud] pms_config enceintes:', e.message); }
-
     // Appliquer config par défaut si le site n'a pas encore de config
+    // (enceintes pms_config déjà lues avant le return 0 saisie)
     applyDefaultConfigIfNeeded();
+    try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
     initTheme();
     renderNav();
     renderMain();
@@ -11441,6 +11466,7 @@ async function _loadFromSupabase() {
     // AutoBackup après le chargement cloud = checkpoint propre, un seul site
     autoBackup();
     save();
+    try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
     renderNav(); renderMain();
     if (typeof renderChefList === 'function') renderChefList();
     toast(`☁️ ${recs.length} saisie(s) — 6 mois chargés depuis le cloud`, 'success');
@@ -17363,8 +17389,22 @@ function init(){
   _loadFromSupabase();
   setTimeout(()=>{ pollTabletAlerts(); }, 4000);
   setInterval(()=>{ pollTabletAlerts(); }, 45*1000);
-  // Sync config enceintes au démarrage (au cas où elle n'existe pas encore)
-  setTimeout(function(){ syncEnceinteConfig(getEnceintes()); checkCaniculeMode(); }, 5000);
+  // Sync config enceintes au démarrage (au cas où elle n'existe pas encore).
+  // Pendant un changement de site, les listes locales sont vidées avant hydrate :
+  // ne pas UPSERT ENC_DEFAULT (repli de getEnceintes) sur le nouveau site_id.
+  setTimeout(function(){
+    try {
+      var skipDefault = !!window._skipEncDefaultUpsert;
+      if (!(skipDefault && !window._supaLoadDone)) {
+        var _encBoot = null;
+        if (S.config && Array.isArray(S.config.enceintes) && S.config.enceintes.length) _encBoot = S.config.enceintes;
+        else if (S['enr19'] && Array.isArray(S['enr19'].enceintes) && S['enr19'].enceintes.length) _encBoot = S['enr19'].enceintes;
+        if (_encBoot) syncEnceinteConfig(_encBoot);
+        else if (!skipDefault) syncEnceinteConfig(getEnceintes());
+      }
+    } catch(e) { console.warn('[init] sync enceintes', e); }
+    try { checkCaniculeMode(); } catch(e2) {}
+  }, 5000);
   setInterval(function(){ checkCaniculeMode(); }, 10*60*1000);
 }
 
