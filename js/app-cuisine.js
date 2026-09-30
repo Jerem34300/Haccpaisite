@@ -10780,6 +10780,8 @@ async function _loadFromSupabase() {
       Object.keys(S).filter(k=>k.startsWith('enr_distrib_')).forEach(k=>{ S[k]={lignes:[]}; });
       (S.customPages||[]).forEach(cp=>{ if(cp.id) S[cp.id]={lignes:[]}; });
       if (opts.dropSiteScoped) {
+        // Ne pas pousser ENC_DEFAULT tant que la config du nouveau site n'est pas chargée
+        try { window._skipEncDefaultUpsert = true; } catch(e){}
         // MT-05: vider produits/fournisseurs — rétention v36 = fuite cross-site sur tablette réassignée
         S.produits = [];
         S.fournisseurs = [];
@@ -10813,6 +10815,8 @@ async function _loadFromSupabase() {
           try { S.config.chefIds = {}; } catch(e){}
           try { delete S.config.weekAB_offset; } catch(e){}
           try { delete S.config.caniculeMode; } catch(e){}
+          try { delete S.config.soundOn; } catch(e){}
+          try { delete S.config.vibrateOn; } catch(e){}
           try { delete S.config.responsable; } catch(e){}
           try { delete S.config.responsableRole; } catch(e){}
           try { delete S.config.code; } catch(e){}
@@ -10821,6 +10825,8 @@ async function _loadFromSupabase() {
           try { delete S.config.homeWidgetsVer; } catch(e){}
         }
         try { S.navCfg = {}; } catch(e){}
+        try { S.notes_home = []; } catch(e){}
+        try { delete S.syncCfg; } catch(e){}
         try { S.menus = {}; } catch(e){}
         try { S.menu_history = []; } catch(e){}
         try { S.expCfg = {}; } catch(e){}
@@ -11390,7 +11396,15 @@ async function _loadFromSupabase() {
         }
         // Si aucune config en base → garder le local ET l'envoyer vers Supabase
         else if (!encCfgData?.[0]) {
-          syncEnceinteConfig(getEnceintes());
+          // Liste réellement stockée seulement. getEnceintes() invente ENC_DEFAULT
+          // si les deux listes sont vides — ne pas l'UPSERT sur un site qu'on vient de purger.
+          try {
+            var _encStored = null;
+            if (S.config && Array.isArray(S.config.enceintes) && S.config.enceintes.length) _encStored = S.config.enceintes;
+            else if (S['enr19'] && Array.isArray(S['enr19'].enceintes) && S['enr19'].enceintes.length) _encStored = S['enr19'].enceintes;
+            if (_encStored) syncEnceinteConfig(_encStored);
+            else if (!window._skipEncDefaultUpsert) syncEnceinteConfig(getEnceintes());
+          } catch(e) { console.warn('[cloud] push enceintes', e); }
         }
       }
     } catch(e) { console.warn('[cloud] pms_config enceintes:', e.message); }
@@ -17363,8 +17377,22 @@ function init(){
   _loadFromSupabase();
   setTimeout(()=>{ pollTabletAlerts(); }, 4000);
   setInterval(()=>{ pollTabletAlerts(); }, 45*1000);
-  // Sync config enceintes au démarrage (au cas où elle n'existe pas encore)
-  setTimeout(function(){ syncEnceinteConfig(getEnceintes()); checkCaniculeMode(); }, 5000);
+  // Sync config enceintes au démarrage (au cas où elle n'existe pas encore).
+  // Pendant un changement de site, les listes locales sont vidées avant hydrate :
+  // ne pas UPSERT ENC_DEFAULT (repli de getEnceintes) sur le nouveau site_id.
+  setTimeout(function(){
+    try {
+      var skipDefault = !!window._skipEncDefaultUpsert;
+      if (!(skipDefault && !window._supaLoadDone)) {
+        var _encBoot = null;
+        if (S.config && Array.isArray(S.config.enceintes) && S.config.enceintes.length) _encBoot = S.config.enceintes;
+        else if (S['enr19'] && Array.isArray(S['enr19'].enceintes) && S['enr19'].enceintes.length) _encBoot = S['enr19'].enceintes;
+        if (_encBoot) syncEnceinteConfig(_encBoot);
+        else if (!skipDefault) syncEnceinteConfig(getEnceintes());
+      }
+    } catch(e) { console.warn('[init] sync enceintes', e); }
+    try { checkCaniculeMode(); } catch(e2) {}
+  }, 5000);
   setInterval(function(){ checkCaniculeMode(); }, 10*60*1000);
 }
 
