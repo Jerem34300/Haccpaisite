@@ -11417,6 +11417,124 @@ async function _loadFromSupabase() {
       }
     } catch(e) { console.warn('[_loadFromSupabase] enr33 preserve', e); }
 
+    // enr_menu arrive dans S.enr_menu.lignes ; l'écran menu ne lit que S.menus[date::service].
+    // Forme getMenu() : { categories, menu_id } (+ _ts / _client_id pour comparer au prochain pull).
+    try {
+      var _emRaw = (typeof byType !== 'undefined' && byType && byType.enr_menu) || [];
+      var _emRows = _emRaw.map(function(r){
+        var data = (r && r.data) ? r.data : {};
+        return {
+          menu_date: data.menu_date || data.date || '',
+          service: data.service || '',
+          categories: data.categories,
+          menu_id: data.menu_id,
+          _ts: data._ts || (r && r.recorded_at) || '',
+          _client_id: (r && r.client_id) || '',
+          _deleted: !!data._deleted
+        };
+      });
+      var _cloudTs = {};
+      var _cloudCid = {};
+      _emRows.forEach(function(d){
+        if (d._ts) _cloudTs[String(d._ts)] = 1;
+        if (d._client_id) _cloudCid[String(d._client_id)] = 1;
+      });
+      var _best = {};
+      var _bestDel = {};
+      _emRows.forEach(function(d){
+        if (!d.menu_date || !d.service) return;
+        var k = d.menu_date + '::' + d.service;
+        if (d._deleted) {
+          if (!_bestDel[k] || String(d._ts) > String(_bestDel[k])) _bestDel[k] = String(d._ts || '');
+          return;
+        }
+        if (!_best[k] || String(d._ts) > String(_best[k]._ts || '')) _best[k] = d;
+      });
+      Object.keys(_best).forEach(function(k){
+        if (_bestDel[k] && String(_bestDel[k]) >= String(_best[k]._ts || '')) delete _best[k];
+      });
+      var _pending = {};
+      try {
+        var _q = JSON.parse(localStorage.getItem('haccp_supa_queue_v1') || '[]');
+        if (Array.isArray(_q)) {
+          _q.forEach(function(e){
+            try {
+              if (!e || e.enr_type !== 'enr_menu' || e.status === 'synced') return;
+              var d = e.data || {};
+              if (d._deleted) return;
+              var date = d.menu_date || d.date || '';
+              var svc = d.service || '';
+              if (!date || !svc) return;
+              var k = date + '::' + svc;
+              var ts = String(d._ts || e.recorded_at || '');
+              var cid = String(e.qid || '');
+              if ((ts && _cloudTs[ts]) || (cid && _cloudCid[cid])) return;
+              if (!_pending[k] || ts > String(_pending[k]._ts || '')) {
+                _pending[k] = {
+                  categories: d.categories,
+                  menu_id: d.menu_id,
+                  _ts: ts,
+                  _client_id: cid
+                };
+              }
+            } catch(eq) {}
+          });
+        }
+      } catch(e) { console.warn('[_loadFromSupabase] enr_menu queue', e); }
+      function _menuShape(d){
+        var catsIn = (d && d.categories && typeof d.categories === 'object' && !Array.isArray(d.categories)) ? d.categories : {};
+        var cats = {};
+        Object.keys(catsIn).forEach(function(id){
+          cats[id] = Array.isArray(catsIn[id]) ? catsIn[id].slice() : [];
+        });
+        var menu = { categories: cats };
+        if (d && d.menu_id) menu.menu_id = d.menu_id;
+        if (d && d._ts) menu._ts = d._ts;
+        if (d && d._client_id) menu._client_id = d._client_id;
+        return menu;
+      }
+      var _local = (S.menus && typeof S.menus === 'object' && !Array.isArray(S.menus)) ? S.menus : {};
+      var _next = {};
+      Object.keys(_best).forEach(function(k){
+        var cloud = _best[k];
+        var cloudTs = String(cloud._ts || '');
+        var pend = _pending[k];
+        var pendTs = pend ? String(pend._ts || '') : '';
+        var loc = _local[k];
+        var locTs = (loc && loc._ts) ? String(loc._ts) : '';
+        var locCid = (loc && loc._client_id) ? String(loc._client_id) : '';
+        var locNewer = !!(loc && locTs && locTs > cloudTs && !_cloudTs[locTs] && !(locCid && _cloudCid[locCid]));
+        var pendNewer = !!(pend && pendTs > cloudTs);
+        if (locNewer && (!pendNewer || locTs >= pendTs)) { _next[k] = loc; return; }
+        if (pendNewer) { _next[k] = _menuShape(pend); return; }
+        _next[k] = _menuShape(cloud);
+      });
+      Object.keys(_pending).forEach(function(k){
+        if (_next[k]) return;
+        var pend = _pending[k];
+        var pendTs = String(pend._ts || '');
+        var delTs = _bestDel[k] ? String(_bestDel[k]) : '';
+        if (delTs && pendTs <= delTs) return;
+        var loc = _local[k];
+        var locTs = (loc && loc._ts) ? String(loc._ts) : '';
+        if (loc && (!locTs || locTs >= pendTs)) return;
+        _next[k] = _menuShape(pend);
+      });
+      Object.keys(_local).forEach(function(k){
+        if (_next[k]) return;
+        var loc = _local[k];
+        if (!loc || typeof loc !== 'object' || Array.isArray(loc)) return;
+        var locTs = loc._ts ? String(loc._ts) : '';
+        var locCid = loc._client_id ? String(loc._client_id) : '';
+        if (locTs && _cloudTs[locTs]) return;
+        if (locCid && _cloudCid[locCid]) return;
+        var delTs = _bestDel[k] ? String(_bestDel[k]) : '';
+        if (delTs && !(locTs && locTs > delTs)) return;
+        _next[k] = loc;
+      });
+      S.menus = _next;
+    } catch(e) { console.warn('[_loadFromSupabase] enr_menu → S.menus', e); }
+
     save();
     // Appliquer config par défaut si le site n'a pas encore de config
     // (enceintes pms_config déjà lues avant le return 0 saisie)
