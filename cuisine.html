@@ -25,9 +25,9 @@
   <!-- Initialisation SDK Supabase (auto-refresh token) -->
   <script src="js/supabaseclientinit.js"></script>
   <!-- Garde de session (verifie JWT, refresh si expire) -->
-  <script src="js/authguard.js"></script>
+  <script src="js/authguard.js?v=436"></script>
   <script>
-  runAuthGuard({ sessionKey: 'haccpro_supa_cfg', stableKey: 'haccp_supa_cfg_v1', loginUrl: './' });
+  runAuthGuard({ sessionKey: 'haccpro_supa_cfg', stableKey: 'haccp_supa_cfg_v1', loginUrl: 'login.html' });
   </script>
   <!-- Garde abonnement (trial / paywall) -->
   <script src="js/subscriptionguard.js"></script>
@@ -35,8 +35,8 @@
   <script src="js/utils.js?v=433"></script>
 
   <script>
-    // Libellé visible = CACHE_NAME du SW (haccpro-v435). Ne pas laisser un build figé (un ancien build).
-    var HACC_CACHE = 'haccpro-v435';
+    // Libellé visible = CACHE_NAME du SW (haccpro-v436). Ne pas laisser un build figé (un ancien build).
+    var HACC_CACHE = 'haccpro-v436';
     function haccApplyBuild(name){
       try{
         var v = String(name || HACC_CACHE);
@@ -530,6 +530,7 @@
           <button onclick="event.stopPropagation();supaDeduplicateRecords()" id="supa-dedup-btn" style="padding:12px;background:#fdf4ff;color:#7e22ce;border:1.5px solid #e9d5ff;border-radius:12px;cursor:pointer;font-size:.78rem;font-weight:800;font-family:inherit;grid-column:1/-1">🧹 Nettoyer les doublons en base</button>
           <button onclick="event.stopPropagation();supaPurgeOrphans()" id="supa-purge-btn" style="padding:12px;background:#fee2e2;color:#991b1b;border:1.5px solid #fca5a5;border-radius:12px;cursor:pointer;font-size:.78rem;font-weight:800;font-family:inherit;grid-column:1/-1">🗑️ Purger les orphelins (refroid. &gt;7j + plats témoins périmés)</button>
     </div>
+    <button type="button" id="supa-reauth-btn" onclick="event.stopPropagation();reconnectSessionKeepQueue()" style="display:none;width:100%;margin-bottom:8px;padding:12px;background:#fff7ed;color:#9a3412;border:1.5px solid #fdba74;border-radius:12px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.85rem">🔑 Reconnecter la session (garder les saisies)</button>
     <button onclick="event.stopPropagation();closeSupaModal()" style="width:100%;padding:12px;background:var(--plum);color:#fff;border:none;border-radius:12px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.85rem">✓ Fermer</button>
   </div>
 </div>
@@ -948,7 +949,7 @@
 
 
   <!-- Application Cuisine (ordre important: service avant app) -->
-  <script src="js/supabaseservice.js?v=433"></script>
+  <script src="js/supabaseservice.js?v=436"></script>
   <script src="js/printservice.js"></script>
   <script src="js/app-cuisine.js?v=435"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
