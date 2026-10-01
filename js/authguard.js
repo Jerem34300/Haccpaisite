@@ -52,9 +52,9 @@
           headers: { 'Content-Type': 'application/json', 'apikey': anonKey },
           body: JSON.stringify({ refresh_token: refreshToken })
         });
-        if (!r.ok) return null;
+        if (!r.ok) return { _fail: r.status };
         var data = await r.json();
-        if (!data.access_token) return null;
+        if (!data.access_token) return { _fail: r.status || 401 };
         return { access_token: data.access_token, refresh_token: data.refresh_token || refreshToken };
       } catch(e) { return null; }
     }
@@ -67,6 +67,25 @@
       var refreshToken = fresh.refreshToken                         || stable.refreshToken                          || '';
       var url          = stable.url        || SUPABASE_URL;
       var anonKey      = stable.key        || stable.anonKey        || SUPABASE_ANON_KEY;
+
+      // Refresh 400/401/403 : retirer le JWT mort pour ne pas rebondir cuisine↔accueil.
+      // Ne jamais supprimer haccp_supa_queue_v1 (logout / changement de site seulement).
+      function _purgeKitchenDeadSession(status) {
+        try {
+          if (status !== 400 && status !== 401 && status !== 403) return;
+          if (sessionKey !== 'haccpro_supa_cfg' && stableKey !== 'haccp_supa_cfg_v1') return;
+          function strip(obj, key) {
+            if (!key || !obj) return;
+            obj.userToken = '';
+            obj.token = '';
+            obj.refreshToken = '';
+            try { localStorage.setItem(key, JSON.stringify(obj)); } catch (e) { console.warn('[HACCPro] authGuard purge', e); }
+          }
+          strip(fresh, sessionKey);
+          if (stableKey) strip(stable, stableKey);
+          try { localStorage.removeItem('sb-lthxpucxjcwzphshdhmp-auth-token'); } catch (e) { console.warn('[HACCPro] authGuard sdk', e); }
+        } catch (e) { console.warn('[HACCPro] authGuard purge', e); }
+      }
 
       if (!token) { goLogin(); return; }
 
@@ -96,7 +115,7 @@
         setTimeout(async function() {
           if (!refreshToken) return;
           var refreshed = await tryRefresh(url, anonKey, refreshToken);
-          if (refreshed) {
+          if (refreshed && refreshed.access_token) {
             _saveRefreshed(refreshed);
             // Recalculer et replanifier pour le nouveau token
             var newExp = decodeJwtExp(refreshed.access_token);
@@ -125,7 +144,11 @@
 
       if (!refreshToken) { goLogin(); return; }
       var refreshed = await tryRefresh(url, anonKey, refreshToken);
-      if (!refreshed) { goLogin(); return; }
+      if (!refreshed || !refreshed.access_token) {
+        if (refreshed && refreshed._fail) _purgeKitchenDeadSession(refreshed._fail);
+        goLogin();
+        return;
+      }
 
       _saveRefreshed(refreshed);
       console.log('[HACCPro] authGuard: token rafraîchi automatiquement');

@@ -29,6 +29,81 @@ const SUPA_QUEUE_KEY = 'haccp_supa_queue_v1';
 const SUPA_CFG_KEY   = 'haccp_supa_cfg_v1';
 const _PMS_URL_DEFAULT = SUPABASE_URL;
 const _PMS_KEY_DEFAULT = SUPABASE_ANON_KEY;
+const _SB_AUTH_KEY = 'sb-lthxpucxjcwzphshdhmp-auth-token';
+
+function _jwtExpMs(token) {
+  try {
+    if (!token || typeof token !== 'string') return 0;
+    var parts = token.split('.');
+    if (parts.length < 2) return 0;
+    var payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    while (payload.length % 4) payload += '=';
+    var exp = JSON.parse(atob(payload)).exp;
+    return (Number(exp) || 0) * 1000;
+  } catch (e) { return 0; }
+}
+function _jwtUsable(token, anonKey) {
+  try {
+    if (!token || (anonKey && token === anonKey)) return false;
+    return _jwtExpMs(token) > Date.now() + 15000;
+  } catch (e) { return false; }
+}
+/** HTTP 400/401/403 sur le refresh : oublie le refresh token.
+ *  Garde l'access token seulement s'il n'est pas expiré.
+ *  Ne supprime jamais haccp_supa_queue_v1. */
+function _purgeFailedRefresh(c) {
+  try {
+    var anon = (c && (c.anonKey || c.key)) || '';
+    var best = (c && c.userToken) || '';
+    function readTok(key) {
+      try {
+        var o = JSON.parse(localStorage.getItem(key) || '{}');
+        return o.userToken || o.token || '';
+      } catch (e) { console.warn('[TOKEN] lecture ' + key, e); return ''; }
+    }
+    if (!_jwtUsable(best, anon)) {
+      var sib = readTok('haccpro_supa_cfg');
+      if (_jwtUsable(sib, anon)) best = sib;
+    }
+    if (!_jwtUsable(best, anon)) {
+      var v1 = readTok('haccp_supa_cfg_v1');
+      if (_jwtUsable(v1, anon)) best = v1;
+    }
+    var keep = _jwtUsable(best, anon);
+    if (c) {
+      c.refreshToken = '';
+      c.userToken = keep ? best : '';
+    }
+    ['haccp_supa_cfg_v1', 'haccpro_supa_cfg'].forEach(function (k) {
+      try {
+        var raw = localStorage.getItem(k);
+        if (!raw) return;
+        var o = JSON.parse(raw);
+        o.refreshToken = '';
+        if (!keep) {
+          o.userToken = '';
+          o.token = '';
+        } else {
+          o.userToken = best;
+          o.token = best;
+        }
+        localStorage.setItem(k, JSON.stringify(o));
+      } catch (e) { console.warn('[TOKEN] purge ' + k, e); }
+    });
+    if (!keep) {
+      try { localStorage.removeItem(_SB_AUTH_KEY); } catch (e) { console.warn('[TOKEN] purge sdk', e); }
+      try {
+        if (window._supaClient && window._supaClient.auth && window._supaClient.auth.signOut) {
+          window._supaClient.auth.signOut({ scope: 'local' }).catch(function () {});
+        }
+      } catch (e) { console.warn('[TOKEN] signOut local', e); }
+    }
+    return keep;
+  } catch (e) {
+    console.warn('[TOKEN] purge refresh', e);
+    return false;
+  }
+}
 
 const SupaEngine = (() => {
   let _flushing = false;
@@ -134,7 +209,7 @@ const SupaEngine = (() => {
       if (window._supaClient) {
         var sess = await window._supaClient.auth.getSession();
         var s = sess && sess.data && sess.data.session;
-        if (s && s.access_token) {
+        if (s && s.access_token && _jwtUsable(s.access_token, c.anonKey || _PMS_KEY_DEFAULT)) {
           if (s.access_token !== c.userToken) {
             c.userToken = s.access_token;
             if (s.refresh_token) c.refreshToken = s.refresh_token;
@@ -164,12 +239,14 @@ const SupaEngine = (() => {
             return d2.access_token;
           }
         } else if (r.status === 400 || r.status === 401 || r.status === 403) {
-          // 400 = refresh invalide / Already Used (GoTrue) — purger sinon boucle 400 à chaque flush
-          // 401/403 = session rejetée
-          _supaLog('[TOKEN] refresh rejeté HTTP ' + r.status + ' — purge token périmé');
-          c.userToken = '';
-          c.refreshToken = '';
-          saveCfgLocal(c);
+          // 400 = refresh invalide / Already Used — ne pas boucler. 401/403 = session rejetée.
+          // La file haccp_supa_queue_v1 n'est pas vidée : les pending restent envoyables
+          // dès qu'un nouvel access token arrive (login.html, pas la déconnexion).
+          _supaLog('[TOKEN] refresh rejeté HTTP ' + r.status + ' — refresh purgé, file conservée');
+          var kept = false;
+          try { kept = _purgeFailedRefresh(c); } catch (e) { console.warn('[TOKEN] purge', e); }
+          try { saveCfgLocal(c); } catch (e) { console.warn('[TOKEN] save après purge', e); }
+          if (kept && c.userToken) return c.userToken;
         } else {
           _supaLog('[TOKEN] refresh HTTP ' + r.status);
         }
@@ -181,11 +258,25 @@ const SupaEngine = (() => {
       var stored = localStorage.getItem('sb-lthxpucxjcwzphshdhmp-auth-token');
       if (stored) {
         var pTok = JSON.parse(stored);
-        if (pTok && pTok.access_token) return pTok.access_token;
+        if (pTok && pTok.access_token && _jwtUsable(pTok.access_token, c.anonKey || _PMS_KEY_DEFAULT)) return pTok.access_token;
       }
     } catch(e) {}
 
-    // 4. Anon uniquement — NE PAS renvoyer c.userToken périmé (cause 401 sites)
+    // 4. Reprendre un access encore valide (l'autre clé de session), jamais un JWT périmé
+    try {
+      if (!_jwtUsable(c.userToken, c.anonKey || _PMS_KEY_DEFAULT)) {
+        var sib = JSON.parse(localStorage.getItem('haccpro_supa_cfg') || '{}');
+        var sibTok = sib.userToken || sib.token || '';
+        if (_jwtUsable(sibTok, c.anonKey || _PMS_KEY_DEFAULT)) c.userToken = sibTok;
+      }
+      if (_jwtUsable(c.userToken, c.anonKey || _PMS_KEY_DEFAULT)) {
+        try { saveCfgLocal(c); } catch (e) { console.warn('[TOKEN] save reprise', e); }
+        _supaLog('[TOKEN] access encore valide — envoi sans refresh');
+        return c.userToken;
+      }
+    } catch (e) { _supaLog('[TOKEN] reprise access : ' + e.message); }
+
+    // 5. Anon uniquement — NE PAS renvoyer c.userToken périmé (cause 401 sites → statut error)
     return c.anonKey || _PMS_KEY_DEFAULT;
   }
 
@@ -783,10 +874,18 @@ const SupaEngine = (() => {
     const authToken = await _ensureFreshToken(c);
     // Anon key ≠ JWT user : RLS INSERT + triggers auth.uid()/id_operateur échouent (401/403/23502)
     if (!authToken || authToken === c.anonKey || authToken === _PMS_KEY_DEFAULT) {
-      _supaLog('❌ Flush annulé — JWT session manquant/expiré (anon only)');
-      _toastSyncError(401, 'JWT manquant');
+      // Pas de JWT : ne pas passer les pending en error/synced. « Envoyer maintenant »
+      // ne reprend que les pending ; la file reste jusqu'à un vrai login.
+      _supaLog('❌ Flush annulé — JWT manquant/expiré — saisie(s) laissée(s) pending (file non vidée)');
+      try {
+        if (typeof toast === 'function') {
+          toast('⚠️ Session expirée — la saisie reste en attente. Touchez ☁️ puis « Reconnecter la session ». Ne pas se déconnecter.', 'warning', {force:true});
+        }
+      } catch (e) { console.warn('[flush] toast session', e); }
+      try { if (typeof _syncReauthButton === 'function') _syncReauthButton(); } catch (e) { console.warn('[flush] reauth', e); }
       _flushing = false;
-      _updateBadge('error');
+      _updateBadge();
+      try { _refreshModalStats(); } catch (e) { console.warn('[flush] stats', e); }
       return;
     }
     let hasError = false;
@@ -1062,6 +1161,7 @@ const SupaEngine = (() => {
         }
       }
     }
+    try { if (typeof _syncReauthButton === 'function') _syncReauthButton(); } catch (e) { console.warn('[supa] reauth', e); }
   }
 
   function init() {
@@ -1146,14 +1246,39 @@ function openSupaModal() {
   SupaEngine._refreshModalStats();
   const ov = document.getElementById('supa-ov');
   if(ov){ ov.style.opacity='1'; ov.style.pointerEvents='auto'; }
-  // Afficher email connecté si dispo
+  // « Connecté » seulement avec un JWT. L'email seul restait après purge du refresh 400.
   const statusBar = document.getElementById('supa-status-bar');
-  if (statusBar && c.userEmail) {
+  if (statusBar && c.userToken && c.userEmail) {
     const dot = document.getElementById('supa-status-dot');
     const txt = document.getElementById('supa-status-txt');
     if (dot) dot.style.background = '#22c55e';
     if (txt) txt.textContent = '✅ Connecté — ' + c.userEmail;
+  } else if (statusBar && !c.userToken) {
+    const dot = document.getElementById('supa-status-dot');
+    const txt = document.getElementById('supa-status-txt');
+    if (dot) dot.style.background = '#f59e0b';
+    if (txt) txt.textContent = 'Session expirée — saisies en attente conservées. Reconnecter la session (pas Déconnexion).';
   }
+  try { _syncReauthButton(); } catch (e) { console.warn('[supa] reauth', e); }
+}
+function _syncReauthButton() {
+  try {
+    var btn = document.getElementById('supa-reauth-btn');
+    if (!btn || typeof SupaEngine === 'undefined' || !SupaEngine.cfg) return;
+    var c = SupaEngine.cfg() || {};
+    btn.style.display = c.userToken ? 'none' : 'block';
+  } catch (e) { console.warn('[supa] reauth btn', e); }
+}
+function reconnectSessionKeepQueue() {
+  // Login sans clearSession : la file haccp_supa_queue_v1 reste sur la tablette.
+  try { _purgeFailedRefresh({ userToken: '', refreshToken: '', anonKey: '' }); } catch (e) { console.warn('[reconnect] purge', e); }
+  try {
+    if (window._supaClient && window._supaClient.auth && window._supaClient.auth.signOut) {
+      window._supaClient.auth.signOut({ scope: 'local' }).catch(function () {});
+    }
+  } catch (e) { console.warn('[reconnect] signOut', e); }
+  try { window.location.href = 'login.html'; }
+  catch (e) { console.warn('[reconnect] nav', e); }
 }
 function supaRetryErrors() {
   // Réinitialiser les retries des entrées en erreur → elles repassent en pending
@@ -1275,10 +1400,10 @@ function startSupaTokenRefresh() {
           SupaEngine.saveCfgLocal(c);
         }
       } else if (r.status === 400 || r.status === 401 || r.status === 403) {
-        c.userToken = '';
-        c.refreshToken = '';
-        SupaEngine.saveCfgLocal(c);
-        console.warn('[token refresh PMS] HTTP ' + r.status + ' — tokens purgés, reconnectez-vous');
+        try { _purgeFailedRefresh(c); } catch (e) { console.warn('[token refresh PMS] purge', e); }
+        try { SupaEngine.saveCfgLocal(c); } catch (e) { console.warn('[token refresh PMS] save', e); }
+        console.warn('[token refresh PMS] HTTP ' + r.status + ' — refresh purgé, file conservée');
+        try { if (typeof _syncReauthButton === 'function') _syncReauthButton(); } catch (e) { console.warn('[token refresh PMS] btn', e); }
       }
     } catch(e) { console.warn('[token refresh PMS]', e); }
   }, 50 * 60 * 1000);
