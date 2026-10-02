@@ -10927,6 +10927,26 @@ async function _loadFromSupabase() {
           }
         } catch(e) { console.warn('[purge] custom fiches', e); }
         try { registerCustomPages(); } catch(e) { console.warn('[purge] registerCustomPages', e); }
+        // Pages distribution du site précédent : registerDistribSvcPages ne retire pas
+        // et ne met pas à jour le libellé si l'id existe déjà (midi/soir).
+        // Pas d'appel ici : distribServices vient d'être vidé, les défauts figeraient le mauvais nom.
+        try {
+          for (var _di = ALL.length - 1; _di >= 0; _di--) {
+            if (ALL[_di] && typeof ALL[_di].id === 'string' && ALL[_di].id.indexOf('enr_distrib_') === 0) {
+              ALL.splice(_di, 1);
+            }
+          }
+          Object.keys(FDEFS).forEach(function(_fid){
+            if (typeof _fid === 'string' && _fid.indexOf('enr_distrib_') === 0) {
+              try { delete FDEFS[_fid]; } catch(e){}
+            }
+          });
+          Object.keys(REND).forEach(function(_rid){
+            if (typeof _rid === 'string' && _rid.indexOf('enr_distrib_') === 0) {
+              try { delete REND[_rid]; } catch(e){}
+            }
+          });
+        } catch(e) { console.warn('[purge] distrib pages', e); }
         S.chefPins = {}; S.chefPrefs = {}; S.chefSchedule = {};
         if (S.config) {
           S.config.chefs = [];
@@ -11327,6 +11347,7 @@ async function _loadFromSupabase() {
 
     if (recs.length === 0) {
       try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
+      try { registerDistribSvcPages(); } catch(e) { console.warn('[cloud] registerDistribSvcPages', e); }
       save(); initTheme(); renderNav(); renderMain();
       if (typeof renderChefList === 'function') renderChefList();
       toast('☁️ PMS synchronisé (aucune saisie récente)', 'info');
@@ -11671,6 +11692,7 @@ async function _loadFromSupabase() {
     // (enceintes pms_config déjà lues avant le return 0 saisie)
     applyDefaultConfigIfNeeded();
     try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
+    try { registerDistribSvcPages(); } catch(e) { console.warn('[cloud] registerDistribSvcPages', e); }
     initTheme();
     renderNav();
     renderMain();
@@ -11716,6 +11738,7 @@ async function _loadFromSupabase() {
     autoBackup();
     save();
     try { registerCustomPages(); } catch(e) { console.warn('[cloud] registerCustomPages', e); }
+    try { registerDistribSvcPages(); } catch(e) { console.warn('[cloud] registerDistribSvcPages', e); }
     renderNav(); renderMain();
     if (typeof renderChefList === 'function') renderChefList();
     toast(`☁️ ${recs.length} saisie(s) — 6 mois chargés depuis le cloud`, 'success');
