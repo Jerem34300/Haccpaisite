@@ -18110,10 +18110,111 @@ function wgCatalogAdd(id){
 
 // ── Drag & drop touch ──────────────────────────────
 var _wgDrag = null;
+var _wgDragDoc = false;
+
+function _wgTryCapture(e){
+  try {
+    if (!e || typeof e.pointerId !== 'number') return;
+    var h = null;
+    if (e.currentTarget && e.currentTarget.setPointerCapture) h = e.currentTarget;
+    else if (e.target && e.target.closest) h = e.target.closest('.wg-drag-handle');
+    if (h && h.setPointerCapture) h.setPointerCapture(e.pointerId);
+  } catch(err) {}
+}
+function _wgDragDocOn(){
+  try {
+    if (_wgDragDoc) return;
+    _wgDragDoc = true;
+    document.addEventListener('touchmove', wgDragMove, {capture:true, passive:false});
+    document.addEventListener('pointermove', wgDragMove, true);
+    document.addEventListener('touchend', wgDragEnd, true);
+    document.addEventListener('pointerup', wgDragEnd, true);
+    document.addEventListener('touchcancel', wgDragEnd, true);
+    document.addEventListener('pointercancel', wgDragEnd, true);
+  } catch(err) {}
+}
+function _wgDragDocOff(){
+  try {
+    if (!_wgDragDoc) return;
+    _wgDragDoc = false;
+    document.removeEventListener('touchmove', wgDragMove, {capture:true});
+    document.removeEventListener('pointermove', wgDragMove, true);
+    document.removeEventListener('touchend', wgDragEnd, true);
+    document.removeEventListener('pointerup', wgDragEnd, true);
+    document.removeEventListener('touchcancel', wgDragEnd, true);
+    document.removeEventListener('pointercancel', wgDragEnd, true);
+  } catch(err) {}
+}
+function _wgHitTarget(x, y){
+  try {
+    var els = document.querySelectorAll('.wg-card-wrap');
+    var hit = null;
+    for (var i = 0; i < els.length; i++){
+      var el = els[i];
+      if (!el || el.id === 'wg-clone') continue;
+      if (el.closest && el.closest('#wg-clone')) continue;
+      if (_wgDrag && el.dataset.wid === _wgDrag.id) continue;
+      var r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) hit = el;
+    }
+    return hit;
+  } catch(err) { return null; }
+}
+function _wgReorderDom(list){
+  var grid = document.getElementById('wg-grid');
+  if (!grid || !list) return;
+  var addBtn = grid.querySelector('.wg-add-btn');
+  var byId = {};
+  var wraps = grid.querySelectorAll('.wg-card-wrap');
+  for (var i = 0; i < wraps.length; i++){
+    var el = wraps[i];
+    if (el.id === 'wg-clone' || (el.closest && el.closest('#wg-clone'))) continue;
+    if (el.dataset && el.dataset.wid) byId[el.dataset.wid] = el;
+  }
+  var nodes = [];
+  for (var j = 0; j < list.length; j++){
+    if (byId[list[j].id]) nodes.push(byId[list[j].id]);
+  }
+  nodes.forEach(function(n){ if (n.parentNode) n.parentNode.removeChild(n); });
+  var stale = grid.querySelectorAll('.wg-row');
+  for (var s = 0; s < stale.length; s++){
+    if (!stale[s].querySelector('.wg-card-wrap')) stale[s].parentNode.removeChild(stale[s]);
+  }
+  function sizeOf(id){
+    var def = (typeof WG_CATALOG !== 'undefined' && WG_CATALOG) ? WG_CATALOG.find(function(d){ return d.id === id; }) : null;
+    if (def && def.size) return def.size;
+    if (id && id.slice(0, 2) === 'd_') return 'half';
+    return 'full';
+  }
+  var k = 0;
+  while (k < nodes.length){
+    var n = nodes[k];
+    var n2 = nodes[k + 1];
+    if (sizeOf(n.dataset.wid) === 'half' && n2 && sizeOf(n2.dataset.wid) === 'half'){
+      n.classList.add('wg-half');
+      n2.classList.add('wg-half');
+      var row = document.createElement('div');
+      row.className = 'wg-row';
+      row.appendChild(n);
+      row.appendChild(n2);
+      if (addBtn && addBtn.parentNode === grid) grid.insertBefore(row, addBtn);
+      else grid.appendChild(row);
+      k += 2;
+    } else {
+      n.classList.remove('wg-half');
+      if (addBtn && addBtn.parentNode === grid) grid.insertBefore(n, addBtn);
+      else grid.appendChild(n);
+      k++;
+    }
+  }
+}
 
 function wgDragStart(e, id){
-  e.preventDefault();
-  e.stopPropagation();
+  try { e.preventDefault(); e.stopPropagation(); } catch(err) {}
+  try {
+    if (_wgDrag && _wgDrag.id === id) { _wgTryCapture(e); return; }
+    if (_wgDrag) return;
+  } catch(err) {}
   var pt = e.touches ? e.touches[0] : e;
   var card = document.querySelector('.wg-card-wrap[data-wid="'+id+'"]');
   if(!card) return;
@@ -18135,32 +18236,28 @@ function wgDragStart(e, id){
     card: card,
     lastTarget: null
   };
+  try { _wgTryCapture(e); _wgDragDocOn(); } catch(err) {}
   appVibrate([30]);
 }
 
 function wgDragMove(e){
   if(!_wgDrag) return;
-  e.preventDefault();
+  try { if (e && e.cancelable) e.preventDefault(); } catch(err) {}
   var pt = e.touches ? e.touches[0] : e;
+  if(!pt) return;
   var x = pt.clientX, y = pt.clientY;
   // Déplacer le clone
-  _wgDrag.clone.style.top = (y - _wgDrag.offsetY) + 'px';
-  _wgDrag.clone.style.left = (x - (_wgDrag.clone.offsetWidth/2)) + 'px';
-  // Trouver la cible la plus proche
-  var els = document.querySelectorAll('.wg-card-wrap');
-  var closest = null, closestDist = Infinity;
-  els.forEach(function(el){
-    if(el.dataset.wid === _wgDrag.id) return;
-    var r = el.getBoundingClientRect();
-    var mid = r.top + r.height/2;
-    var dist = Math.abs(y - mid);
-    if(dist < closestDist){ closestDist = dist; closest = el; }
-  });
-  // Highlight cible
+  try {
+    _wgDrag.clone.style.top = (y - _wgDrag.offsetY) + 'px';
+    _wgDrag.clone.style.left = (x - (_wgDrag.clone.offsetWidth/2)) + 'px';
+  } catch(err) {}
+  // Rectangle sous le doigt (ignorer #wg-clone)
+  var hit = null;
+  try { hit = _wgHitTarget(x, y); } catch(err) { hit = null; }
   document.querySelectorAll('.wg-drag-over').forEach(function(el){ el.classList.remove('wg-drag-over'); });
-  if(closest && closestDist < 80){
-    closest.classList.add('wg-drag-over');
-    _wgDrag.lastTarget = closest.dataset.wid;
+  if(hit){
+    hit.classList.add('wg-drag-over');
+    _wgDrag.lastTarget = hit.dataset.wid;
   } else {
     _wgDrag.lastTarget = null;
   }
@@ -18172,24 +18269,28 @@ function wgDragMove(e){
 
 function wgDragEnd(e){
   if(!_wgDrag) return;
-  // Retirer le clone
-  if(_wgDrag.clone) _wgDrag.clone.remove();
-  if(_wgDrag.card) _wgDrag.card.style.opacity = '';
-  document.querySelectorAll('.wg-drag-over').forEach(function(el){ el.classList.remove('wg-drag-over'); });
-  // Appliquer le réordonnement si une cible était sélectionnée
-  if(_wgDrag.lastTarget){
-    var list = wgGet();
-    var fromIdx = list.findIndex(function(w){ return w.id===_wgDrag.id; });
-    var toIdx = list.findIndex(function(w){ return w.id===_wgDrag.lastTarget; });
-    if(fromIdx>=0 && toIdx>=0 && fromIdx!==toIdx){
-      var item = list.splice(fromIdx,1)[0];
-      list.splice(toIdx,0,item);
-      wgSave(list);
-      renderMain();
-      appVibrate([40]);
-    }
-  }
+  var drag = _wgDrag;
   _wgDrag = null;
+  try { _wgDragDocOff(); } catch(err) {}
+  try {
+    if(drag.clone) drag.clone.remove();
+    if(drag.card) drag.card.style.opacity = '';
+    document.querySelectorAll('.wg-drag-over').forEach(function(el){ el.classList.remove('wg-drag-over'); });
+    var cancelled = e && (e.type === 'touchcancel' || e.type === 'pointercancel');
+    // Réordonner et sauver sans reconstruire la page
+    if(!cancelled && drag.lastTarget){
+      var list = wgGet();
+      var fromIdx = list.findIndex(function(w){ return w.id===drag.id; });
+      var toIdx = list.findIndex(function(w){ return w.id===drag.lastTarget; });
+      if(fromIdx>=0 && toIdx>=0 && fromIdx!==toIdx){
+        var item = list.splice(fromIdx,1)[0];
+        list.splice(toIdx,0,item);
+        wgSave(list);
+        try { _wgReorderDom(list); } catch(err) {}
+        appVibrate([40]);
+      }
+    }
+  } catch(err) {}
 }
 
 // ── Render individuel par type ─────────────────────
@@ -18423,7 +18524,7 @@ function _wgRenderGrid(container, list){
     var eb='';
     if(_wgEditing){
       eb='<div class="wg-rm" data-wid="'+w.id+'" onclick="event.stopPropagation();wgRmById(this)" ontouchend="event.preventDefault();wgRmById(this)">✕</div>'
-        +'<div class="wg-drag-handle" ontouchstart="wgDragStart(event,\''+w.id+'\')" ontouchmove="wgDragMove(event)" ontouchend="wgDragEnd(event)">☰</div>';
+        +'<div class="wg-drag-handle" onpointerdown="wgDragStart(event,\''+w.id+'\')" ontouchstart="wgDragStart(event,\''+w.id+'\')" ontouchmove="wgDragMove(event)" ontouchend="wgDragEnd(event)">☰</div>';
     }
     if(size==='half'){
       var nx=list[i+1];
@@ -18433,7 +18534,7 @@ function _wgRenderGrid(container, list){
         var ebn='';
         if(_wgEditing){
           ebn='<div class="wg-rm" data-wid="'+nx.id+'" onclick="event.stopPropagation();wgRmById(this)" ontouchend="event.preventDefault();wgRmById(this)">✕</div>'
-            +'<div class="wg-drag-handle" ontouchstart="wgDragStart(event,\''+nx.id+'\')" ontouchmove="wgDragMove(event)" ontouchend="wgDragEnd(event)">☰</div>';
+            +'<div class="wg-drag-handle" onpointerdown="wgDragStart(event,\''+nx.id+'\')" ontouchstart="wgDragStart(event,\''+nx.id+'\')" ontouchmove="wgDragMove(event)" ontouchend="wgDragEnd(event)">☰</div>';
         }
         out+='<div class="wg-row">'
           +'<div class="wg-half wg-card-wrap" data-wid="'+w.id+'">'+(_wgEditing&&c?'<div style="position:relative;padding-top:8px;margin-top:-8px">'+eb+c+'</div>':c)+'</div>'

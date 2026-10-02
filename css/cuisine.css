@@ -180,7 +180,7 @@ body.dark-mode .wc.wc-danger{background:#2e1a1a;border-color:#4a2d2d;}
 .wg-drag-handle{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:1.1rem;color:var(--plum);cursor:grab;padding:8px 6px;z-index:10;background:rgba(15,34,64,.08);border-radius:8px;line-height:1;}
 .wg-drag-handle:active{cursor:grabbing;}
 #wg-clone{position:fixed;z-index:9997;pointer-events:none;opacity:.88;border-radius:16px;box-shadow:0 12px 32px rgba(15,34,64,.35);transition:none;transform:scale(1.04);}
-.wc.wg-drag-over{border:2.5px dashed var(--plum2)!important;background:rgba(15,34,64,.05)!important;}
+.wg-card-wrap.wg-drag-over{border:2.5px dashed var(--plum2)!important;background:rgba(15,34,64,.05)!important;}
 .wc.wg-editing .wc-arrow{display:none;}
 .wc.wg-dragging{opacity:.4;border-style:dashed;}
 
