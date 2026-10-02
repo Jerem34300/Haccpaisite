@@ -24,13 +24,13 @@ Supabase credentials are hardcoded in `js/supabaseconfig.js` (anon key — inten
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`
 - `RESEND_API_KEY`, Stripe keys (`stripe-checkout.js`, `stripe-portal.js`, `stripe-webhook.js`)
 
-**Deployment:** Push to git → Netlify auto-deploys. **Canonical host: `https://www.hacc.pro`.** GitHub homepage / README must not point at `haccpaisite.vercel.app` (dead Vercel deploy → `DEPLOYMENT_NOT_FOUND` / 404 on `/.netlify/functions/*` including `admin-proxy`). No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v417'`, `sw.js:11`) must be bumped manually on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
+**Deployment:** Push to git → Netlify auto-deploys. **Canonical host: `https://www.hacc.pro`.** GitHub homepage / README must not point at `haccpaisite.vercel.app` (dead Vercel deploy → `DEPLOYMENT_NOT_FOUND` / 404 on `/.netlify/functions/*` including `admin-proxy`). No CI pipeline. To test on a tablet, clear browser cache fully (cookies + cache + site data) after each deploy. `sw.js` cache name (`CACHE_NAME = 'haccpro-v439'`, `sw.js:11`) must be bumped manually (toujours incrémenter à partir de la valeur réelle lue dans `sw.js`, jamais depuis ce fichier) on every deploy that changes cached assets, or tablets keep serving stale JS/CSS.
 
 ---
 
 ## ⚠️ Règles absolues (à respecter avant toute modification)
 
-Ce projet est un monolithe front-end sans tests automatisés, sans bundler, et à très forte densité fonctionnelle (`app-cuisine.js` fait **16 600 lignes**, `app-dashboard.js` **9 968 lignes**). Une régression n'est détectée qu'en prod, sur tablette, en cuisine. En conséquence :
+Ce projet est un monolithe front-end sans tests automatisés, sans bundler, et à très forte densité fonctionnelle (`app-cuisine.js` fait **~18 600 lignes**, `app-dashboard.js` **~10 400 lignes**). Une régression n'est détectée qu'en prod, sur tablette, en cuisine. En conséquence :
 
 1. **Ne jamais renommer, déplacer ou changer la signature de `sd()`, `r23s()` ou `renderNav()`.**
    - `sd(id, val, sec)` (`js/app-cuisine.js:126`) écrit dans le brouillon `S[sec].draft[id]` et appelle `save()`. C'est le setter générique utilisé par la quasi-totalité des formulaires ENR.
@@ -149,6 +149,7 @@ Schemas in `netlify/sql/`:
 - `menu_feature.sql` — `menu`, `menu_dishes`, `menu_variants`
 - `corrective_actions.sql` — corrective action records, actively used (see Audit §Fonctionnalités 6)
 - `stripe-migration.sql` — subscription/Stripe columns
+- `fix-pms-records-rls-chef-secteur.sql` — RLS `pms_records` SELECT cloisonné par secteur pour `chef_secteur` (PR #82) — **appliqué en prod**
 
 **Tenant isolation:** All tables have RLS policies filtering by `site_id` or `tenant_id` extracted from the JWT. Never bypass RLS in client code. **`netlify/functions/admin-proxy.js` bypasses RLS server-side with the service role key and is currently under-restricted — see Audit §Sécurité 1 before touching it.**
 
@@ -223,9 +224,20 @@ Supported on Chrome (Android/Desktop), Edge, Samsung Internet. Each category has
 - **Badge « Non configuré »** : souvent conséquence du 401 sites (etab/siteNom non hydratés) + `saveSupaCfg` qui droppait `siteNom`. Corrigé.
 - **PMS « Token invalide »** : message serveur dans `stripe-portal.js` / sessions `haccpro_session` vides sur `pms-setup` — pas de correctif code si non reproduit ; reconnecter ou reprendre onboarding.
 
+### Correctifs 20 sept → 2 oct 2026 (PR #66 → #114, v399 → v439)
+Résumé pour contexte — le détail est dans l'historique git/PR.
+- **Sync / queue offline** : file cuisine conservée après refresh token HTTP 400 (#111), upsert `pms_config`/`pms_records` (fin des 409) + UI lastSync (#95), `id_operateur` ENR T° stockage + faux 403 Storage (#94), toasts sync 401/403/404/409 visibles (#86, #87).
+- **ENR33 plats témoins** : recréation des seuls manquants (#102), identité de queue distincte par témoin (#104), resync des témoins partageant un `_ts` (#106), témoin local conservé si absent du pull cloud (#107).
+- **ENR30 / NC** : gravité, clôture de ligne, historique (#96), chip « NC ouvertes » décrémenté (#97), NC T° bloquée sans action corrective (#91), ENR31 validation stricte (#68).
+- **Isolation au changement de site** : branding/session (#88), purge + distribution (#105), son/vibration/notes/Sheets/fiches custom/enceintes (#108), picker cuisiniers + pages distribution de l'ancien site (#112).
+- **Menus** : site-scope (#93), allergènes gluten/lait carte siège (#109), `S.menus` reconstruit depuis `enr_menu` au pull (#110).
+- **Sécurité** : PIN admin/chefs hachés SHA-256 + sel (#83), PIN admin obligatoire non supprimable (#84, #85), RLS SELECT `pms_records` par secteur pour `chef_secteur` (#82).
+- **Divers** : photos (`::` dans le nom #67, miniatures #66, historique agrandissable #99), dates locales YYYY-MM-DD (#89), widget accueil déposé sans rechargement (#114), UX réception ENR23 en étapes / presets T° / priorités nettoyage (#71-#73), SEO redirections www (#69).
+- Les points « À FAIRE / PARTIEL » de l'audit ci-dessous **n'ont pas été traités** par cette série. ⚠️ Les numéros de ligne cités dans l'audit datent de juillet et sont décalés (~+400 lignes dans `app-cuisine.js`) — toujours re-localiser par nom de fonction (`grep`).
+
 ## PWA / Service Worker (`sw.js`)
 
-Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v417'`/`'haccpro-cdn-v417'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
+Cache-first strategy for all JS/CSS assets. Network-first for API calls. `CACHE_NAME`/`CDN_CACHE_NAME` currently `'haccpro-v439'`/`'haccpro-cdn-v439'` (`sw.js:11-12`). After deploying, users must clear full browser cache (cookies + cache + site data) or the SW will serve stale assets. The SW version is bumped manually in `sw.js` to force cache invalidation.
 
 ---
 
@@ -362,3 +374,4 @@ Ces fichiers doivent être exécutés dans Supabase SQL Editor sur la base de pr
 1. `netlify/sql/fix-pms-photos-private.sql` — bucket `pms-photos` privé.
 2. `netlify/sql/fix-paywall-rls-subscription.sql` — filet RLS paywall sur `pms_records`.
 3. Si `netlify/sql/fix-pms-records-rls-site-id.sql` a déjà été appliqué sur cette base, le ré-exécuter après le point 2 (il recrée `pms_records_insert` et inclut désormais aussi le filet paywall).
+4. ✅ `netlify/sql/fix-pms-records-rls-chef-secteur.sql` (PR #82) — **déjà appliqué en prod** (confirmé oct. 2026).
