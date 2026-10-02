@@ -506,24 +506,152 @@ async function pollTabletAlerts(){
 // ════════════════════════════════════════════════════
 // CUISINIERS
 // ════════════════════════════════════════════════════
-const getChefs=()=>S.config?.chefs||[];
+// Code site courant (cfg login, sinon config déjà hydratée). Jamais un nom de cuisinier.
+function _chefSiteCode(){
+  try {
+    var id = '';
+    try {
+      if (typeof SupaEngine !== 'undefined' && SupaEngine && typeof SupaEngine.cfg === 'function') {
+        var c = SupaEngine.cfg() || {};
+        id = String(c.siteId || '').trim();
+      }
+    } catch (e) {}
+    if (!id) {
+      try {
+        var cfg = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}') || {};
+        id = String(cfg.siteId || '').trim();
+      } catch (e2) {}
+    }
+    if (!id && typeof S !== 'undefined' && S && S.config && S.config.code) id = String(S.config.code).trim();
+    return id.toUpperCase();
+  } catch (e) { return ''; }
+}
+// Chaîne nue = manuel legacy sans site. Objet {name, site} = tagué explicitement.
+function _manualChefTag(entry){
+  try {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+    var name = String(entry.name || '').trim();
+    var site = String(entry.site || '').trim().toUpperCase();
+    if (!name || !site) return null;
+    return { name: name, site: site };
+  } catch (e) { return null; }
+}
+function _taggedManualNames(list, siteCode){
+  var site = String(siteCode || '').trim().toUpperCase();
+  var out = [];
+  if (!site) return out;
+  (Array.isArray(list) ? list : []).forEach(function(entry){
+    try {
+      var tag = _manualChefTag(entry);
+      if (tag && tag.site === site && out.indexOf(tag.name) < 0) out.push(tag.name);
+    } catch (e) {}
+  });
+  return out;
+}
+function _manualNamesHiddenOnSite(list, siteCode){
+  var site = String(siteCode || '').trim().toUpperCase();
+  var hide = [];
+  (Array.isArray(list) ? list : []).forEach(function(entry){
+    try {
+      if (typeof entry === 'string') {
+        var s = entry.trim();
+        if (s && hide.indexOf(s) < 0) hide.push(s);
+        return;
+      }
+      var tag = _manualChefTag(entry);
+      if (!tag) {
+        var n = (entry && typeof entry === 'object') ? String(entry.name || '').trim() : '';
+        if (n && hide.indexOf(n) < 0) hide.push(n);
+        return;
+      }
+      if (tag.site !== site && hide.indexOf(tag.name) < 0) hide.push(tag.name);
+    } catch (e) {}
+  });
+  return hide;
+}
+// Payload cloud : uniquement les manuels tagués pour CE site. Ne mute pas la liste locale.
+function _chefsManuelsForCloud(list, siteCode){
+  try {
+    var site = String(siteCode || '').trim().toUpperCase();
+    if (!site) return null;
+    var out = [];
+    var seen = {};
+    (Array.isArray(list) ? list : []).forEach(function(entry){
+      var tag = _manualChefTag(entry);
+      if (!tag || tag.site !== site) return;
+      var k = tag.site + '\n' + tag.name;
+      if (seen[k]) return;
+      seen[k] = 1;
+      out.push({ name: tag.name, site: tag.site });
+    });
+    return out;
+  } catch (e) { return []; }
+}
+function getChefs(){
+  try {
+    var site = _chefSiteCode();
+    var raw = (S.config && Array.isArray(S.config.chefs)) ? S.config.chefs : [];
+    var manuels = (S.config && S.config.chefs_manuels) || [];
+    var hide = new Set(_manualNamesHiddenOnSite(manuels, site));
+    var profiles = new Set(Object.keys((S.config && S.config.chefIds) || {}));
+    var tagged = _taggedManualNames(manuels, site);
+    var kept = [];
+    raw.forEach(function(n){
+      if (typeof n !== 'string') return;
+      var name = n.trim();
+      if (!name) return;
+      // Manuel nu ou d'un autre site : pas sur ce picker. Un profil du site (chefIds) reste.
+      if (hide.has(name) && !profiles.has(name) && tagged.indexOf(name) < 0) return;
+      if (kept.indexOf(name) < 0) kept.push(name);
+    });
+    tagged.forEach(function(name){ if (kept.indexOf(name) < 0) kept.push(name); });
+    return kept;
+  } catch (e) {
+    try { return (S.config && S.config.chefs) || []; } catch (e2) { return []; }
+  }
+}
 function addChef(){
   const inp=document.getElementById('chef-inp');
   const n=inp.value.trim();
   if(!n)return;
   S.config=S.config||{};
   S.config.chefs=[...new Set([...(S.config.chefs||[]),n])];
-  // Aussi sauver dans chefs_manuels pour survivre au rechargement depuis profiles
-  S.config.chefs_manuels=[...new Set([...(S.config.chefs_manuels||[]),n])];
+  // Taguer avec le code site : une chaîne nue fuit sur les autres cuisines au reload.
+  try {
+    var site = _chefSiteCode();
+    if (site) {
+      var list = Array.isArray(S.config.chefs_manuels) ? S.config.chefs_manuels.slice() : [];
+      var exists = list.some(function(e){
+        var t = _manualChefTag(e);
+        return !!(t && t.name === n && t.site === site);
+      });
+      if (!exists) list.push({ name: n, site: site });
+      S.config.chefs_manuels = list;
+    }
+  } catch (e) { console.warn('[addChef] tag site', e); }
   inp.value='';save();renderChefList();
   _saveConfigToSupabase();
 }
 function removeChef(i){
-  const name = (S.config?.chefs||[])[i];
+  var name = '';
+  try { name = getChefs()[i] || ''; } catch (e) { name = (S.config?.chefs||[])[i] || ''; }
   showConfirm('Supprimer '+name+' ?', 'Ce cuisinier sera retiré de la liste.', '🗑️ Supprimer', ()=>{
-    S.config.chefs.splice(i,1);
-    // Retirer aussi de chefs_manuels
-    if(S.config.chefs_manuels) S.config.chefs_manuels = S.config.chefs_manuels.filter(c=>c!==name);
+    try {
+      if (Array.isArray(S.config?.chefs)) {
+        var idx = S.config.chefs.indexOf(name);
+        if (idx >= 0) S.config.chefs.splice(idx, 1);
+      }
+      if (Array.isArray(S.config?.chefs_manuels)) {
+        S.config.chefs_manuels = S.config.chefs_manuels.filter(function(c){
+          if (c === name) return false;
+          try {
+            var t = _manualChefTag(c);
+            if (t && t.name === name) return false;
+          } catch (e) {}
+          return true;
+        });
+      }
+    } catch (e) { console.warn('[removeChef]', e); }
     save(); _chefPinExpanded=null; renderChefList();
     _saveConfigToSupabase();
   });
@@ -11085,8 +11213,11 @@ async function _loadFromSupabase() {
             if (noms.length > 0) {
               S.config = S.config || {};
               // Fusionner avec les chefs manuels existants, en gardant la priorité cloud
-              const manuels = (S.config.chefs_manuels || []);
-              S.config.chefs = [...new Set([...noms, ...manuels])];
+              // Profils déjà filtrés par site. Manuel seulement si tagué avec CE code site.
+              // Chaînes nues (legacy) : ni affichées, ni retirées du tableau local (addChef ancien).
+              var _manuelsSite = [];
+              try { _manuelsSite = _taggedManualNames(S.config.chefs_manuels, c.siteId); } catch (e) { _manuelsSite = []; }
+              S.config.chefs = [...new Set([...noms, ..._manuelsSite])];
               S.config.chefIds = Object.assign({}, S.config.chefIds || {}, chefIds);
               // Session active hors liste du site courant → drop (visa Jeremie fantôme)
               try {
@@ -11662,7 +11793,22 @@ async function _saveConfigToSupabase() {
         const cloudSub = (cloudCurrent.config && typeof cloudCurrent.config === 'object') ? cloudCurrent.config : {};
         const merged = { ...cloudSub };
         Object.keys(localVal).forEach(k => {
-          if (localVal[k] !== undefined) merged[k] = localVal[k];
+          if (localVal[k] === undefined) return;
+          // Ne pas réécrire sur CE site les manuels nus ou tagués pour un autre site.
+          if (k === 'chefs_manuels') {
+            try {
+              var _siteM = _chefSiteCode();
+              if (!_siteM) return;
+              var _scopedM = _chefsManuelsForCloud(localVal[k], _siteM);
+              if (_scopedM) merged[k] = _scopedM;
+            } catch (e) { console.warn('[save config cloud] chefs_manuels', e); }
+            return;
+          }
+          if (k === 'chefs') {
+            try { merged[k] = getChefs(); } catch (e) { console.warn('[save config cloud] chefs', e); }
+            return;
+          }
+          merged[k] = localVal[k];
         });
         cloudConfig.config = merged;
       } else if (Array.isArray(localVal)) {
