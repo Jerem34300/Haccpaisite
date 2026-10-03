@@ -1316,8 +1316,26 @@ function platDejaSaisi(enrId, plat){
   } catch(e){ return false; }
 }
 
+function enrIdsForProfil(key){
+  try {
+    const prof = PROFILS[key];
+    return (prof && prof.enr) ? prof.enr : [];
+  } catch(e){ return []; }
+}
+
+function platShowsOnEnr(p, enrId){
+  try {
+    if(!p || !enrId) return false;
+    if(enrIdsForProfil(p.profil_haccp).includes(enrId)) return true;
+    if(p.variants && p.variants.mixe){
+      const mx = p.variants.mixe_profil || mixeProfil(p);
+      if(enrIdsForProfil(mx).includes(enrId)) return true;
+    }
+    return false;
+  } catch(e){ return false; }
+}
+
 function collectBannerGroups(enrId){
-  const mixeOnly = enrId === 'enr07';
   const groups = [];
   let anyDish = false;
   SERVICES.forEach(svc => {
@@ -1327,7 +1345,7 @@ function collectBannerGroups(enrId){
     CATS.forEach(c => {
       (m.categories?.[c.id]||[]).forEach(p => {
         anyDish = true;
-        if(mixeOnly && !(p.variants && p.variants.mixe)) return;
+        if(!platShowsOnEnr(p, enrId)) return;
         plats.push({
           plat_id: p.plat_id,
           nom: p.nom,
@@ -1338,7 +1356,7 @@ function collectBannerGroups(enrId){
     });
     if(plats.length) groups.push({ label: svc.label, plats });
   });
-  return { groups, anyDish, mixeOnly };
+  return { groups, anyDish };
 }
 
 let _mnNoMixeToastVisit = '';
@@ -1398,7 +1416,6 @@ function bindBannerPick(banner, enrId){
 function buildBannerInner(enrId){
   try {
     const info = collectBannerGroups(enrId);
-    if(enrId === 'enr07' && !info.groups.length) return '';
     if(!info.anyDish){
       return `
       <div style="display:flex;align-items:center;gap:8px">
@@ -1480,10 +1497,8 @@ function injectLinkBanners(){
     try { fillFormWithPlat(cur, _menuLinkPending[cur]); } catch(e){}
   }
   try {
-    if(cur === 'enr07'){
-      const info = collectBannerGroups(cur);
-      if(!info.groups.length) toastNoMixeOnce(cur);
-    }
+    const info = collectBannerGroups(cur);
+    if(info.anyDish && !info.groups.length) toastNoMixeOnce(cur);
   } catch(e){}
 }
 
