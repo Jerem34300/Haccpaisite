@@ -275,7 +275,7 @@ const MENU_ALG = [
   {id:'alg_gluten', label:'Gluten', ico:'🌾'},
   {id:'alg_crustaces', label:'Crustacés', ico:'🦞'},
   {id:'alg_oeufs', label:'Œufs', ico:'🥚'},
-  {id:'alg_poisson', label:'Poisson', ico:'🐟'},
+  {id:'alg_poissons', label:'Poissons', ico:'🐟'},
   {id:'alg_arachides', label:'Arachides', ico:'🥜'},
   {id:'alg_soja', label:'Soja', ico:'🌿'},
   {id:'alg_lait', label:'Lait', ico:'🥛'},
