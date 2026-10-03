@@ -1365,7 +1365,7 @@ function ensureLinkPickStyle(){
     if(document.getElementById('mn-link-pick-style')) return;
     const st = document.createElement('style');
     st.id = 'mn-link-pick-style';
-    st.textContent = 'button.mn-link-pick.mn-link-on{background:#dcfce7!important;border-color:#16a34a!important;box-shadow:inset 4px 0 0 #16a34a}';
+    st.textContent = 'button.mn-link-pick.mn-link-on{background:#e0e7ff!important;border-color:#4f46e5!important;box-shadow:inset 4px 0 0 #4f46e5}';
     (document.head || document.documentElement).appendChild(st);
   } catch(e){ console.warn('[menu] ensureLinkPickStyle:', e); }
 }
