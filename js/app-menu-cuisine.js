@@ -16,9 +16,9 @@
 'use strict';
 
 const PROFILS = {
-  BF_CUIT:       { ico:'🥘', label:'BF Cuit',        color:'#dc2626', enr:['enr23','enr07','enr01','enr_tc_distrib','enr33'] },
-  BF_CRU:        { ico:'🥗', label:'BF Cru',         color:'#16a34a', enr:['enr23','enr08','enr_tc_distrib','enr33'] },
-  REMISE_TC:     { ico:'🔥', label:'Remise T°C',     color:'#ea580c', enr:['enr23','enr03','enr_tc_distrib'] },
+  BF_CUIT:       { ico:'🥘', label:'BF Cuit',        color:'#dc2626', enr:['enr23','enr07','enr01','enr_tc_distrib'] },
+  BF_CRU:        { ico:'🥗', label:'BF Cru',         color:'#16a34a', enr:['enr23','enr08','enr_tc_distrib'] },
+  REMISE_TC:     { ico:'🔥', label:'Remise T°C',     color:'#ea580c', enr:['enr23','enr02','enr_tc_distrib'] },
   SORTIE_DIRECTE:{ ico:'📦', label:'Sortie directe', color:'#0ea5e9', enr:['enr23'] },
   PREP_MINUTE:   { ico:'⚡', label:'Préparé minute', color:'#7c3aed', enr:['enr23'] },
 };
@@ -1316,8 +1316,33 @@ function platDejaSaisi(enrId, plat){
   } catch(e){ return false; }
 }
 
+function enrIdsForProfil(key){
+  try {
+    const prof = PROFILS[key];
+    return (prof && prof.enr) ? prof.enr : [];
+  } catch(e){ return []; }
+}
+
+function enrHasProfil(enrId){
+  try {
+    return Object.keys(PROFILS).some(k => enrIdsForProfil(k).includes(enrId));
+  } catch(e){ return false; }
+}
+
+function platShowsOnEnr(p, enrId){
+  try {
+    if(!p || !enrId) return false;
+    if(!enrHasProfil(enrId)) return true;
+    if(enrIdsForProfil(p.profil_haccp).includes(enrId)) return true;
+    if(p.variants && p.variants.mixe){
+      const mx = p.variants.mixe_profil || mixeProfil(p);
+      if(enrIdsForProfil(mx).includes(enrId)) return true;
+    }
+    return false;
+  } catch(e){ return false; }
+}
+
 function collectBannerGroups(enrId){
-  const mixeOnly = enrId === 'enr07';
   const groups = [];
   let anyDish = false;
   SERVICES.forEach(svc => {
@@ -1327,7 +1352,7 @@ function collectBannerGroups(enrId){
     CATS.forEach(c => {
       (m.categories?.[c.id]||[]).forEach(p => {
         anyDish = true;
-        if(mixeOnly && !(p.variants && p.variants.mixe)) return;
+        if(!platShowsOnEnr(p, enrId)) return;
         plats.push({
           plat_id: p.plat_id,
           nom: p.nom,
@@ -1338,7 +1363,7 @@ function collectBannerGroups(enrId){
     });
     if(plats.length) groups.push({ label: svc.label, plats });
   });
-  return { groups, anyDish, mixeOnly };
+  return { groups, anyDish };
 }
 
 let _mnNoMixeToastVisit = '';
@@ -1398,7 +1423,6 @@ function bindBannerPick(banner, enrId){
 function buildBannerInner(enrId){
   try {
     const info = collectBannerGroups(enrId);
-    if(enrId === 'enr07' && !info.groups.length) return '';
     if(!info.anyDish){
       return `
       <div style="display:flex;align-items:center;gap:8px">
@@ -1480,10 +1504,8 @@ function injectLinkBanners(){
     try { fillFormWithPlat(cur, _menuLinkPending[cur]); } catch(e){}
   }
   try {
-    if(cur === 'enr07'){
-      const info = collectBannerGroups(cur);
-      if(!info.groups.length) toastNoMixeOnce(cur);
-    }
+    const info = collectBannerGroups(cur);
+    if(enrHasProfil(cur) && info.anyDish && !info.groups.length) toastNoMixeOnce(cur);
   } catch(e){}
 }
 
