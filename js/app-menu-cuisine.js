@@ -1292,48 +1292,135 @@ function fillFormWithPlat(enrId, ref){
 function refreshLinkBanner(enrId){
   const banner = document.getElementById('mn-link-banner-'+enrId);
   if(!banner) return;
-  banner.innerHTML = buildBannerInner(enrId);
+  try { applyBannerContent(banner, enrId); }
+  catch(e){ console.warn('[menu] refreshLinkBanner:', e); }
+}
+
+function ligneIsToday(l){
+  if(!l) return false;
+  const d = today();
+  return l.date === d || String(l._ts||'').slice(0,10) === d;
+}
+
+function platDejaSaisi(enrId, plat){
+  try {
+    const store = (typeof S !== 'undefined' && S[enrId]) || {};
+    const lignes = store.lignes || store.saisies || [];
+    const nom = String(plat && plat.nom || '').trim().toLowerCase();
+    return lignes.some(l => {
+      if(!ligneIsToday(l)) return false;
+      if(plat && plat.plat_id && l._plat_id && l._plat_id === plat.plat_id) return true;
+      const alt = String(l._plat_nom || l.produit || '').trim().toLowerCase();
+      return !!(nom && alt && alt === nom);
+    });
+  } catch(e){ return false; }
+}
+
+function collectBannerGroups(enrId){
+  const mixeOnly = enrId === 'enr07';
+  const groups = [];
+  let anyDish = false;
+  SERVICES.forEach(svc => {
+    const m = getMenu(today(), svc.id);
+    if(!m) return;
+    const plats = [];
+    CATS.forEach(c => {
+      (m.categories?.[c.id]||[]).forEach(p => {
+        anyDish = true;
+        if(mixeOnly && !(p.variants && p.variants.mixe)) return;
+        plats.push({
+          plat_id: p.plat_id,
+          nom: p.nom,
+          profil_haccp: p.profil_haccp,
+          menu_id: m.menu_id
+        });
+      });
+    });
+    if(plats.length) groups.push({ label: svc.label, plats });
+  });
+  return { groups, anyDish, mixeOnly };
+}
+
+let _mnNoMixeToastVisit = '';
+function toastNoMixeOnce(enrId){
+  try {
+    const key = enrId + '|' + today();
+    if(_mnNoMixeToastVisit === key) return;
+    _mnNoMixeToastVisit = key;
+    if(typeof toast === 'function') toast('Pas de plat correspondant dans le menu du jour','warning');
+  } catch(e){}
+}
+
+function findBannerPlat(enrId, platId){
+  const info = collectBannerGroups(enrId);
+  for(const g of info.groups){
+    const p = g.plats.find(x => String(x.plat_id) === String(platId));
+    if(p) return { plat_id:p.plat_id, nom:p.nom, profil_haccp:p.profil_haccp, menu_id:p.menu_id };
+  }
+  return null;
+}
+
+function bindBannerPick(banner, enrId){
+  if(!banner || banner._mnPickBound) return;
+  banner._mnPickBound = true;
+  banner.addEventListener('click', function(ev){
+    const btn = ev.target.closest('[data-mn-pick]');
+    if(!btn || !banner.contains(btn)) return;
+    try {
+      const ref = findBannerPlat(enrId, btn.getAttribute('data-plat-id'));
+      if(!ref) return;
+      _menuLinkPending[enrId] = ref;
+      fillFormWithPlat(enrId, ref);
+    } catch(e){ console.warn('[menu] banner pick:', e); }
+  });
 }
 
 function buildBannerInner(enrId){
-  const ref = _menuLinkPending[enrId];
-  let nbPlats = 0;
-  SERVICES.forEach(svc => {
-    const m = getMenu(today(), svc.id);
-    if(m) CATS.forEach(c => { nbPlats += (m.categories?.[c.id]||[]).length; });
-  });
-
-  if(ref){
-    const prof = PROFILS[ref.profil_haccp] || PROFILS.BF_CUIT;
-    return `
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="font-size:1rem">🔗</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.7rem;font-weight:700;color:#7A6579;text-transform:uppercase;letter-spacing:.3px">Plat lié au menu</div>
-          <div style="font-size:.85rem;font-weight:800;color:#5C1E5A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(ref.nom)}</div>
-        </div>
-        <span style="font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:8px;color:#fff;background:${prof.color};flex-shrink:0">${prof.ico} ${prof.label}</span>
-        <button onclick="window._menuOpenLinkPicker('${enrId}')" style="background:#5C1E5A;color:#fff;border:none;border-radius:8px;padding:6px 9px;font-size:.7rem;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0">↻</button>
-        <button onclick="window._menuClearLink('${enrId}')" style="background:#fee2e2;color:#dc2626;border:1.5px solid #fca5a5;border-radius:8px;padding:6px 9px;font-size:.7rem;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0">✕</button>
-      </div>`;
-  }
-  if(nbPlats === 0){
-    return `
+  try {
+    const info = collectBannerGroups(enrId);
+    if(enrId === 'enr07' && !info.groups.length) return '';
+    if(!info.anyDish){
+      return `
       <div style="display:flex;align-items:center;gap:8px">
         <span style="font-size:1rem">🍽️</span>
         <div style="flex:1;font-size:.74rem;font-weight:700;color:#7A6579">Aucun menu saisi aujourd'hui</div>
-        <button onclick="goTo('menu_jour')" style="background:#5C1E5A;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit">📋 Saisir</button>
+        <button type="button" onclick="goTo('menu_jour')" style="background:#5C1E5A;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit">📋 Saisir</button>
       </div>`;
+    }
+    if(!info.groups.length) return '';
+    const rows = info.groups.map(g => {
+      const items = g.plats.map(p => {
+        const pastille = platDejaSaisi(enrId, p)
+          ? `<span style="display:inline-block;margin-left:6px;font-size:.58rem;font-weight:800;line-height:1;padding:2px 6px;border-radius:8px;background:#dcfce7;color:#166534;vertical-align:middle">✓ saisi</span>`
+          : '';
+        return `<button type="button" data-mn-pick="1" data-plat-id="${escH(p.plat_id)}" style="display:flex;align-items:center;width:100%;text-align:left;background:#f7f2f7;border:1.5px solid #ede0ed;border-radius:10px;padding:8px 10px;margin-bottom:4px;cursor:pointer;font-family:inherit">
+        <span style="flex:1;min-width:0;font-size:.84rem;font-weight:800;color:#3b1e3b;line-height:1.3;word-break:break-word">${escH(p.nom)}${pastille}</span>
+      </button>`;
+      }).join('');
+      return `<div style="font-size:.68rem;font-weight:800;color:#5C1E5A;margin:8px 0 4px">${escH(g.label)}</div>${items}`;
+    }).join('');
+    return `<div style="font-size:.7rem;font-weight:700;color:#7A6579;text-transform:uppercase;letter-spacing:.3px">Menu du jour</div>${rows}`;
+  } catch(e){
+    console.warn('[menu] buildBannerInner:', e);
+    return '';
   }
-  return `
-    <div style="display:flex;align-items:center;gap:8px">
-      <span style="font-size:1rem">🍽️</span>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:.7rem;font-weight:700;color:#7A6579;text-transform:uppercase;letter-spacing:.3px">Lier au plat du menu</div>
-        <div style="font-size:.74rem;color:#3b1e3b">Remplit auto le nom du plat + traçabilité</div>
-      </div>
-      <button onclick="window._menuOpenLinkPicker('${enrId}')" style="background:linear-gradient(135deg,#5C1E5A,#C93A78);color:#fff;border:none;border-radius:9px;padding:8px 12px;font-size:.76rem;font-weight:800;cursor:pointer;font-family:inherit;flex-shrink:0">🔗 Choisir</button>
-    </div>`;
+}
+
+function applyBannerContent(banner, enrId){
+  const inner = buildBannerInner(enrId);
+  if(!inner){
+    banner.style.display = 'none';
+    banner.style.padding = '0';
+    banner.style.margin = '0';
+    banner.style.border = 'none';
+    banner.innerHTML = '';
+    return;
+  }
+  banner.style.display = '';
+  banner.style.padding = '10px 12px';
+  banner.style.marginBottom = '10px';
+  banner.style.border = '1.5px dashed #d8b4d8';
+  banner.innerHTML = inner;
 }
 
 function buildBannerHTML(enrId){
@@ -1342,19 +1429,38 @@ function buildBannerHTML(enrId){
 
 function injectLinkBanners(){
   if(typeof cur === 'undefined') return;
+  if(cur !== 'enr07') _mnNoMixeToastVisit = '';
   if(!LINK_ENRS.includes(cur)) return;
   const main = document.getElementById('main-content');
   if(!main) return;
   if(main.querySelector('#mn-link-banner-'+cur)) return;
   const firstCard = main.querySelector('.card, [class*="card"]');
   const wrapper = document.createElement('div');
-  wrapper.innerHTML = buildBannerHTML(cur);
-  if(firstCard && firstCard.parentNode){
-    firstCard.parentNode.insertBefore(wrapper.firstChild, firstCard);
-  } else {
-    main.insertBefore(wrapper.firstChild, main.firstChild);
+  let node = null;
+  try {
+    wrapper.innerHTML = buildBannerHTML(cur);
+    node = wrapper.firstChild;
+    if(node) applyBannerContent(node, cur);
+  } catch(e){
+    console.warn('[menu] injectLinkBanners:', e);
+    return;
   }
-  if(_menuLinkPending[cur]){ fillFormWithPlat(cur, _menuLinkPending[cur]); }
+  if(!node) return;
+  if(firstCard && firstCard.parentNode){
+    firstCard.parentNode.insertBefore(node, firstCard);
+  } else {
+    main.insertBefore(node, main.firstChild);
+  }
+  bindBannerPick(node, cur);
+  if(_menuLinkPending[cur]){
+    try { fillFormWithPlat(cur, _menuLinkPending[cur]); } catch(e){}
+  }
+  try {
+    if(cur === 'enr07'){
+      const info = collectBannerGroups(cur);
+      if(!info.groups.length) toastNoMixeOnce(cur);
+    }
+  } catch(e){}
 }
 
 function hookRenderMain(){
@@ -1397,6 +1503,7 @@ function hookSaveRow(){
         } catch(e){}
       }
     } catch(e){ console.warn('[menu] hookSaveRow:', e); }
+    try { if(LINK_ENRS.includes(id)) refreshLinkBanner(id); } catch(e){}
     return r;
   };
   window.__menuSaveRowHooked = true;
@@ -1431,6 +1538,7 @@ function hookBatchFunctions(){
           }
         }
       } catch(e){ console.warn('[menu] hookBatch:', e); }
+      try { refreshLinkBanner(enrId); } catch(e){}
       return r;
     };
     window['__menu_'+fnName+'_hooked'] = true;
