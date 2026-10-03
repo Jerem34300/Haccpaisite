@@ -270,11 +270,22 @@ function renderMenuCard(menu){
 // ════════════════════════════════════════════════════
 // 3) DETAIL : vue d'un menu (liste plats avec lien Fiche plat)
 // ════════════════════════════════════════════════════
-// Gluten + lait : mêmes clés que la fiche enr_allergenes (suivi détail).
-// Pas de nouvelles clés. Les plats menu ont allergenes:[] jamais rempli.
-const MENU_ALG_GLUTEN_LAIT = [
+// Les 14 clés de la fiche enr_allergenes. On n'affiche que Présent et Traces.
+const MENU_ALG = [
   {id:'alg_gluten', label:'Gluten', ico:'🌾'},
-  {id:'alg_lait',   label:'Lait',   ico:'🥛'},
+  {id:'alg_crustaces', label:'Crustacés', ico:'🦞'},
+  {id:'alg_oeufs', label:'Œufs', ico:'🥚'},
+  {id:'alg_poisson', label:'Poisson', ico:'🐟'},
+  {id:'alg_arachides', label:'Arachides', ico:'🥜'},
+  {id:'alg_soja', label:'Soja', ico:'🌿'},
+  {id:'alg_lait', label:'Lait', ico:'🥛'},
+  {id:'alg_fruits_coq', label:'Fruits à coque', ico:'🌰'},
+  {id:'alg_celeri', label:'Céleri', ico:'🥬'},
+  {id:'alg_moutarde', label:'Moutarde', ico:'🌻'},
+  {id:'alg_sesame', label:'Sésame', ico:'⚪'},
+  {id:'alg_so2', label:'SO₂/Sulfites', ico:'🍷'},
+  {id:'alg_lupin', label:'Lupin', ico:'🌼'},
+  {id:'alg_mollusques', label:'Mollusques', ico:'🦪'},
 ];
 
 function _normAlgName(s){
@@ -339,15 +350,13 @@ function _ficheForPlat(fiches, plat){
 function _menuGlutenLaitHtml(data){
   try {
     const d = data || {};
-    const presents = MENU_ALG_GLUTEN_LAIT.filter(a => d[a.id] === 'Présent');
-    const traces = MENU_ALG_GLUTEN_LAIT.filter(a => d[a.id] === 'Traces');
-    const absents = MENU_ALG_GLUTEN_LAIT.filter(a => d[a.id] === 'Absent');
-    if(!presents.length && !traces.length && !absents.length) return '';
+    const presents = MENU_ALG.filter(a => d[a.id] === 'Présent');
+    const traces = MENU_ALG.filter(a => d[a.id] === 'Traces');
+    if(!presents.length && !traces.length) return '';
     const chip = (a, bg, fg) => `<span style="background:${bg};color:${fg};border-radius:8px;padding:4px 10px;font-size:.75rem;font-weight:700">${a.ico} ${a.label}</span>`;
     let html = '';
     if(presents.length) html += `<div style="background:#fff5f5;border:1.5px solid #fecaca;border-radius:10px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.72rem;font-weight:800;color:#991b1b;margin-bottom:6px">⚠️ PRÉSENT (${presents.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${presents.map(a => chip(a,'#fee2e2','#991b1b')).join('')}</div></div>`;
     if(traces.length) html += `<div style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.72rem;font-weight:800;color:#92400e;margin-bottom:6px">〰️ TRACES (${traces.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${traces.map(a => chip(a,'#fef3c7','#92400e')).join('')}</div></div>`;
-    if(absents.length) html += `<div style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:10px;padding:8px 10px;margin-bottom:6px"><div style="font-size:.72rem;font-weight:800;color:#166534;margin-bottom:6px">✓ ABSENT (${absents.length})</div><div style="display:flex;flex-wrap:wrap;gap:6px">${absents.map(a => chip(a,'#dcfce7','#166534')).join('')}</div></div>`;
     return html;
   } catch(e) { return ''; }
 }
@@ -370,7 +379,7 @@ function _menuAllergenSection(fiches, plats){
       return `<div style="margin-bottom:8px"><div style="font-size:.75rem;font-weight:800;color:#5C1E5A;margin-bottom:4px">${who}</div>${body}</div>`;
     }).join('');
     if(!blocks) return '';
-    return `<div class="detail-section" style="margin-bottom:12px"><div style="font-size:.78rem;font-weight:900;color:#5C1E5A;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">⚠️ Allergènes INCO (gluten, lait)</div>${blocks}</div>`;
+    return `<div class="detail-section" style="margin-bottom:12px"><div style="font-size:.78rem;font-weight:900;color:#5C1E5A;margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px">⚠️ Allergènes saisis</div>${blocks}</div>`;
   } catch(e) { return ''; }
 }
 
