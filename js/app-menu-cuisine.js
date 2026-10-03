@@ -1265,10 +1265,11 @@ function fillFormWithPlat(enrId, ref){
       fillNamedField(inp, ref.nom);
     }
     if(String(enrId).indexOf('enr_distrib_') === 0){
-      const inputs = Array.from(document.querySelectorAll('#main-content input.distrib-plat-inp'));
-      const target = inputs.find(el => !String(el.value||'').trim()) || inputs[0];
-      fillNamedField(target, ref.nom);
+      const inputs = Array.from(document.querySelectorAll('#main-content input.distrib-plat-inp')).filter(el => !el.readOnly);
+      const target = inputs.find(el => !String(el.value||'').trim());
+      if(target) fillNamedField(target, ref.nom);
     }
+    if(enrId === 'enr36' || enrId === 'enr_allergenes' || String(enrId).indexOf('enr_distrib_') === 0) return;
   } catch(e){ console.warn('[menu] fill extra:', e); }
   const fields = FILL_FIELD_PRIORITY[enrId] || ['produit'];
 
