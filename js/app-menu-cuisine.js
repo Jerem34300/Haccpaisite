@@ -18,7 +18,7 @@
 const PROFILS = {
   BF_CUIT:       { ico:'🥘', label:'BF Cuit',        color:'#dc2626', enr:['enr23','enr07','enr01','enr_tc_distrib','enr33'] },
   BF_CRU:        { ico:'🥗', label:'BF Cru',         color:'#16a34a', enr:['enr23','enr08','enr_tc_distrib','enr33'] },
-  REMISE_TC:     { ico:'🔥', label:'Remise T°C',     color:'#ea580c', enr:['enr23','enr03','enr_tc_distrib'] },
+  REMISE_TC:     { ico:'🔥', label:'Remise T°C',     color:'#ea580c', enr:['enr23','enr02','enr_tc_distrib'] },
   SORTIE_DIRECTE:{ ico:'📦', label:'Sortie directe', color:'#0ea5e9', enr:['enr23'] },
   PREP_MINUTE:   { ico:'⚡', label:'Préparé minute', color:'#7c3aed', enr:['enr23'] },
 };
