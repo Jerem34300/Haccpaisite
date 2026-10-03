@@ -1323,9 +1323,16 @@ function enrIdsForProfil(key){
   } catch(e){ return []; }
 }
 
+function enrHasProfil(enrId){
+  try {
+    return Object.keys(PROFILS).some(k => enrIdsForProfil(k).includes(enrId));
+  } catch(e){ return false; }
+}
+
 function platShowsOnEnr(p, enrId){
   try {
     if(!p || !enrId) return false;
+    if(!enrHasProfil(enrId)) return true;
     if(enrIdsForProfil(p.profil_haccp).includes(enrId)) return true;
     if(p.variants && p.variants.mixe){
       const mx = p.variants.mixe_profil || mixeProfil(p);
@@ -1498,7 +1505,7 @@ function injectLinkBanners(){
   }
   try {
     const info = collectBannerGroups(cur);
-    if(info.anyDish && !info.groups.length) toastNoMixeOnce(cur);
+    if(enrHasProfil(cur) && info.anyDish && !info.groups.length) toastNoMixeOnce(cur);
   } catch(e){}
 }
 
