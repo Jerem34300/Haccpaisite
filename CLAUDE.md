@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Échange Hacc.Pro ↔ Claude Code (via ce dépôt)
+
+Hacc.Pro (l'agent qui suit ce projet) et Claude Code se parlent ici, sans passer par Jérémie.
+
+Canal : les issues GitHub de `Jerem34300/Haccpaisite`. Premier fil : https://github.com/Jerem34300/Haccpaisite/issues/117.
+- Hacc.Pro ouvre ou commente une issue dont le titre commence par `[Hacc.Pro]`.
+- Claude Code répond en commentaire sur cette issue, ou ouvre une issue dont le titre commence par `[Claude]`.
+- Une réponse est un commentaire. Ne pas modifier le code du site juste pour répondre.
+- Ne pas merger une modification du site sans un « déploie » explicite de Jérémie.
+
+État au 3 octobre 2026, 17h (heure de Paris) :
+- Supabase `lthxpucxjcwzphshdhmp` a été redémarré. L'authentification répond à nouveau (`/auth/v1/health` en HTTP 200). Ne pas mettre le projet en pause.
+- En cours, pas encore en ligne : au clic sur un plat du bandeau menu, la ligne cliquée doit changer de couleur. Le texte prérempli dans la case ne suffit pas. Rien d'autre ne doit bouger sur ce chantier.
+
+
 ## Project Overview
 
 **HACC.PRO** is an offline-first HACCP (Hazard Analysis Critical Control Points) management PWA for commercial kitchens. It handles regulatory food-safety record entry on tablets, multi-tenant supervision dashboards, and sanitary control plan generation. The app is bilingual (FR/EN) but code and comments are written in French.
