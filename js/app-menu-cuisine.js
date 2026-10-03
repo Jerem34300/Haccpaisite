@@ -1360,9 +1360,28 @@ function findBannerPlat(enrId, platId){
   return null;
 }
 
+function ensureLinkPickStyle(){
+  try {
+    if(document.getElementById('mn-link-pick-style')) return;
+    const st = document.createElement('style');
+    st.id = 'mn-link-pick-style';
+    st.textContent = 'button.mn-link-pick.mn-link-on{background:#dcfce7!important;border-color:#16a34a!important;box-shadow:inset 4px 0 0 #16a34a}';
+    (document.head || document.documentElement).appendChild(st);
+  } catch(e){ console.warn('[menu] ensureLinkPickStyle:', e); }
+}
+
+function markBannerPick(banner, btn){
+  try {
+    if(!banner || !btn) return;
+    banner.querySelectorAll('.mn-link-on').forEach(el => { if(el !== btn) el.classList.remove('mn-link-on'); });
+    btn.classList.add('mn-link-on');
+  } catch(e){ console.warn('[menu] markBannerPick:', e); }
+}
+
 function bindBannerPick(banner, enrId){
   if(!banner || banner._mnPickBound) return;
   banner._mnPickBound = true;
+  try { ensureLinkPickStyle(); } catch(e){}
   banner.addEventListener('click', function(ev){
     const btn = ev.target.closest('[data-mn-pick]');
     if(!btn || !banner.contains(btn)) return;
@@ -1370,6 +1389,7 @@ function bindBannerPick(banner, enrId){
       const ref = findBannerPlat(enrId, btn.getAttribute('data-plat-id'));
       if(!ref) return;
       _menuLinkPending[enrId] = ref;
+      try { markBannerPick(banner, btn); } catch(e){}
       fillFormWithPlat(enrId, ref);
     } catch(e){ console.warn('[menu] banner pick:', e); }
   });
@@ -1388,12 +1408,15 @@ function buildBannerInner(enrId){
       </div>`;
     }
     if(!info.groups.length) return '';
+    let pickedId = '';
+    try { pickedId = (_menuLinkPending[enrId] && _menuLinkPending[enrId].plat_id) || ''; } catch(e){ pickedId = ''; }
     const rows = info.groups.map(g => {
       const items = g.plats.map(p => {
         const pastille = platDejaSaisi(enrId, p)
           ? `<span style="display:inline-block;margin-left:6px;font-size:.58rem;font-weight:800;line-height:1;padding:2px 6px;border-radius:8px;background:#dcfce7;color:#166534;vertical-align:middle">✓ saisi</span>`
           : '';
-        return `<button type="button" data-mn-pick="1" data-plat-id="${escH(p.plat_id)}" style="display:flex;align-items:center;width:100%;text-align:left;background:#f7f2f7;border:1.5px solid #ede0ed;border-radius:10px;padding:8px 10px;margin-bottom:4px;cursor:pointer;font-family:inherit">
+        const on = pickedId && String(p.plat_id) === String(pickedId);
+        return `<button type="button" data-mn-pick="1" data-plat-id="${escH(p.plat_id)}" class="mn-link-pick${on ? ' mn-link-on' : ''}" style="display:flex;align-items:center;width:100%;text-align:left;background:#f7f2f7;border:1.5px solid #ede0ed;border-radius:10px;padding:8px 10px;margin-bottom:4px;cursor:pointer;font-family:inherit">
         <span style="flex:1;min-width:0;font-size:.84rem;font-weight:800;color:#3b1e3b;line-height:1.3;word-break:break-word">${escH(p.nom)}${pastille}</span>
       </button>`;
       }).join('');
@@ -1407,6 +1430,7 @@ function buildBannerInner(enrId){
 }
 
 function applyBannerContent(banner, enrId){
+  try { ensureLinkPickStyle(); } catch(e){}
   const inner = buildBannerInner(enrId);
   if(!inner){
     banner.style.display = 'none';
