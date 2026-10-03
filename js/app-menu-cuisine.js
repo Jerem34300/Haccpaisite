@@ -1204,10 +1204,19 @@ window._menuPickPlat = function(callback, opts){
 // ════════════════════════════════════════════════════
 // LIAISON ENR + PRÉREMPLISSAGE
 // ════════════════════════════════════════════════════
-const LINK_ENRS = ['enr01','enr02','enr03','enr04','enr07','enr08','enr09','enr10',
-                   'enr11','enr12','enr13','enr14','enr15','enr16','enr23','enr31','enr33','enr34'];
+function menuBannerWanted(id){
+  try {
+    if(!id || id === 'enr04') return false;
+    if(LINK_ENRS.includes(id)) return true;
+    return String(id).indexOf('enr_distrib_') === 0;
+  } catch(e){ return false; }
+}
+
+const LINK_ENRS = ['enr01','enr02','enr03','enr07','enr08','enr09','enr10',
+                   'enr11','enr12','enr13','enr14','enr15','enr16','enr23','enr31','enr33','enr34','enr36','enr_allergenes'];
 
 let _menuLinkPending = {};
+let _bannerOpen = {};
 
 const FILL_FIELD_PRIORITY = {
   enr01: ['produit'], enr02: ['produit'], enr03: ['produit'],
@@ -1238,8 +1247,29 @@ window._menuClearLink = function(enrId){
   refreshLinkBanner(enrId);
 };
 
+function fillNamedField(el, value){
+  try {
+    if(!el) return;
+    el.value = value;
+    el.dispatchEvent(new Event('input', {bubbles:true}));
+    el.dispatchEvent(new Event('change', {bubbles:true}));
+  } catch(e){ console.warn('[menu] fillNamedField:', e); }
+}
+
 function fillFormWithPlat(enrId, ref){
   if(!ref || !ref.nom) return;
+  try {
+    if(enrId === 'enr36') fillNamedField(document.getElementById('e36-produit-inp'), ref.nom);
+    if(enrId === 'enr_allergenes'){
+      const inp = document.querySelector('#main-content input[type="text"]');
+      fillNamedField(inp, ref.nom);
+    }
+    if(String(enrId).indexOf('enr_distrib_') === 0){
+      const inputs = Array.from(document.querySelectorAll('#main-content input.distrib-plat-inp'));
+      const target = inputs.find(el => !String(el.value||'').trim()) || inputs[0];
+      fillNamedField(target, ref.nom);
+    }
+  } catch(e){ console.warn('[menu] fill extra:', e); }
   const fields = FILL_FIELD_PRIORITY[enrId] || ['produit'];
 
   // 1. Mettre à jour le draft
@@ -1408,6 +1438,11 @@ function bindBannerPick(banner, enrId){
   banner._mnPickBound = true;
   try { ensureLinkPickStyle(); } catch(e){}
   banner.addEventListener('click', function(ev){
+    const fold = ev.target.closest('[data-mn-fold]');
+    if(fold && banner.contains(fold)){
+      try { _bannerOpen[enrId] = !_bannerOpen[enrId]; applyBannerContent(banner, enrId); } catch(e){}
+      return;
+    }
     const btn = ev.target.closest('[data-mn-pick]');
     if(!btn || !banner.contains(btn)) return;
     try {
@@ -1432,6 +1467,8 @@ function buildBannerInner(enrId){
       </div>`;
     }
     if(!info.groups.length) return '';
+    const nPlats = info.groups.reduce((n,g) => n + g.plats.length, 0);
+    const open = !!_bannerOpen[enrId];
     let pickedId = '';
     try { pickedId = (_menuLinkPending[enrId] && _menuLinkPending[enrId].plat_id) || ''; } catch(e){ pickedId = ''; }
     const rows = info.groups.map(g => {
@@ -1446,7 +1483,10 @@ function buildBannerInner(enrId){
       }).join('');
       return `<div style="font-size:.68rem;font-weight:800;color:#5C1E5A;margin:8px 0 4px">${escH(g.label)}</div>${items}`;
     }).join('');
-    return `<div style="font-size:.7rem;font-weight:700;color:#7A6579;text-transform:uppercase;letter-spacing:.3px">Menu du jour</div>${rows}`;
+    return `<button type="button" data-mn-fold="1" style="display:flex;align-items:center;width:100%;text-align:left;background:none;border:none;padding:0;cursor:pointer;font-family:inherit">
+      <span style="flex:1;font-size:.7rem;font-weight:700;color:#7A6579;text-transform:uppercase;letter-spacing:.3px">Menu du jour · ${nPlats}</span>
+      <span style="font-size:.72rem;font-weight:800;color:#5C1E5A">${open ? 'Replier' : 'Voir'}</span>
+    </button>${open ? rows : ''}`;
   } catch(e){
     console.warn('[menu] buildBannerInner:', e);
     return '';
@@ -1478,7 +1518,7 @@ function buildBannerHTML(enrId){
 function injectLinkBanners(){
   if(typeof cur === 'undefined') return;
   if(cur !== 'enr07') _mnNoMixeToastVisit = '';
-  if(!LINK_ENRS.includes(cur)) return;
+  if(!menuBannerWanted(cur)) return;
   const main = document.getElementById('main-content');
   if(!main) return;
   if(main.querySelector('#mn-link-banner-'+cur)) return;
@@ -1549,7 +1589,7 @@ function hookSaveRow(){
         } catch(e){}
       }
     } catch(e){ console.warn('[menu] hookSaveRow:', e); }
-    try { if(LINK_ENRS.includes(id)) refreshLinkBanner(id); } catch(e){}
+    try { if(menuBannerWanted(id)) refreshLinkBanner(id); } catch(e){}
     return r;
   };
   window.__menuSaveRowHooked = true;
