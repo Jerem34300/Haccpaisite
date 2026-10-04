@@ -113,6 +113,9 @@ body{
   text-align:center;line-height:1.35;
 }
 .plan-reminder a{color:#8DC63F;text-decoration:underline;font-weight:900}
+.plan-prices{margin-top:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;font-size:.78rem;font-weight:700;color:#fff;line-height:1.6;text-align:center}
+.plan-prices strong{color:#8DC63F}
+.plan-prices-note{margin-top:4px;color:rgba(255,255,255,.7);font-size:.72rem}
 .plan-reminder.muted{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.15);color:rgba(255,255,255,.75)}
 .billing-block{
   background:#f8fafc;border:1.5px solid var(--border);border-radius:12px;
@@ -321,7 +324,13 @@ body{
           <div class="step-lbl">Plan</div>
         </div>
       </div>
-      <div class="plan-reminder muted" id="plan-reminder">Choisissez Solo ou Multi — <a href="/#pricing">voir les tarifs</a></div>
+      <div class="plan-reminder muted" id="plan-reminder">Choisissez Solo ou Multi — <a href="#" onclick="togglePlanPrices(event)">voir les tarifs</a></div>
+      <div class="plan-prices" id="plan-prices" hidden>
+        <div><strong>Solo</strong> — 29€ TTC/mois · 1 cuisine</div>
+        <div><strong>Multi</strong> — 49€ TTC/mois · 3 cuisines</div>
+        <div><strong>Entreprise</strong> — sur devis</div>
+        <div class="plan-prices-note">Essai 14 jours sans carte bancaire. Vous choisirez votre plan à l’étape 4.</div>
+      </div>
     </div>
 
     <!-- Body -->
@@ -575,6 +584,6 @@ body{
 </div><!-- /.signup-main -->
 
 <script src="js/supabaseconfig.js"></script>
-<script src="js/app-signup.js?v=3"></script>
+<script src="js/app-signup.js?v=4"></script>
 </body>
 </html>
