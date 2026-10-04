@@ -1482,13 +1482,96 @@ window.openSiegeDashboard = function() {
   catch (e) { console.warn('[Onboarding] siège:', e); }
 };
 
+function _templateFromSiteRow(row) {
+  if (!row || !row.config || row.config.pmsPending === true) return null;
+  var cloud;
+  try { cloud = JSON.parse(JSON.stringify(row.config)); } catch (e) { return null; }
+  delete cloud.pmsPending;
+  delete cloud.pmsConfigured;
+  var cfg = cloud.config || {};
+  if (!cloud.navCfg && !cfg.enrActifs && !cfg.chefs && !cfg.enceintes && !cloud.nett_ref) return null;
+  return {
+    cloud: cloud,
+    encData: cfg.enceintes || [],
+    snap: {
+      chefsNames: cfg.chefs || [],
+      nettRefData: cloud.nett_ref || [],
+      distribSvcs: cfg.distribServices || [],
+      enrActifsData: cfg.enrActifs || [],
+      fournData: cloud.fournisseurs || [],
+      poubData: cfg.poubelles || [],
+      navCfgData: cloud.navCfg || null,
+      adminPinData: cloud.adminPin || null,
+      headerGroupe: cfg.etab || ''
+    }
+  };
+}
+
+async function _hydratePendingKitchens(state) {
+  var token = _onbToken();
+  var tenantId = (state && state.tenantId) || '';
+  if (!tenantId) {
+    try {
+      var sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}');
+      tenantId = sc.tenantId || '';
+    } catch (e) {}
+  }
+  if (!tenantId) {
+    try {
+      var sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}');
+      tenantId = sess.tenantId || '';
+    } catch (e2) {}
+  }
+  if (!token || !tenantId) return state;
+  var resp;
+  try {
+    resp = await fetch(SUPABASE_URL + '/rest/v1/sites?tenant_id=eq.' + encodeURIComponent(tenantId) + '&select=id,name,code,config', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
+    });
+  } catch (e) {
+    console.warn('[Onboarding] cuisines:', e);
+    return state;
+  }
+  if (!resp.ok) return state;
+  var rows = [];
+  try { rows = await resp.json(); } catch (e3) { return state; }
+  if (!Array.isArray(rows)) return state;
+  if (!state || typeof state !== 'object') state = { v: 1, plan: 'multi', kitchens: [] };
+  state.plan = state.plan || 'multi';
+  state.tenantId = state.tenantId || tenantId;
+  state.kitchens = Array.isArray(state.kitchens) ? state.kitchens : [];
+  if (!state.cloudSiteConfig) {
+    var tpl = null;
+    rows.forEach(function(row){ if (!tpl) tpl = _templateFromSiteRow(row); });
+    if (tpl) {
+      state.cloudSiteConfig = tpl.cloud;
+      state.encData = tpl.encData;
+      if (!state.snap || !state.snap.navCfgData) state.snap = tpl.snap;
+    }
+  }
+  rows.forEach(function(row){
+    if (!row || !row.code || !row.config || row.config.pmsPending !== true) return;
+    var i = -1;
+    state.kitchens.forEach(function(k, idx){ if (k && k.code === row.code) i = idx; });
+    if (i < 0) state.kitchens.push({ id: row.id || null, code: row.code, name: row.name || row.code, pmsDone: false });
+    else if (!state.kitchens[i].pmsDone) {
+      state.kitchens[i].id = state.kitchens[i].id || row.id || null;
+      state.kitchens[i].name = row.name || state.kitchens[i].name;
+    }
+  });
+  try { _writeMultiKitchens(state); } catch (e4) { console.warn('[Onboarding] mémoire cuisines:', e4); }
+  return state;
+}
+
 async function _maybeResumeKitchenPicker() {
   try {
     var qs = new URLSearchParams(window.location.search || '');
     var state = _readMultiKitchens();
     var pending = state && state.plan === 'multi' && (state.kitchens || []).some(function(k){ return k && !k.pmsDone; });
     if (qs.get('cuisines') === '1' || pending) {
-      if (state && state.kitchens && state.kitchens.length) {
+      try { state = await _hydratePendingKitchens(state); }
+      catch (e) { console.warn('[Onboarding] cuisines en attente:', e); }
+      if (qs.get('cuisines') === '1' || (state && state.kitchens && state.kitchens.length)) {
         _showKitchenPicker();
         return true;
       }

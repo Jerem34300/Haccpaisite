@@ -189,6 +189,7 @@ exports.handler = async function (event) {
         const patch = {
           cancel_at_period_end: !!obj.cancel_at_period_end,
           status: obj.status === 'active' ? 'active'
+                : obj.status === 'trialing' ? 'trial'
                 : obj.status === 'past_due' ? 'past_due'
                 : obj.status === 'canceled' ? 'cancelled'
                 : obj.status,

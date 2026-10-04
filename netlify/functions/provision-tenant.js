@@ -138,6 +138,7 @@ async function _ensureNamedSites(tenantId, names, extras) {
   const max = _planMaxSites(extras.plan || 'solo');
   const out = [];
   let count = existing.length;
+  let capped = false;
   for (const name of names) {
     const found = existing.find(s => _normSiteName(s.name) === _normSiteName(name))
       || out.find(s => _normSiteName(s.name) === _normSiteName(name));
@@ -145,12 +146,109 @@ async function _ensureNamedSites(tenantId, names, extras) {
       out.push({ id: found.id, code: found.code, name: found.name || name, created: false });
       continue;
     }
-    if (count >= max) continue;
+    if (count >= max) { capped = true; continue; }
     const created = await _insertSite(tenantId, name, extras);
     if (created) {
       out.push(created);
       count += 1;
     }
+  }
+  return { sites: out, capped };
+}
+
+
+const EXTRA_KITCHEN_LOOKUP = 'haccpro_extra_kitchen_19';
+
+async function _extraKitchenPriceId(stripe) {
+  const fromEnv = process.env.STRIPE_PRICE_EXTRA_KITCHEN;
+  if (fromEnv) return fromEnv;
+  const listed = await stripe.prices.list({ lookup_keys: [EXTRA_KITCHEN_LOOKUP], limit: 1 });
+  if (listed.data && listed.data[0] && listed.data[0].id) return listed.data[0].id;
+  try {
+    const price = await stripe.prices.create({
+      currency: 'eur',
+      unit_amount: 1900,
+      recurring: { interval: 'month' },
+      lookup_key: EXTRA_KITCHEN_LOOKUP,
+      nickname: 'Cuisine supplémentaire',
+      product_data: { name: 'Cuisine supplémentaire' },
+      metadata: { kind: 'extra_kitchen' },
+    });
+    return price.id;
+  } catch (e) {
+    const again = await stripe.prices.list({ lookup_keys: [EXTRA_KITCHEN_LOOKUP], limit: 1 });
+    if (again.data && again.data[0] && again.data[0].id) return again.data[0].id;
+    throw e;
+  }
+}
+
+/** quantity = nombre de cuisines au-delà des 3 incluses. 0 retire la ligne. */
+async function _setExtraKitchenQuantity(tenantId, quantity) {
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    const err = new Error('STRIPE_SECRET_KEY manquante sur Netlify : le supplément de 19 €/mois ne peut pas être ajouté.');
+    err.code = 'stripe_config';
+    throw err;
+  }
+  const subResp = await fetch(
+    `${SUPABASE_URL}/rest/v1/subscriptions?tenant_id=eq.${tenantId}&select=stripe_subscription_id&limit=1`,
+    { headers: svcHeaders }
+  );
+  const subs = subResp.ok ? await subResp.json() : [];
+  const subId = subs?.[0]?.stripe_subscription_id || '';
+  if (!subId) {
+    const err = new Error('Aucun abonnement Stripe. Souscrivez le pack Multi avant d\'ajouter une cuisine à 19 €/mois.');
+    err.code = 'no_subscription';
+    throw err;
+  }
+  const stripe = require('stripe')(stripeKey);
+  const priceId = await _extraKitchenPriceId(stripe);
+  const stripeSub = await stripe.subscriptions.retrieve(subId);
+  const items = (stripeSub.items && stripeSub.items.data) || [];
+  const item = items.find(it => it.price && (it.price.id === priceId || it.price.lookup_key === EXTRA_KITCHEN_LOOKUP));
+  const pay = { proration_behavior: 'always_invoice', payment_behavior: 'error_if_incomplete' };
+  if (quantity <= 0) {
+    if (item) await stripe.subscriptionItems.del(item.id, { proration_behavior: 'create_prorations' });
+    return priceId;
+  }
+  if (item) await stripe.subscriptionItems.update(item.id, Object.assign({ quantity }, pay));
+  else await stripe.subscriptionItems.create(Object.assign({ subscription: subId, price: priceId, quantity }, pay));
+  return priceId;
+}
+
+/**
+ * Cuisines 1 à 3 : créées sans facturation.
+ * À partir de la 4e : la ligne Stripe 19 €/mois (quantité = cuisines au-delà de 3)
+ * est mise à jour avant l'insert. Si Stripe refuse, la cuisine n'est pas créée.
+ */
+async function _addMultiKitchens(tenantId, names, extras) {
+  const existing = await _listTenantSites(tenantId);
+  const out = [];
+  const known = existing.slice();
+  let count = existing.length;
+  for (const name of names) {
+    const found = known.find(s => _normSiteName(s.name) === _normSiteName(name))
+      || out.find(s => _normSiteName(s.name) === _normSiteName(name));
+    if (found) {
+      out.push({ id: found.id, code: found.code, name: found.name || name, created: false });
+      continue;
+    }
+    let billedQty = 0;
+    if (count >= 3) {
+      billedQty = count + 1 - 3;
+      await _setExtraKitchenQuantity(tenantId, billedQty);
+    }
+    const created = await _insertSite(tenantId, name, Object.assign({}, extras, { plan: 'multi' }));
+    if (!created) {
+      if (billedQty > 0) {
+        try { await _setExtraKitchenQuantity(tenantId, billedQty - 1); }
+        catch (e) { console.error('[provision-tenant] revert extra kitchen:', e.message); }
+      }
+      continue;
+    }
+    out.push(created);
+    count += 1;
+    known.push(created);
   }
   return out;
 }
@@ -213,6 +311,52 @@ exports.handler = async function(event) {
     );
     if (existCheck.ok) {
       const existing = await existCheck.json();
+      if (body.addKitchen) {
+        const tid = existing?.[0]?.tenant_id;
+        if (!tid) {
+          return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'Organisation introuvable' }) };
+        }
+        let billedPlan = plan;
+        try {
+          const subResp = await fetch(
+            `${SUPABASE_URL}/rest/v1/subscriptions?tenant_id=eq.${tid}&select=plan&limit=1`,
+            { headers: svcHeaders }
+          );
+          if (subResp.ok) {
+            const subs = await subResp.json();
+            if (subs?.[0]?.plan) billedPlan = subs[0].plan;
+          }
+        } catch (e) { console.warn('[provision-tenant] plan:', e.message); }
+        if (billedPlan !== 'multi') {
+          return {
+            statusCode: 200,
+            headers: corsHeaders,
+            body: JSON.stringify({ ok: true, capped: true, plan: billedPlan, sites: [], tenant_id: tid })
+          };
+        }
+        const requestedAdd = _requestedSiteNames({ ...body, plan: 'multi' });
+        let addedSites = [];
+        try {
+          addedSites = await _addMultiKitchens(tid, requestedAdd, { type, siret, color, plan: 'multi' });
+        } catch (e) {
+          console.error('[provision-tenant] addKitchen:', e.message);
+          const code = e.code === 'stripe_config' || e.code === 'no_subscription' ? 402 : 500;
+          return { statusCode: code, headers: corsHeaders, body: JSON.stringify({ ok: false, capped: true, error: e.message || 'Création de la cuisine impossible' }) };
+        }
+        const didCreate = (addedSites || []).some(s => s && s.created);
+        return {
+          statusCode: 200,
+          headers: corsHeaders,
+          body: JSON.stringify({
+            ok: true,
+            capped: false,
+            plan: 'multi',
+            tenant_id: tid,
+            sites: addedSites || [],
+            created: didCreate
+          })
+        };
+      }
       if (existing?.[0]?.tenant_id && existing?.[0]?.site_id) {
         // Tenant ET site déjà créés : idempotence complète.
         // Multi : si l'appel redemande des noms, créer seulement les cuisines absentes
@@ -241,7 +385,8 @@ exports.handler = async function(event) {
               created: false
             }];
           } else if (requested.length) {
-            sitesOut = await _ensureNamedSites(existing[0].tenant_id, requested, { type, siret, color, plan });
+            const ensured = await _ensureNamedSites(existing[0].tenant_id, requested, { type, siret, color, plan });
+            sitesOut = ensured.sites || [];
           }
         } catch (e) {
           console.error('[provision-tenant] ensure sites:', e.message);
@@ -266,6 +411,10 @@ exports.handler = async function(event) {
       }
     }
   } catch(e) { /* on continue */ }
+
+  if (body.addKitchen) {
+    return { statusCode: 400, headers: corsHeaders, body: JSON.stringify({ error: 'Organisation introuvable' }) };
+  }
 
   // ── 4. Créer le tenant (si pas encore existant) ───────────────
   if (!tenantId) {
@@ -317,9 +466,10 @@ exports.handler = async function(event) {
   const finalSiteName = requestedNames[0] || siteName || companyName;
   let createdSites = [];
   try {
-    createdSites = await _ensureNamedSites(tenantId, requestedNames.length ? requestedNames : [finalSiteName], {
+    const ensured = await _ensureNamedSites(tenantId, requestedNames.length ? requestedNames : [finalSiteName], {
       type, siret, color, plan
     });
+    createdSites = ensured.sites || [];
   } catch (e) {
     console.error('[provision-tenant] ensure sites:', e.message);
   }

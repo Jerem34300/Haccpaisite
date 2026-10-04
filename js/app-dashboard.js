@@ -2222,6 +2222,7 @@ async function gmoToggleVerif(gmoId, ncIndex, checked) {
 // ADMIN — Gérer l'organisation
 // ════════════════════════════════════════════════════
 let _adminTab = 'overview';
+let _orgPlanKey = 'multi';
 let _adminModal = null; // {type, id, data}
 
 const DASH_DEFAULT_CORRECTIVE_ACTIONS = [
@@ -2331,6 +2332,8 @@ async function renderAdmin(){
     _adminTab = 'overview';
   }
   if(canManageOrg){
+    try { _orgPlanKey = await _loadTenantPlan(); }
+    catch (e) { console.warn('[renderAdmin] plan', e); }
     await Promise.all([
       loadAdminCorrectiveData(),
       loadKnowledgeData(),
@@ -4011,8 +4014,23 @@ function openAdminModal(type, id, prefill={}) {
     const s = id ? _sites.find(x=>x.id===id) : null;
     const defCode = prefill.code||s?.code||'';
     const defSect = prefill.sector_id||s?.sector_id||'';
+    const _capNow = _kitchenScoped() ? _includedKitchenCap(_orgPlanKey) : Infinity;
+    if (!id && (_sites||[]).length >= _capNow && _orgPlanKey !== 'multi') {
+      content=`<div style="padding:20px">
+        <div style="font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:10px">Cuisine supplémentaire</div>
+        <div style="font-size:.82rem;color:var(--text);line-height:1.45;margin-bottom:16px">${escH(_kitchenCapMessage(_orgPlanKey))}</div>
+        <button onclick="closeAdminModal()" style="width:100%;padding:12px;background:#f1f5f9;color:var(--navy);border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:var(--font)">Fermer</button>
+      </div>`;
+    } else {
+    const _overPack = !id && _orgPlanKey==='multi' && (_sites||[]).length >= 3;
+    const _capHint = (!id && _orgPlanKey==='multi')
+      ? `<div style="font-size:.75rem;color:var(--muted);margin:-8px 0 12px;line-height:1.4">${_overPack
+          ? 'Cette cuisine dépasse les 3 incluses. 19 €/mois sont ajoutés à l\'abonnement Stripe avant la création, puis le PMS s\'ouvre.'
+          : 'Les 3 premières cuisines sont incluses. À partir de la 4e : +19 €/mois, facturés avant la création.'}</div>`
+      : '';
     content=`<div style="padding:20px">
       <div style="font-size:1rem;font-weight:900;color:var(--navy);margin-bottom:16px">${id?'✏️ Modifier le site':'➕ Nouveau site'}</div>
+      ${_capHint}
       <div class="admin-field"><label>Nom de l'établissement</label><input type="text" id="am-site-name" placeholder="Ex: EHPAD Les Tilleuls" value="${escH(s?.name||'')}"></div>
       <div class="admin-field"><label>Code site <span style="color:#dc2626">*</span> <span style="font-weight:400;color:var(--muted)">(à saisir sur la tablette)</span></label>
         <input type="text" id="am-site-code" placeholder="Ex: RA3414" value="${defCode}" oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase;font-family:var(--mono);font-weight:700">
@@ -4030,6 +4048,7 @@ function openAdminModal(type, id, prefill={}) {
         ${id?`<button onclick="confirmDelete('sites','${id}','${escH(s?.name||'')}')" style="padding:12px;background:#fff5f5;color:#dc2626;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-family:var(--font)">🗑</button>`:''}
       </div>
     </div>`;
+    }
   }
 
   else if (type==='corrective-action') {
@@ -5140,7 +5159,37 @@ async function saveAdminModal(){
       const address=document.getElementById('am-site-addr').value.trim()||null;
       if(!name||!code){showToast('Remplissez nom et code site','error');return;}
       if(id) await supa('PATCH',`/rest/v1/sites?id=eq.${id}`,{name,code,sector_id,address});
-      else   await supaPost('sites',{name,code,sector_id,address,...(tid?{tenant_id:tid}:{})});
+      else {
+        const scoped = _kitchenScoped();
+        const planKey = scoped ? await _loadTenantPlan() : 'enterprise';
+        const cap = scoped ? _includedKitchenCap(planKey) : Infinity;
+        if (planKey !== 'multi' && (_sites||[]).length >= cap) {
+          showToast(_kitchenCapMessage(planKey), 'warning', 7000);
+          return;
+        }
+        if (planKey === 'multi') {
+          const created = await _provisionIncludedKitchen(name);
+          const patch = {};
+          if (code && code !== created.code) patch.code = code;
+          if (sector_id) patch.sector_id = sector_id;
+          if (address) patch.address = address;
+          let finalCode = created.code;
+          if (created.id && Object.keys(patch).length) {
+            try {
+              await supa('PATCH', `/rest/v1/sites?id=eq.${created.id}`, patch);
+              if (patch.code) finalCode = patch.code;
+            } catch (e2) {
+              console.warn('[site patch]', e2);
+              showToast('Cuisine créée avec le code ' + created.code + '. Le code saisi n\'a pas pu être appliqué.', 'warning', 6000);
+            }
+          }
+          showToast(((_sites||[]).length >= 3) ? 'Supplément de 19 €/mois ajouté. Configurez le PMS.' : 'Cuisine incluse créée. Configurez son PMS.', 'success');
+          closeAdminModal();
+          _goKitchenPms({ id: created.id, code: finalCode, name: created.name || name });
+          return;
+        }
+        await supaPost('sites',{name,code,sector_id,address,...(tid?{tenant_id:tid}:{})});
+      }
       const sitef = (!['super_admin'].includes(_profile?.role) && tid) ? `&tenant_id=eq.${tid}` : '';
       _sites=await supaGet('sites',`select=*,sectors(*,territories(*))&order=name${sitef}`);
       showToast(id?'✅ Site modifié':'✅ Site créé','success');
@@ -10216,6 +10265,145 @@ document.addEventListener('click', function(e) {
 });
 
 // ════════════════════════════════════════════════════
+
+function _includedKitchenCap(planKey) {
+  if (planKey === 'enterprise') return Infinity;
+  if (planKey === 'solo') return 1;
+  return 3;
+}
+function _kitchenScoped() {
+  try { return !!((_viewTenant && _viewTenant.id) || (_profile && _profile.tenant_id)); }
+  catch (e) { return false; }
+}
+function _kitchenCapMessage(planKey) {
+  if (planKey === 'solo') {
+    return 'Le plan Solo inclut 1 cuisine. Passez en Multi depuis Mon abonnement pour en ajouter (jusqu\'à 3, sans supplément).';
+  }
+  return 'Les 3 cuisines du pack Multi sont incluses. Chaque cuisine en plus ajoute 19 €/mois sur l\'abonnement Stripe, puis la cuisine est créée.';
+}
+async function _loadTenantPlan() {
+  const tid = (_viewTenant && _viewTenant.id) || (_profile && _profile.tenant_id) || '';
+  if (!tid) return 'multi';
+  try {
+    const rows = await supaGet('subscriptions', 'select=plan&tenant_id=eq.' + encodeURIComponent(tid) + '&limit=1');
+    const p = rows && rows[0] && rows[0].plan;
+    if (p === 'solo' || p === 'multi' || p === 'enterprise') return p;
+  } catch (e) { console.warn('[plan]', e); }
+  return 'multi';
+}
+function _pmsSnapFromConfig(cloud) {
+  const cfg = (cloud && cloud.config) || {};
+  return {
+    chefsNames: cfg.chefs || [],
+    nettRefData: (cloud && cloud.nett_ref) || [],
+    distribSvcs: cfg.distribServices || [],
+    enrActifsData: cfg.enrActifs || [],
+    fournData: (cloud && cloud.fournisseurs) || [],
+    poubData: cfg.poubelles || [],
+    navCfgData: (cloud && cloud.navCfg) || null,
+    adminPinData: (cloud && cloud.adminPin) || null,
+    headerGroupe: cfg.etab || ''
+  };
+}
+function _rememberKitchenForPms(site) {
+  const KEY = 'haccpro_multi_kitchens';
+  let state = null;
+  try { state = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { state = null; }
+  if (!state || typeof state !== 'object') state = { v: 1, kitchens: [] };
+  state.plan = 'multi';
+  state.tenantId = (_profile && _profile.tenant_id) || state.tenantId || null;
+  if (!state.cloudSiteConfig) {
+    try {
+      const src = (_sites || []).find(function(sx){
+        return sx && sx.config && sx.config.pmsPending !== true && (sx.config.navCfg || (sx.config.config && (sx.config.config.enrActifs || sx.config.config.chefs)));
+      });
+      if (src) {
+        const cloud = JSON.parse(JSON.stringify(src.config));
+        delete cloud.pmsPending;
+        delete cloud.pmsConfigured;
+        state.cloudSiteConfig = cloud;
+        state.encData = (cloud.config && cloud.config.enceintes) || [];
+        state.snap = _pmsSnapFromConfig(cloud);
+      }
+    } catch (e) { console.warn('[pms template]', e); }
+  }
+  state.kitchens = Array.isArray(state.kitchens) ? state.kitchens : [];
+  const already = state.kitchens.some(function(k){ return k && (k.code === site.code || (site.id && k.id === site.id)); });
+  if (!already) state.kitchens.push({ id: site.id || null, code: site.code, name: site.name || site.code, pmsDone: false });
+  try { localStorage.setItem(KEY, JSON.stringify(state)); }
+  catch (e) { console.warn('[pms memory]', e); }
+}
+function _goKitchenPms(site) {
+  try { _rememberKitchenForPms(site); }
+  catch (e) { console.warn('[pms]', e); }
+  window.location.href = 'onboarding.html?cuisines=1';
+}
+function _openPendingKitchen(id, code, name) {
+  _goKitchenPms({ id: id, code: code, name: name });
+}
+async function _provisionIncludedKitchen(name) {
+  const token = _token || '';
+  if (!token) throw new Error('Session expirée. Reconnectez-vous.');
+  let data = null;
+  const r = await fetch('/.netlify/functions/provision-tenant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+    body: JSON.stringify({
+      addKitchen: true,
+      plan: 'multi',
+      siteName: name,
+      siteNames: [name],
+      companyName: (_profile && _profile.full_name) || 'Mon établissement'
+    })
+  });
+  try { data = await r.json(); } catch (e) { data = null; }
+  if (!r.ok || !data || data.ok === false) throw new Error((data && data.error) || 'Création impossible');
+  if (data.capped) {
+    const err = new Error(_kitchenCapMessage(data.plan || 'multi'));
+    err.code = 'cap';
+    throw err;
+  }
+  const sites = data.sites || [];
+  const created = sites.find(function(sx){ return sx && sx.created; });
+  if (created) return created;
+  if (sites.some(function(sx){ return sx && sx.created === false; })) {
+    const err = new Error('Une cuisine porte déjà ce nom.');
+    err.code = 'exists';
+    throw err;
+  }
+  throw new Error('Création impossible');
+}
+async function _addIncludedKitchen() {
+  const input = document.getElementById('add-kitchen-name');
+  const name = ((input && input.value) || '').trim();
+  if (!name) { showToast('Indiquez le nom de la cuisine', 'warning'); return; }
+  const btn = document.getElementById('btn-add-kitchen');
+  if (btn) { btn.disabled = true; btn.textContent = ((btn.getAttribute('data-label') || '').indexOf('Facturer') === 0) ? 'Facturation…' : 'Création…'; }
+  try {
+    const planKey = await _loadTenantPlan();
+    if (planKey !== 'multi') {
+      showToast(_kitchenCapMessage(planKey), 'warning', 7000);
+      if (btn) { btn.disabled = false; btn.textContent = btn.getAttribute('data-label') || 'Créer et configurer le PMS'; }
+      return;
+    }
+    const tid = (_profile && _profile.tenant_id) || '';
+    let n = (_sites || []).length;
+    try {
+      if (tid) {
+        const rows = await supaGet('sites', 'select=id&tenant_id=eq.' + encodeURIComponent(tid));
+        if (Array.isArray(rows)) n = rows.length;
+      }
+    } catch (e) { console.warn('[add kitchen] count', e); }
+    const created = await _provisionIncludedKitchen(name);
+    showToast(n >= 3 ? 'Supplément de 19 €/mois ajouté. Configurez le PMS.' : 'Cuisine incluse créée. Configurez son PMS.', 'success');
+    _goKitchenPms(created);
+  } catch (e) {
+    console.warn('[add kitchen]', e);
+    showToast((e && e.message) || 'Création impossible', (e && e.code === 'cap') ? 'warning' : 'error', 7000);
+    if (btn) { btn.disabled = false; btn.textContent = btn.getAttribute('data-label') || 'Créer et configurer le PMS'; }
+  }
+}
+
 // MON ABONNEMENT
 // ════════════════════════════════════════════════════
 async function renderSubscription(){
@@ -10230,7 +10418,7 @@ async function renderSubscription(){
     if(tenantId){
       const [subs, sitesRes, tenants] = await Promise.all([
         supaGet('subscriptions', `select=plan,status,price_per_month,trial_ends_at,current_period_end,cancel_at_period_end,stripe_customer_id,stripe_subscription_id&tenant_id=eq.${tenantId}&limit=1`).catch(()=>[]),
-        supaGet('sites', `select=id,name,code&tenant_id=eq.${tenantId}&order=name`).catch(()=>[]),
+        supaGet('sites', `select=id,name,code,config&tenant_id=eq.${tenantId}&order=name`).catch(()=>[]),
         supaGet('tenants', `select=id,name,primary_color&id=eq.${tenantId}&limit=1`).catch(()=>[])
       ]);
       sub = subs[0] || null;
@@ -10324,14 +10512,29 @@ async function renderSubscription(){
             <div style="font-size:.85rem;font-weight:800;color:var(--text)">${escH(s.name)}</div>
             <div style="font-size:.65rem;color:var(--muted);margin-top:1px">Code : ${escH(s.code||s.id)}</div>
           </div>
-          <button onclick="openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
+          <button onclick="${(s.config && s.config.pmsPending === true) ? `_openPendingKitchen('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')` : `openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')`}"
             style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;${font}">
-            Ouvrir PMS →
+            ${(s.config && s.config.pmsPending === true) ? 'Configurer le PMS' : 'Ouvrir PMS →'}
           </button>
         </div>`).join('')
     : '<div style="color:var(--muted);font-size:.82rem;padding:10px 0">Aucune cuisine configurée.</div>';
 
-  const addKitchenHtml = ['multi','enterprise'].includes(planKey)
+  const _leftIncluded = planKey === 'multi' ? Math.max(0, 3 - sites.length) : 0;
+  const _extraQty = planKey === 'multi' ? Math.max(1, sites.length + 1 - 3) : 0;
+  const _paidNext = planKey === 'multi' && sites.length >= 3;
+  const addKitchenHtml = planKey === 'multi'
+    ? `<div style="margin-top:8px;padding:14px;background:${_paidNext?'#fffbeb':'#f0fdf4'};border:1.5px solid ${_paidNext?'#fde68a':'#bbf7d0'};border-radius:12px">
+        <div style="font-size:.82rem;font-weight:800;color:${_paidNext?'#92400e':'#166534'};margin-bottom:4px">${_paidNext?'Ajouter une cuisine (+19 €/mois)':'Ajouter une cuisine incluse'}</div>
+        <div style="font-size:.75rem;color:${_paidNext?'#92400e':'#166534'};margin-bottom:10px;line-height:1.45">${_paidNext
+          ? 'Les 3 cuisines du pack sont incluses. Celle-ci ajoute 19 €/mois sur l\'abonnement (quantité '+_extraQty+'). Elle n\'est créée qu\'après l\'ajout Stripe, puis son PMS s\'ouvre.'
+          : 'Il reste '+_leftIncluded+' cuisine'+(_leftIncluded>1?'s':'')+' dans le pack Multi (3 incluses, sans supplément). La 4e et les suivantes sont à +19 €/mois.'}</div>
+        <input id="add-kitchen-name" type="text" placeholder="Nom de la cuisine" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid ${_paidNext?'#fde68a':'#bbf7d0'};border-radius:8px;font-size:.82rem;margin-bottom:8px;${font}">
+        <button type="button" id="btn-add-kitchen" data-label="${_paidNext?'Facturer et configurer le PMS':'Créer et configurer le PMS'}" onclick="_addIncludedKitchen()"
+          style="padding:7px 16px;background:${_paidNext?'#92400e':'#166534'};color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:800;cursor:pointer;${font}">
+          ${_paidNext?'Facturer et configurer le PMS':'Créer et configurer le PMS'}
+        </button>
+      </div>`
+    : planKey === 'enterprise'
     ? `<div style="margin-top:8px;padding:14px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px">
         <div style="font-size:.82rem;font-weight:800;color:#166534;margin-bottom:4px">Ajouter une cuisine</div>
         <div style="font-size:.75rem;color:#166534;margin-bottom:10px">Contactez-nous pour ajouter un site à votre compte.</div>
