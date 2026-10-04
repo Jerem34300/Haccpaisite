@@ -934,7 +934,14 @@ window.generatePMS = async function() {
   }
 
   /* Valeurs partagées entre l'écriture locale (haccp_v6) et la config cloud (sites.config) */
-  var chefsNames = _data.noms.filter(function(n){ return n.trim(); });
+  var chefsNames = _data.noms.filter(function(n){ return n.trim(); }).map(function(n){ return n.trim(); });
+  // La tablette n'affiche que les cuisiniers manuels tagués avec le code du site
+  // ({name, site}, cf. _taggedManualNames dans app-cuisine.js) : une chaîne nue est masquée
+  // puis effacée du cloud au premier enregistrement de la config.
+  var _chefsTagged = function(code){
+    var site = String(code || '').trim().toUpperCase();
+    return site ? chefsNames.map(function(n){ return { name:n, site:site }; }) : [];
+  };
   var nettRefData = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
     return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
   });
@@ -973,7 +980,7 @@ window.generatePMS = async function() {
         distribServices: distribSvcs.length ? distribSvcs : undefined, // vide → services par défaut de la tablette
         enrActifs:       enrActifsData,
         chefs:           chefsNames,
-        chefs_manuels:   chefsNames,
+        chefs_manuels:   [], // rempli par site ci-dessous (tag {name, site})
         etab:            _data.nom || validSites[0] || '',
         poubelles:       poubData,
         responsable:     _data.responsable || '',
@@ -989,7 +996,9 @@ window.generatePMS = async function() {
     await Promise.all(siteCodes.map(function(code){
       return fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
         method: 'PATCH', headers: hdrPatch,
-        body: JSON.stringify({ config: cloudSiteConfig })
+        body: JSON.stringify({ config: Object.assign({}, cloudSiteConfig, {
+          config: Object.assign({}, cloudSiteConfig.config, { chefs_manuels: _chefsTagged(code) })
+        }) })
       }).then(function(r){ if (!r.ok) console.warn('[Onboarding] site config PATCH HTTP ' + r.status); })
         .catch(function(e){ console.warn('[Onboarding] site config PATCH:', e); });
     }));
@@ -1012,7 +1021,7 @@ window.generatePMS = async function() {
 
     /* Noms chefs */
     S.config.chefs = chefsNames;
-    S.config.chefs_manuels = chefsNames;
+    S.config.chefs_manuels = _chefsTagged(siteCodes[0]);
 
     /* Nettoyage */
     S.nett_ref = nettRefData;
