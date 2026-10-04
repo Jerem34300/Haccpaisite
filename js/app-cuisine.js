@@ -7591,6 +7591,16 @@ const DISTRIB_SEC = 'enr_tc_distrib';
 
 // Services de distribution configurables
 function getDistribServices(){
+  // Comptes créés par l'ancien onboarding : {id,label,heure} sans créneau → convertir sur place
+  // (heure < 16h = midi, sinon soir), sinon le service du soir s'affichait « Midi ».
+  try {
+    (S.config?.distribServices||[]).forEach(function(s){
+      if(s && s.heure && !s.midi_deb && !s.midi_fin && !s.soir_deb && !s.soir_fin){
+        if(String(s.heure) < '16:00'){ s.midi_deb = s.heure; } else { s.soir_deb = s.heure; }
+        if(!s.ico) s.ico = String(s.heure) < '16:00' ? '🌞' : '🌙';
+      }
+    });
+  } catch(e){ console.warn('[distrib] migration format onboarding:', e); }
   return S.config?.distribServices || [
     {id:'midi', label:'Service Midi', ico:'🌞', midi_deb:'11:45', midi_fin:'13:30', soir_deb:'', soir_fin:''},
     {id:'soir', label:'Service Soir', ico:'🌙', midi_deb:'', midi_fin:'', soir_deb:'18:30', soir_fin:'20:00'},
@@ -18056,8 +18066,8 @@ var WG_CATALOG = WG_CATALOG_BASE; // sera mis à jour dynamiquement
 function _svcHasSlot(svc, slot){
   try {
     if(!svc) return false;
-    var hasMidi = !!(svc.midi_deb || svc.midi_fin || svc.heure);
-    var hasSoir = !!(svc.soir_deb || svc.soir_fin);
+    var hasMidi = !!(svc.midi_deb || svc.midi_fin || (svc.heure && String(svc.heure) < '16:00'));
+    var hasSoir = !!(svc.soir_deb || svc.soir_fin || (svc.heure && String(svc.heure) >= '16:00'));
     if(!hasMidi && !hasSoir) return true;
     return slot==='midi' ? hasMidi : hasSoir;
   } catch(e){ console.warn('[wg] _svcHasSlot:', e); return true; }

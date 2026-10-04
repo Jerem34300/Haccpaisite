@@ -156,6 +156,18 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
   .field-row{grid-template-columns:1fr}
   .enc-row{grid-template-columns:1fr}
 }
+.chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.sug-chip{background:#fff;border:1.5px solid var(--border);border-radius:99px;padding:6px 11px;font-size:.78rem;font-weight:800;color:var(--navy);cursor:pointer;font-family:var(--font)}
+.sug-chip:hover{border-color:var(--green)}
+.sug-chip.on{background:rgba(141,198,63,.15);border-color:var(--green);color:var(--green2)}
+.day-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.day-chip{border:1.5px solid var(--border);background:#fff;border-radius:8px;padding:5px 8px;font-size:.72rem;font-weight:800;color:var(--muted);cursor:pointer;font-family:var(--font);min-width:38px}
+.day-chip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.slot-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px;font-size:.8rem;font-weight:800;color:var(--text)}
+.slot-row input[type=time]{border:1.5px solid var(--border);border-radius:8px;padding:5px 6px;font-family:var(--font);font-size:.82rem;background:#fff}
+.slot-row input[type=checkbox]{width:16px;height:16px;accent-color:var(--green)}
+.mini-lbl{font-size:.68rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin-top:8px}
+.hint{font-size:.74rem;color:var(--muted);margin:-6px 0 10px;line-height:1.45}
 </style>
 </head>
 <body>
@@ -191,13 +203,14 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
       <div class="dot" id="dot-4"></div>
       <div class="dot" id="dot-5"></div>
       <div class="dot" id="dot-6"></div>
+      <div class="dot" id="dot-7"></div>
     </div>
 
     <!-- ─── Step 1 : Bienvenue ─── -->
     <div class="step active" id="step-1">
       <div class="welcome-icon">🎉</div>
       <div class="welcome-title">Bienvenue sur HACC.PRO !</div>
-      <div class="welcome-sub">Votre compte est créé. Configurons votre cuisine en 8 étapes rapides pour que vous puissiez tracer dès aujourd'hui.</div>
+      <div class="welcome-sub">Votre compte est créé. Configurons votre cuisine en quelques étapes : à la fin, votre tablette est prête, sans rien retaper.</div>
       <div class="welcome-plan" id="welcome-plan">🎁 Essai gratuit 14 jours activé</div>
       <div class="what-next">
         <div class="what-next-item"><div class="what-next-num">1</div>Nommer vos cuisines / sites</div>
@@ -205,7 +218,9 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
         <div class="what-next-item"><div class="what-next-num">3</div>Sélectionner vos processus</div>
         <div class="what-next-item"><div class="what-next-num">4</div>Nommer vos enceintes froides</div>
         <div class="what-next-item"><div class="what-next-num">5</div>Configurer le plan de nettoyage</div>
-        <div class="what-next-item"><div class="what-next-num">6</div>Votre cuisine est générée automatiquement ✅</div>
+        <div class="what-next-item"><div class="what-next-num">6</div>Fournisseurs, livraisons et poubelles</div>
+        <div class="what-next-item"><div class="what-next-num">7</div>Votre équipe et votre code administrateur</div>
+        <div class="what-next-item"><div class="what-next-num">8</div>Votre cuisine est générée automatiquement ✅</div>
       </div>
       <button class="btn-primary green" onclick="goStep(2)">C'est parti →</button>
     </div>
@@ -330,7 +345,15 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
           </label>
           <label class="check-item">
             <input type="checkbox" id="proc-distribution">
-            <label for="proc-distribution">🍱 Distribution self / SAM <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR15 / ENR16</span></label>
+            <label for="proc-distribution">🍱 Températures de distribution (salle, self, plateaux…) <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ T°C service</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-mixes">
+            <label for="proc-mixes">🥄 Textures modifiées (mixé, haché) <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR07 / ENR08</span></label>
+          </label>
+          <label class="check-item">
+            <input type="checkbox" id="proc-excedents">
+            <label for="proc-excedents">♻️ Excédents / restes resservis <span style="font-size:.72rem;color:var(--muted);font-weight:600">→ ENR36</span></label>
           </label>
           <label class="check-item">
             <input type="checkbox" id="proc-plats-temoins" checked>
@@ -340,18 +363,10 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
       </div>
 
       <div class="field-group">
-        <label class="field-lbl">Nombre de services par jour</label>
-        <div class="tile-grid cols3">
-          <div class="tile sel" data-val="1" onclick="selectTile('b-services','1',this)">
-            <span class="tile-label" style="width:100%;text-align:center">1 service</span>
-          </div>
-          <div class="tile" data-val="2" onclick="selectTile('b-services','2',this)">
-            <span class="tile-label" style="width:100%;text-align:center">2 services</span>
-          </div>
-          <div class="tile" data-val="3+" onclick="selectTile('b-services','3+',this)">
-            <span class="tile-label" style="width:100%;text-align:center">3+ services</span>
-          </div>
-        </div>
+        <label class="field-lbl">Vos services et leurs horaires</label>
+        <div class="hint">Chaque service aura sa fiche de températures midi / soir et sa tuile sur l'accueil. Ajoutez-en d'un tap :</div>
+        <div class="chip-row" id="svc-sug"></div>
+        <div id="svc-list"></div>
       </div>
 
       <button class="btn-primary" onclick="goStep(5)">Continuer →</button>
@@ -387,9 +402,32 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
       <button class="btn-back" onclick="goStep(5)">← Retour</button>
     </div>
 
-    <!-- ─── Step 7 : Section E — Équipe ─── -->
+    <!-- ─── Step 7 : Section E — Livraisons & déchets ─── -->
     <div class="step" id="step-7">
-      <div class="step-title">E — Votre équipe</div>
+      <div class="step-title">E — Fournisseurs, livraisons et poubelles</div>
+      <div class="step-sub">La tablette vous rappellera chaque jour les livraisons attendues (contrôle à réception) et les poubelles à sortir.</div>
+
+      <div class="field-group">
+        <label class="field-lbl">Vos fournisseurs</label>
+        <div class="hint">Touchez un nom pour l'ajouter, puis cochez ses jours et l'heure habituelle de livraison.</div>
+        <div class="chip-row" id="four-sug"></div>
+        <div id="four-list"></div>
+        <button class="btn-add" onclick="addFournisseur('')">+ Autre fournisseur</button>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Vos poubelles et jours de sortie</label>
+        <div class="hint">Cochez les bacs que vous avez, puis les jours de collecte.</div>
+        <div id="poub-list"></div>
+      </div>
+
+      <button class="btn-primary" style="margin-top:10px" onclick="goStep(8)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(6)">← Retour</button>
+    </div>
+
+    <!-- ─── Step 8 : Section F — Équipe ─── -->
+    <div class="step" id="step-8">
+      <div class="step-title">F — Votre équipe</div>
       <div class="step-sub">Le nombre de cuisiniers et leurs prénoms (optionnels) seront pré-remplis dans les fiches.</div>
 
       <div class="field-group">
@@ -407,13 +445,28 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
         <button class="btn-add" onclick="addNomInput()">+ Ajouter un prénom</button>
       </div>
 
-      <button class="btn-primary" style="margin-top:10px" onclick="goStep(8)">Continuer →</button>
-      <button class="btn-back" onclick="goStep(6)">← Retour</button>
+      <div class="field-group">
+        <label class="field-lbl">Responsable HACCP</label>
+        <select class="field-select" id="e-responsable"></select>
+      </div>
+
+      <div class="field-group">
+        <label class="field-lbl">Code administrateur (4 chiffres)</label>
+        <div class="hint">Il protège les réglages et les non-conformités sur la tablette. Les cuisiniers ne l'ont pas.</div>
+        <div class="field-row">
+          <input class="field-input" type="password" inputmode="numeric" maxlength="4" id="e-pin" placeholder="••••" autocomplete="new-password">
+          <input class="field-input" type="password" inputmode="numeric" maxlength="4" id="e-pin2" placeholder="Confirmer" autocomplete="new-password">
+        </div>
+      </div>
+
+      <div class="err" id="err-7"></div>
+      <button class="btn-primary" style="margin-top:10px" onclick="goStep(9)">Continuer →</button>
+      <button class="btn-back" onclick="goStep(7)">← Retour</button>
     </div>
 
-    <!-- ─── Step 8 : Section F — Récapitulatif ─── -->
-    <div class="step" id="step-8">
-      <div class="step-title">F — Récapitulatif</div>
+    <!-- ─── Step 9 : Section G — Récapitulatif ─── -->
+    <div class="step" id="step-9">
+      <div class="step-title">G — Récapitulatif</div>
       <div class="step-sub">Vérifiez votre configuration. Cliquez sur "Générer" pour créer votre espace cuisine.</div>
 
       <div id="recap-content"></div>
@@ -429,7 +482,7 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
         <span id="btn-gen-label">Générer mon PMS →</span>
         <div class="spinner" id="btn-gen-spin"></div>
       </button>
-      <button class="btn-back" id="btn-gen-back" onclick="goStep(7)">← Retour</button>
+      <button class="btn-back" id="btn-gen-back" onclick="goStep(8)">← Retour</button>
       <button class="btn-skip" id="btn-gen-skip" onclick="window.location.href='cuisine.html'">Passer, configurer plus tard</button>
     </div>
 
