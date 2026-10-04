@@ -1333,6 +1333,110 @@ function ligneIsToday(l){
   return l.date === d || String(l._ts||'').slice(0,10) === d;
 }
 
+// ── Reconnaissance d'un plat du menu à partir d'un nom saisi à la main ──
+// Ignore majuscules, accents, pluriels simples et petits mots. Un nom n'est
+// rattaché automatiquement que s'il désigne UN SEUL plat du menu du jour.
+const _MN_STOP = new Set(['de','du','des','la','le','les','l','d','a','au','aux','et','en','avec','sur','facon']);
+function _mnNormTokens(s){
+  try {
+    return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/[^a-z0-9]+/g,' ').trim().split(/\s+/)
+      .filter(w => w && !_MN_STOP.has(w))
+      .map(w => (w.length > 3 && /[sx]$/.test(w)) ? w.slice(0,-1) : w);
+  } catch(e){ return []; }
+}
+function todayMenuPlats(){
+  const out = [];
+  try {
+    const t = today();
+    SERVICES.forEach(s => {
+      const m = getMenu(t, s.id);
+      if(!m) return;
+      CATS.forEach(c => (m.categories?.[c.id]||[]).forEach(p => out.push({ p, svc:s, menu_id: p.menu_id || m.menu_id })));
+    });
+  } catch(e){ console.warn('[menu] todayMenuPlats:', e); }
+  return out;
+}
+function menuMatchNom(nom){
+  const res = { sure:null, candidates:[] };
+  try {
+    const tk = _mnNormTokens(nom);
+    if(!tk.length) return res;
+    const set = new Set(tk);
+    const plats = todayMenuPlats();
+    const exact = [], contain = [], partial = [];
+    plats.forEach(x => {
+      const pt = _mnNormTokens(x.p.nom);
+      if(!pt.length) return;
+      const ps = new Set(pt);
+      const same = pt.length === tk.length && pt.every(w => set.has(w));
+      if(same){ exact.push(x); return; }
+      const inP = tk.every(w => ps.has(w)), inT = pt.every(w => set.has(w));
+      if(inP || inT){ contain.push(x); return; }
+      if(tk.some(w => w.length > 3 && ps.has(w))) partial.push(x);
+    });
+    if(exact.length === 1){ res.sure = exact[0]; return res; }
+    if(exact.length > 1){ res.candidates = exact; return res; }
+    if(contain.length === 1){ res.sure = contain[0]; return res; }
+    res.candidates = contain.length ? contain : partial;
+  } catch(e){ console.warn('[menu] menuMatchNom:', e); }
+  return res;
+}
+function _ligneNom(l){ return (l && (l.produit || l.plat || l.nom || l._plat_nom)) || ''; }
+function _tagLigne(enrId, l, x){
+  try {
+    l._plat_id = x.p.plat_id; l._plat_nom = x.p.nom; l._menu_id = x.menu_id; l._plat_profil = x.p.profil_haccp;
+    save();
+    try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue(enrId, l); } catch(e){ console.warn('[menu] enqueue tag:', e); }
+  } catch(e){ console.warn('[menu] _tagLigne:', e); }
+}
+// Fenêtre « Ce produit correspond-il à un plat du menu ? » (seulement si la reconnaissance n'est pas sûre)
+function askPlatPourLigne(enrId, l, candidates){
+  try {
+    const old = document.getElementById('mn-ask-plat'); if(old) old.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'mn-ask-plat';
+    wrap.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px';
+    const btns = candidates.slice(0,6).map((x,i) =>
+      '<button type="button" data-i="'+i+'" style="display:block;width:100%;text-align:left;margin:6px 0;padding:12px 14px;border-radius:12px;border:1.5px solid #d8b4d8;background:#fdf4fd;font:inherit;font-weight:800;color:#3b1e3b;cursor:pointer">🍽️ '+escH(x.p.nom)+' <span style="font-weight:600;color:#7A6579;font-size:.8em">· '+escH(x.svc.label)+'</span></button>').join('');
+    wrap.innerHTML = '<div style="background:#fff;border-radius:18px;max-width:440px;width:100%;padding:18px 18px 14px;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+      + '<div style="font-weight:900;font-size:1.05rem;color:#3b1e3b;margin-bottom:4px">Ce produit est-il un plat du menu ?</div>'
+      + '<div style="font-size:.85rem;color:#7A6579;margin-bottom:6px">« '+escH(_ligneNom(l))+' » — touchez le plat correspondant pour cocher sa traçabilité.</div>'
+      + btns
+      + '<button type="button" data-i="-1" style="display:block;width:100%;margin-top:8px;padding:11px;border-radius:12px;border:1.5px solid #e2e8f0;background:#f8fafc;font:inherit;font-weight:700;color:#475569;cursor:pointer">Non, autre produit</button></div>';
+    wrap.addEventListener('click', function(ev){
+      const b = ev.target.closest('button[data-i]');
+      if(!b && ev.target !== wrap) return;
+      const i = b ? parseInt(b.getAttribute('data-i'),10) : -1;
+      if(i >= 0 && candidates[i]){ _tagLigne(enrId, l, candidates[i]); if(typeof toast === 'function') toast('✅ Rattaché à « '+candidates[i].p.nom+' »','success'); }
+      wrap.remove();
+      try { refreshLinkBanner(enrId); } catch(e){}
+    });
+    document.body.appendChild(wrap);
+  } catch(e){ console.warn('[menu] askPlatPourLigne:', e); }
+}
+// Ligne enregistrée sans passer par le menu : rattachement sûr → silencieux ; incertain → on demande.
+const MN_TRACE_ENRS = ['enr33','enr02','enr07','enr08']; // fiches comptées dans la traçabilité par plat
+function autoLinkLigne(enrId, l){
+  try {
+    if(MN_TRACE_ENRS.indexOf(enrId) < 0) return;
+    if(!l || l._plat_id) return;
+    const nom = _ligneNom(l);
+    if(!nom) return;
+    const m = menuMatchNom(nom);
+    if(m.sure){ _tagLigne(enrId, l, m.sure); return; }
+    if(m.candidates.length) askPlatPourLigne(enrId, l, m.candidates);
+  } catch(e){ console.warn('[menu] autoLinkLigne:', e); }
+}
+// Suggestions de la saisie « Produit » : plats du menu du jour en premier
+window._menuProdSuggest = function(q){
+  try {
+    const nq = _mnNormTokens(q).join(' ');
+    if(!nq) return [];
+    return todayMenuPlats().map(x => x.p.nom).filter((n,i,a) => a.indexOf(n) === i && _mnNormTokens(n).join(' ').includes(nq));
+  } catch(e){ return []; }
+};
+
 function platDejaSaisi(enrId, plat){
   try {
     const store = (typeof S !== 'undefined' && S[enrId]) || {};
@@ -1342,7 +1446,12 @@ function platDejaSaisi(enrId, plat){
       if(!ligneIsToday(l)) return false;
       if(plat && plat.plat_id && l._plat_id && l._plat_id === plat.plat_id) return true;
       const alt = String(l._plat_nom || l.produit || '').trim().toLowerCase();
-      return !!(nom && alt && alt === nom);
+      if(nom && alt && alt === nom) return true;
+      if(!l._plat_id && plat && plat.plat_id){
+        const m = menuMatchNom(_ligneNom(l));
+        if(m.sure && m.sure.p.plat_id === plat.plat_id) return true;
+      }
+      return false;
     });
   } catch(e){ return false; }
 }
@@ -1579,10 +1688,18 @@ function hookSaveRow(){
   if(window.__menuSaveRowHooked) return;
   const orig = window.saveRow;
   window.saveRow = function(id){
+    let nAvant = -1;
+    try { nAvant = (S[id] && Array.isArray(S[id].lignes)) ? S[id].lignes.length : 0; } catch(e){}
     const r = orig.apply(this, arguments);
+    let ajoutee = false;
+    try { ajoutee = !!(S[id] && Array.isArray(S[id].lignes) && S[id].lignes.length > nAvant); } catch(e){}
     try {
       const ref = _menuLinkPending[id];
-      if(ref && ref.plat_id && S[id] && Array.isArray(S[id].lignes) && S[id].lignes.length > 0){
+      if(!ajoutee){
+        // Enregistrement bloqué (ex. ENR02 sans refroidissement) : ne rien rattacher à une ancienne ligne
+      } else if(!(ref && ref.plat_id)){
+        autoLinkLigne(id, S[id].lignes[0]);
+      } else if(ref && ref.plat_id && S[id] && Array.isArray(S[id].lignes) && S[id].lignes.length > 0){
         const last = S[id].lignes[0];
         last._plat_id = ref.plat_id;
         last._plat_nom = ref.nom;
@@ -1629,6 +1746,9 @@ function hookBatchFunctions(){
               }
             } catch(e){}
           }
+        } else {
+          const l0 = (S[enrId]?.lignes || [])[0];
+          if(l0 && !l0._plat_id && (l0._ts||'').slice(0,10) === today()) autoLinkLigne(enrId, l0);
         }
       } catch(e){ console.warn('[menu] hookBatch:', e); }
       try { refreshLinkBanner(enrId); } catch(e){}

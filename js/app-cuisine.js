@@ -691,7 +691,11 @@ function addProd(p){
 const matchProds=q=>{
   if(!q||q.length<2)return[];
   const lq=q.toLowerCase();
-  return getProds().filter(p=>p.toLowerCase().includes(lq)).slice(0,8);
+  // Plats du menu du jour en premier (module menu), puis le catalogue produits
+  let menu=[];
+  try{ if(typeof window._menuProdSuggest==='function') menu=window._menuProdSuggest(q)||[]; }catch(e){ console.warn('[ac] menu:',e); }
+  const rest=getProds().filter(p=>p.toLowerCase().includes(lq)&&!menu.includes(p));
+  return menu.concat(rest).slice(0,8);
 };
 
 // ════════════════════════════════════════════════════
