@@ -10312,24 +10312,23 @@ function _rememberKitchenForPms(site) {
   if (!state || typeof state !== 'object') state = { v: 1, kitchens: [] };
   state.plan = 'multi';
   state.tenantId = (_profile && _profile.tenant_id) || state.tenantId || null;
-  if (!state.cloudSiteConfig) {
-    try {
-      const src = (_sites || []).find(function(sx){
-        return sx && sx.config && sx.config.pmsPending !== true && (sx.config.navCfg || (sx.config.config && (sx.config.config.enrActifs || sx.config.config.chefs)));
-      });
-      if (src) {
-        const cloud = JSON.parse(JSON.stringify(src.config));
-        delete cloud.pmsPending;
-        delete cloud.pmsConfigured;
-        state.cloudSiteConfig = cloud;
-        state.encData = (cloud.config && cloud.config.enceintes) || [];
-        state.snap = _pmsSnapFromConfig(cloud);
-      }
-    } catch (e) { console.warn('[pms template]', e); }
-  }
+  // Ne pas copier le PMS d'une autre cuisine : le questionnaire solo doit être rempli
+  // pour CELLE-CI avant tout « PMS prêt » ou entrée dans cuisine.html.
+  state.quizKitchen = { id: site.id || null, code: site.code, name: site.name || site.code };
+  delete state.cloudSiteConfig;
+  delete state.encData;
+  delete state.snap;
   state.kitchens = Array.isArray(state.kitchens) ? state.kitchens : [];
-  const already = state.kitchens.some(function(k){ return k && (k.code === site.code || (site.id && k.id === site.id)); });
-  if (!already) state.kitchens.push({ id: site.id || null, code: site.code, name: site.name || site.code, pmsDone: false });
+  let found = false;
+  state.kitchens.forEach(function(k){
+    if (!k || (k.code !== site.code && !(site.id && k.id === site.id))) return;
+    found = true;
+    k.pmsDone = false;
+    k.id = site.id || k.id || null;
+    k.code = site.code || k.code;
+    k.name = site.name || k.name || site.code;
+  });
+  if (!found) state.kitchens.push({ id: site.id || null, code: site.code, name: site.name || site.code, pmsDone: false });
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (e) { console.warn('[pms memory]', e); }
 }
