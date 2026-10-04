@@ -108,7 +108,12 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   }
 
-  goStep(1);
+  _maybeResumeKitchenPicker().then(function(shown){
+    if (!shown) goStep(1);
+  }).catch(function(e){
+    console.warn('[Onboarding] reprise:', e);
+    goStep(1);
+  });
 });
 
 /* ─── Navigation ─── */
@@ -830,6 +835,11 @@ window.generatePMS = async function() {
   var siteCodes  = [];
   var validSites = _sites.filter(function(s){ return s && s.trim(); });
   var plan       = _session.plan || _signupData.plan || 'solo';
+  var quizKitchen = null;
+  try {
+    var qst = _readMultiKitchens();
+    if (qst && qst.quizKitchen && qst.quizKitchen.code) quizKitchen = qst.quizKitchen;
+  } catch (e) { console.warn('[Onboarding] quiz:', e); }
   // Solo → cuisinier (accès direct PMS), autres plans → directeur (accès dashboard)
   var finalRole  = plan === 'solo' ? 'cuisinier' : 'directeur';
 
@@ -840,8 +850,32 @@ window.generatePMS = async function() {
     }
   }
 
-  /* 2. Provisionner tenant + site + profil via Netlify Function (service_role) */
-  try {
+  /* 2. Provisionner tenant + site + profil via Netlify Function (service_role).
+        Questionnaire d'une cuisine déjà créée : ne pas recréer de site. */
+  if (quizKitchen) {
+    try {
+      var qstate0 = _readMultiKitchens() || {};
+      tenantId = qstate0.tenantId || null;
+      if (!tenantId) {
+        try { tenantId = (JSON.parse(localStorage.getItem('haccp_dash_cfg_v2') || '{}').tenantId) || null; } catch (e2) {}
+      }
+      if (!tenantId) {
+        try { tenantId = (JSON.parse(localStorage.getItem('haccpro_session') || '{}').tenantId) || null; } catch (e3) {}
+      }
+    } catch (e) { console.warn('[Onboarding] tenant quiz:', e); }
+    if (quizKitchen.id) siteIds = [quizKitchen.id];
+    siteCodes = [quizKitchen.code];
+    validSites = [quizKitchen.name || quizKitchen.code];
+    plan = 'multi';
+    if (!tenantId) {
+      _showErr('err-8', 'Organisation introuvable. Rouvrez le siège, puis configurez le PMS.');
+      btn.disabled = false;
+      if (label) label.style.display = 'inline';
+      if (spin) spin.style.display = 'none';
+      if (back) back.style.display = '';
+      return;
+    }
+  } else try {
     var fullName = ((_signupData.firstName || '') + ' ' + (_signupData.lastName || '')).trim()
       || _signupData.company || _data.nom || null;
 
@@ -854,6 +888,7 @@ window.generatePMS = async function() {
       body: JSON.stringify({
         companyName: _data.nom || _signupData.company || 'Mon établissement',
         siteName:    validSites[0] || _data.nom || '',
+        siteNames:   validSites,
         plan:        plan,
         color:       _data.couleur || '#0F2240',
         type:        _data.type || _signupData.type || 'restaurant',
@@ -866,13 +901,29 @@ window.generatePMS = async function() {
     if (!provResult.ok) throw new Error(provResult.error || 'Erreur lors de la configuration du compte');
 
     tenantId = provResult.tenant_id;
-    // Utiliser le code retourné par la fonction (ex: "LAJ47"), sinon fallback sur slug
-    if (provResult.site_id || provResult.site_code) {
-      if (provResult.site_id) siteIds.push(provResult.site_id);
-      siteCodes.push(provResult.site_code || _slug(validSites[0] || _data.nom || 'cuisine'));
+    // Toutes les cuisines nommées, créées par provision-tenant (service_role).
+    // Le code est celui renvoyé (ex: "CAN47"), jamais un slug client.
+    var provisioned = [];
+    if (provResult.sites && provResult.sites.length) {
+      provisioned = provResult.sites;
+    } else if (provResult.site_id || provResult.site_code) {
+      provisioned = [{
+        id: provResult.site_id || null,
+        code: provResult.site_code || _slug(validSites[0] || _data.nom || 'cuisine'),
+        name: validSites[0] || _data.nom || '',
+        created: provResult.existing ? false : true
+      }];
     }
+    provisioned.forEach(function(s){
+      if (!s) return;
+      if (s.id) siteIds.push(s.id);
+      if (s.code) siteCodes.push(s.code);
+    });
     // Mettre à jour le rôle final si la fonction le retourne (idempotence)
     if (provResult.role) finalRole = provResult.role;
+    if (plan === 'multi' && siteCodes.length < validSites.length) {
+      throw new Error('Toutes les cuisines n\'ont pas pu être créées. Réessayez.');
+    }
   } catch(e) {
     console.error('[Onboarding] provision-tenant:', e);
     _showErr('err-8', e.message || 'Erreur lors de la configuration. Réessayez.');
@@ -884,33 +935,9 @@ window.generatePMS = async function() {
     return;
   }
 
-  /* 3. Créer les sites supplémentaires (plan multi — le 1er est déjà créé) */
-  var extraSites = validSites.slice(1);
-  if (extraSites.length && tenantId) {
-    try {
-      var hdrRep = {
-        'Content-Type':  'application/json',
-        'apikey':        SUPABASE_ANON_KEY,
-        'Authorization': 'Bearer ' + token,
-        'Prefer':        'return=representation'
-      };
-      var extraRows = extraSites.map(function(nom) {
-        return { name: nom.trim(), nom: nom.trim(), code: _slug(nom), tenant_id: tenantId };
-      });
-      var r2 = await fetch(SUPABASE_URL + '/rest/v1/sites', {
-        method: 'POST', headers: hdrRep, body: JSON.stringify(extraRows)
-      });
-      if (r2.ok) {
-        var created = await r2.json();
-        if (created && created.length) {
-          siteIds   = siteIds.concat(created.map(function(s){ return s.id; }));
-          siteCodes = siteCodes.concat(created.map(function(s){ return s.code || _slug(s.nom || s.name || ''); }));
-        }
-      }
-    } catch(e) { console.warn('[Onboarding] extra sites:', e); }
-  }
+  /* 3. Les cuisines supplémentaires sont créées par provision-tenant (plus d'insert client). */
 
-  /* 4. Écrire enceintes dans pms_config */
+  /* 4. Écrire enceintes dans pms_config (solo / entreprise — le multi le fait cuisine par cuisine) */
   var hdrMin = {
     'Content-Type':  'application/json',
     'apikey':        SUPABASE_ANON_KEY,
@@ -919,7 +946,7 @@ window.generatePMS = async function() {
   };
   var encData = _enceintes.filter(function(e){ return e.nom.trim(); })
     .map(function(e, idx){ return _encToConfig(e, idx); });
-  if (encData.length && siteIds.length && tenantId) {
+  if (plan !== 'multi' && encData.length && siteIds.length && tenantId) {
     try {
       await fetch(SUPABASE_URL + '/rest/v1/pms_config', {
         method: 'POST', headers: hdrMin,
@@ -938,10 +965,7 @@ window.generatePMS = async function() {
   // La tablette n'affiche que les cuisiniers manuels tagués avec le code du site
   // ({name, site}, cf. _taggedManualNames dans app-cuisine.js) : une chaîne nue est masquée
   // puis effacée du cloud au premier enregistrement de la config.
-  var _chefsTagged = function(code){
-    var site = String(code || '').trim().toUpperCase();
-    return site ? chefsNames.map(function(n){ return { name:n, site:site }; }) : [];
-  };
+  var _chefsTagged = function(code){ return _chefsTaggedFor(chefsNames, code); };
   var nettRefData = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
     return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
   });
@@ -963,9 +987,129 @@ window.generatePMS = async function() {
   try { if (_data.pin && window.crypto && crypto.subtle) adminPinData = await _hashPinOnb(_data.pin); }
   catch(e) { console.warn('[Onboarding] hash PIN admin:', e); }
 
-  /* 5. Pousser la config (chefs, thème, nettoyage, fiches ENR actives...) dans
-        sites.config pour chaque site créé. Sans ça, le 1er login sur cuisine.html
-        purge la config locale et la recharge depuis le cloud — qui serait vide. */
+  /* 5. Config PMS (même objet qu'une cuisine solo). Multi : appliquée cuisine par cuisine. */
+  var cloudSiteConfig = {
+    config: {
+      themeColor:      _data.couleur,
+      nbServices:      _data.services,
+      distribServices: distribSvcs.length ? distribSvcs : undefined, // vide → services par défaut de la tablette
+      enrActifs:       enrActifsData,
+      chefs:           chefsNames,
+      chefs_manuels:   chefsNames,
+      etab:            _data.nom || validSites[0] || '',
+      poubelles:       poubData,
+      responsable:     _data.responsable || '',
+      tutoStart:       true // guide « Premiers pas » sur l'accueil de la tablette
+    },
+    nett_ref:     nettRefData,
+    fournisseurs: fournData,
+    navCfg:       navCfgData
+  };
+  if (encData.length) cloudSiteConfig.config.enceintes = encData;
+  if (adminPinData) cloudSiteConfig.adminPin = adminPinData;
+
+  /* Cuisine déjà créée : le questionnaire vient d'être rempli. On l'enregistre
+     MAINTENANT. pmsDone / pmsPending ne bougent qu'après une ligne sites renvoyée. */
+  if (quizKitchen) {
+    try {
+      var qstate = _readMultiKitchens() || { v: 1, plan: 'multi', kitchens: [] };
+      qstate.plan = 'multi';
+      qstate.tenantId = tenantId || qstate.tenantId || null;
+      qstate.cloudSiteConfig = cloudSiteConfig;
+      qstate.encData = encData;
+      qstate.snap = {
+        chefsNames: chefsNames,
+        nettRefData: nettRefData,
+        distribSvcs: distribSvcs,
+        enrActifsData: enrActifsData,
+        fournData: fournData,
+        poubData: poubData,
+        navCfgData: navCfgData,
+        adminPinData: adminPinData,
+        headerGroupe: _data.nom || ''
+      };
+      qstate.kitchens = Array.isArray(qstate.kitchens) ? qstate.kitchens : [];
+      var qi = -1;
+      qstate.kitchens.forEach(function(k, i){ if (k && k.code === quizKitchen.code) qi = i; });
+      if (qi < 0) {
+        qstate.kitchens.push({ id: quizKitchen.id || null, code: quizKitchen.code, name: quizKitchen.name || quizKitchen.code, pmsDone: false });
+        qi = qstate.kitchens.length - 1;
+      } else {
+        qstate.kitchens[qi].pmsDone = false;
+      }
+      qstate.quizKitchen = quizKitchen;
+      _writeMultiKitchens(qstate);
+      await _applySoloPmsToSite(qstate.kitchens[qi]);
+      qstate = _readMultiKitchens() || qstate;
+      if (qstate.kitchens && qstate.kitchens[qi]) qstate.kitchens[qi].pmsDone = true;
+      qstate.quizKitchen = null;
+      _writeMultiKitchens(qstate);
+      if (spin) spin.style.display = 'none';
+      btn.style.display = 'none';
+      try { _showKitchenPicker(); }
+      catch (e2) {
+        console.warn('[Onboarding] écran cuisines:', e2);
+        _showErr('err-8', 'Le PMS est enregistré, mais l\'écran n\'a pas pu s\'afficher. Ouvrez le siège.');
+      }
+    } catch (e) {
+      console.warn('[Onboarding] enregistrement questionnaire:', e);
+      _showErr('err-8', (e && e.message) || 'Enregistrement du PMS impossible.');
+      btn.disabled = false;
+      if (label) label.style.display = 'inline';
+      if (spin) spin.style.display = 'none';
+      if (back) back.style.display = '';
+    }
+    return;
+  }
+
+  /* Multi : ne pas aller au siège. Les cuisines existent ; « Configurer le PMS »
+     ouvre le même questionnaire qu'une cuisine solo, puis seulement l'enregistrement. */
+  if (plan === 'multi') {
+    try {
+      _rememberMultiKitchens(provisioned, tenantId, plan, cloudSiteConfig, encData, {
+        chefsNames: chefsNames,
+        nettRefData: nettRefData,
+        distribSvcs: distribSvcs,
+        enrActifsData: enrActifsData,
+        fournData: fournData,
+        poubData: poubData,
+        navCfgData: navCfgData,
+        adminPinData: adminPinData,
+        headerGroupe: _data.nom || ''
+      });
+    } catch (e) { console.warn('[Onboarding] mémoire cuisines:', e); }
+    try {
+      var scM = {};
+      try { scM = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch (e2) {}
+      scM.url = SUPABASE_URL;
+      scM.anonKey = SUPABASE_ANON_KEY;
+      scM.userToken = token;
+      scM.token = token;
+      scM.userId = userId;
+      scM.role = finalRole;
+      scM.plan = plan;
+      scM.nom = _data.nom || '';
+      if (tenantId) scM.tenantId = tenantId;
+      localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(scM));
+    } catch (e) { console.warn('[Onboarding] cfg multi:', e); }
+    try {
+      var sessM = {};
+      try { sessM = JSON.parse(localStorage.getItem('haccpro_session') || '{}'); } catch (e2) {}
+      sessM.role = finalRole;
+      sessM.plan = plan;
+      if (tenantId) sessM.tenantId = tenantId;
+      localStorage.setItem('haccpro_session', JSON.stringify(sessM));
+    } catch (e) { console.warn('[Onboarding] session multi:', e); }
+    if (spin) spin.style.display = 'none';
+    btn.style.display = 'none';
+    try { _showKitchenPicker(); }
+    catch (e) {
+      console.warn('[Onboarding] écran cuisines:', e);
+      _showErr('err-8', 'Les cuisines sont créées, mais l\'écran n\'a pas pu s\'afficher. Ouvrez le siège.');
+    }
+    return;
+  }
+
   if (siteCodes.length && tenantId) {
     var hdrPatch = {
       'Content-Type':  'application/json',
@@ -973,25 +1117,6 @@ window.generatePMS = async function() {
       'Authorization': 'Bearer ' + token,
       'Prefer':        'return=minimal'
     };
-    var cloudSiteConfig = {
-      config: {
-        themeColor:      _data.couleur,
-        nbServices:      _data.services,
-        distribServices: distribSvcs.length ? distribSvcs : undefined, // vide → services par défaut de la tablette
-        enrActifs:       enrActifsData,
-        chefs:           chefsNames,
-        chefs_manuels:   [], // rempli par site ci-dessous (tag {name, site})
-        etab:            _data.nom || validSites[0] || '',
-        poubelles:       poubData,
-        responsable:     _data.responsable || '',
-        tutoStart:       true // guide « Premiers pas » sur l'accueil de la tablette
-      },
-      nett_ref:     nettRefData,
-      fournisseurs: fournData,
-      navCfg:       navCfgData
-    };
-    if (encData.length) cloudSiteConfig.config.enceintes = encData;
-    if (adminPinData) cloudSiteConfig.adminPin = adminPinData;
     // Attendre l'écriture avant la redirection : la 1re ouverture de la tablette relit cette config
     await Promise.all(siteCodes.map(function(code){
       return fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
@@ -1076,7 +1201,7 @@ window.generatePMS = async function() {
   var doneEl = document.getElementById('gen-done');
   if (doneEl) doneEl.style.display = 'block';
 
-  /* 10. Rediriger : solo → cuisine.html, multi/entreprise → dashboard.html */
+  /* 10. Rediriger : solo → cuisine.html, entreprise → dashboard.html (le multi est déjà sorti vers l'écran cuisines) */
   var dest = plan === 'solo' ? 'cuisine.html' : 'dashboard.html';
   setTimeout(function(){ window.location.href = dest; }, 2000);
 };
@@ -1165,6 +1290,12 @@ function _buildNavCfg(procs) {
   FICHES_CONNUES.forEach(function(id){ if (vis.indexOf(id) < 0) hidden[id] = true; });
   return { hidden: hidden };
 }
+function _chefsTaggedFor(names, code) {
+  var site = String(code || '').trim().toUpperCase();
+  if (!site) return [];
+  return (names || []).filter(function(n){ return typeof n === 'string' && n.trim(); })
+    .map(function(n){ return { name:n.trim(), site:site }; });
+}
 async function _hashPinOnb(pin) {
   // Même format que _hashPin() d'app-cuisine.js : SHA-256(sel 16 octets + PIN), base64
   var salt = crypto.getRandomValues(new Uint8Array(16));
@@ -1214,6 +1345,460 @@ function _slug(s) {
     .replace(/^-+|-+$/g, '')
     .substring(0, 20) || 'cuisine';
 }
+
+/* ─── Multi : écran des cuisines juste après « Générer mon PMS » ─── */
+var MULTI_KITCHENS_KEY = 'haccpro_multi_kitchens';
+
+function _rememberMultiKitchens(provisioned, tenantId, plan, cloudSiteConfig, encData, snap) {
+  var kitchens = (provisioned || []).filter(function(s){ return s && s.code; }).map(function(s){
+    return { id: s.id || null, code: s.code, name: s.name || s.code, pmsDone: false };
+  });
+  localStorage.setItem(MULTI_KITCHENS_KEY, JSON.stringify({
+    v: 1,
+    plan: plan,
+    tenantId: tenantId || null,
+    kitchens: kitchens,
+    cloudSiteConfig: cloudSiteConfig || {},
+    encData: encData || [],
+    snap: snap || {}
+  }));
+}
+
+function _readMultiKitchens() {
+  try { return JSON.parse(localStorage.getItem(MULTI_KITCHENS_KEY) || 'null'); }
+  catch (e) { return null; }
+}
+
+function _writeMultiKitchens(state) {
+  try { localStorage.setItem(MULTI_KITCHENS_KEY, JSON.stringify(state)); }
+  catch (e) { console.warn('[Onboarding] save cuisines:', e); }
+}
+
+function _jwtExpMs(token) {
+  try {
+    var b64 = String(token || '').split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    if (!b64) return 0;
+    while (b64.length % 4) b64 += '=';
+    var payload = JSON.parse(atob(b64));
+    return (payload.exp || 0) * 1000;
+  } catch (e) { return 0; }
+}
+
+/* Le siège rafraîchit le JWT dans haccp_dash_cfg_v2 et retire haccpro_session.
+   Lire d'abord cette clé : un userToken périmé dans haccpro_supa_cfg donne HTTP 401
+   sur PATCH /rest/v1/sites (JWT expiré, pas un refus d'une autre cuisine). */
+function _onbToken() {
+  var best = '';
+  var bestExp = 0;
+  ['haccp_dash_cfg_v2', 'haccpro_session', 'haccp_supa_cfg_v1', 'haccpro_supa_cfg'].forEach(function(k){
+    try {
+      var o = JSON.parse(localStorage.getItem(k) || '{}');
+      var t = o.token || o.userToken || '';
+      if (!t || String(t).split('.').length < 3) return;
+      var exp = _jwtExpMs(t);
+      if (!best || exp > bestExp) { best = t; bestExp = exp; }
+    } catch (e) {}
+  });
+  return best;
+}
+
+function _onbRefreshToken() {
+  var keys = ['haccp_dash_cfg_v2', 'haccpro_session', 'haccp_supa_cfg_v1', 'haccpro_supa_cfg'];
+  for (var i = 0; i < keys.length; i++) {
+    try {
+      var o = JSON.parse(localStorage.getItem(keys[i]) || '{}');
+      if (o.refreshToken) return o.refreshToken;
+    } catch (e) {}
+  }
+  return '';
+}
+
+async function _onbFreshToken() {
+  var token = _onbToken();
+  var refresh = _onbRefreshToken();
+  try {
+    if (refresh && _jwtExpMs(token) - Date.now() < 60 * 1000) {
+      var rr = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ refresh_token: refresh })
+      });
+      if (rr.ok) {
+        var rd = await rr.json();
+        if (rd.access_token) {
+          token = rd.access_token;
+          ['haccp_dash_cfg_v2', 'haccpro_session', 'haccp_supa_cfg_v1', 'haccpro_supa_cfg'].forEach(function(k){
+            try {
+              var raw = localStorage.getItem(k);
+              if (!raw) return;
+              var obj = JSON.parse(raw);
+              if (obj.token) obj.token = rd.access_token;
+              if (obj.userToken) obj.userToken = rd.access_token;
+              if (obj.refreshToken) obj.refreshToken = rd.refresh_token || refresh;
+              localStorage.setItem(k, JSON.stringify(obj));
+            } catch (e) {}
+          });
+        }
+      }
+    }
+  } catch (e) { console.warn('[Onboarding] refresh token:', e); }
+  return token;
+}
+
+/** Même écriture PMS qu'une cuisine solo (pms_config + sites.config + brouillon local), pour UN site. */
+async function _applySoloPmsToSite(kitchen) {
+  var state = _readMultiKitchens();
+  if (!state || !state.cloudSiteConfig) throw new Error('Configuration PMS introuvable sur cet appareil.');
+  var token = await _onbFreshToken();
+  if (!token) throw new Error('Session expirée. Reconnectez-vous, puis rouvrez cet écran.');
+  var code = kitchen.code;
+  var tenantId = state.tenantId || '';
+  var snap = state.snap || {};
+  var cloud = state.cloudSiteConfig;
+  try { cloud = JSON.parse(JSON.stringify(cloud)); } catch (e) { cloud = state.cloudSiteConfig; }
+  cloud.pmsPending = false;
+  cloud.pmsConfigured = true;
+  // Cuisiniers tagués avec le code de CETTE cuisine, sinon la tablette les masque (getChefs)
+  cloud.config = cloud.config || {};
+  cloud.config.chefs_manuels = _chefsTaggedFor(snap.chefsNames || cloud.config.chefs || [], code);
+  var hdrMin = {
+    'Content-Type': 'application/json',
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + token,
+    'Prefer': 'return=representation'
+  };
+  try {
+    var curResp = await fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code) + '&select=config&limit=1', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
+    });
+    if (curResp.ok) {
+      var curRows = await curResp.json();
+      var curCfg = (curRows && curRows[0] && curRows[0].config) || {};
+      var alreadyLive = curCfg.pmsPending !== true && (curCfg.navCfg || (curCfg.config && (curCfg.config.enrActifs || curCfg.config.chefs)));
+      if (alreadyLive) {
+        throw new Error('Cette cuisine a déjà un PMS. Ouvrez-la depuis le siège, sans repasser par cet écran.');
+      }
+    }
+  } catch (e) {
+    if (e && e.message && e.message.indexOf('déjà un PMS') !== -1) throw e;
+    console.warn('[Onboarding] lecture config:', e);
+  }
+
+  if (state.encData && state.encData.length && tenantId) {
+    try {
+      var encResp = await fetch(SUPABASE_URL + '/rest/v1/pms_config', {
+        method: 'POST', headers: hdrMin,
+        body: JSON.stringify({
+          site_id: code,
+          tenant_id: tenantId,
+          type: 'enceintes',
+          data: state.encData
+        })
+      });
+      if (!encResp.ok) console.warn('[Onboarding] pms_config HTTP ' + encResp.status);
+    } catch (e) { console.warn('[Onboarding] pms_config:', e); }
+  }
+  /* return=representation : un PATCH filtré par la RLS répond 200/204 avec 0 ligne
+     sans écrire. Ne pas prendre ça pour un succès (cuisine vide + « PMS prêt »). */
+  var patch = await fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
+    method: 'PATCH', headers: hdrMin,
+    body: JSON.stringify({ config: cloud })
+  });
+  var patched = [];
+  try { patched = await patch.json(); } catch (e) { patched = []; }
+  if (!patch.ok) throw new Error('Enregistrement du PMS impossible (HTTP ' + patch.status + ').');
+  if (!Array.isArray(patched) || !patched.length) {
+    throw new Error('Enregistrement du PMS impossible : la cuisine n\'a pas été mise à jour.');
+  }
+  if (patched[0].config && patched[0].config.pmsPending === true) {
+    throw new Error('Enregistrement du PMS impossible : le questionnaire n\'a pas été enregistré.');
+  }
+
+  try {
+    var S = {};
+    try { S = JSON.parse(localStorage.getItem('haccp_v6') || '{}'); } catch (e2) {}
+    S.config = S.config || {};
+    S.config.enceintes = state.encData || [];
+    S.config.themeColor = (cloud.config && cloud.config.themeColor) || S.config.themeColor;
+    S.config.nbServices = (cloud.config && cloud.config.nbServices) || S.config.nbServices;
+    if (snap.distribSvcs && snap.distribSvcs.length) S.config.distribServices = snap.distribSvcs;
+    S.config.enrActifs = snap.enrActifsData || S.config.enrActifs;
+    S.config.chefs = snap.chefsNames || [];
+    S.config.chefs_manuels = _chefsTaggedFor(snap.chefsNames || [], code);
+    S.nett_ref = snap.nettRefData || [];
+    S.fournisseurs = snap.fournData || [];
+    S.config.poubelles = snap.poubData || [];
+    S.config.tutoStart = true;
+    if (cloud.config && cloud.config.responsable) S.config.responsable = cloud.config.responsable;
+    S.navCfg = snap.navCfgData || S.navCfg;
+    if (snap.adminPinData) S.adminPin = snap.adminPinData;
+    S.config.etab = kitchen.name || '';
+    S.config.headerGroupe = snap.headerGroupe || S.config.headerGroupe || '';
+    S.config.headerNom = kitchen.name || '';
+    localStorage.setItem('haccp_v6', JSON.stringify(S));
+  } catch (e) { console.warn('[Onboarding] haccp_v6 cuisine:', e); }
+
+  _pointCfgAtKitchen(kitchen, tenantId);
+}
+
+function _pointCfgAtKitchen(kitchen, tenantId) {
+  try {
+    var sc = {};
+    try { sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}'); } catch (e) {}
+    var token = _onbToken();
+    if (token) { sc.userToken = token; sc.token = token; }
+    sc.url = SUPABASE_URL;
+    sc.anonKey = SUPABASE_ANON_KEY;
+    sc.siteId = kitchen.code;
+    sc.siteUUID = kitchen.id || null;
+    sc.siteNom = kitchen.name || '';
+    if (tenantId) sc.tenantId = tenantId;
+    localStorage.setItem('haccp_supa_cfg_v1', JSON.stringify(sc));
+    var also = {};
+    try { also = JSON.parse(localStorage.getItem('haccpro_supa_cfg') || '{}'); } catch (e2) {}
+    also.siteId = kitchen.code;
+    also.siteUUID = kitchen.id || null;
+    also.siteNom = kitchen.name || '';
+    if (token) { also.token = token; also.userToken = token; }
+    if (tenantId) also.tenantId = tenantId;
+    localStorage.setItem('haccpro_supa_cfg', JSON.stringify(also));
+  } catch (e) { console.warn('[Onboarding] pointeur site:', e); }
+}
+
+function _showKitchenPicker() {
+  document.querySelectorAll('.step').forEach(function(s){ s.classList.remove('active'); });
+  var el = document.getElementById('step-10');
+  if (el) el.classList.add('active');
+  var hdTitle = document.getElementById('hd-title');
+  var hdStep = document.getElementById('hd-step');
+  var prog = document.getElementById('progress');
+  var dots = document.getElementById('step-dots');
+  if (hdTitle) hdTitle.textContent = 'Vos cuisines';
+  if (hdStep) hdStep.textContent = 'Plan Multi';
+  if (prog) prog.style.width = '100%';
+  if (dots) dots.style.display = 'none';
+  _renderKitchenPicker();
+  window.scrollTo(0, 0);
+}
+
+function _renderKitchenPicker() {
+  var box = document.getElementById('kitchen-picker');
+  if (!box) return;
+  var state = _readMultiKitchens();
+  var kitchens = (state && state.kitchens) || [];
+  if (!kitchens.length) {
+    box.innerHTML = '<div class="recap-block"><div class="recap-item"><span class="recap-check">—</span><div>Aucune cuisine à configurer.</div></div></div>';
+    return;
+  }
+  box.innerHTML = kitchens.map(function(k, i){
+    var done = !!k.pmsDone;
+    var code = _escHtml(k.code || '');
+    var name = _escHtml(k.name || 'Cuisine');
+    var actions = done
+      ? '<button type="button" class="btn-primary green" style="margin-top:10px" onclick="enterMultiKitchen(' + i + ')">Entrer dans cette cuisine</button>'
+      : '<button type="button" class="btn-primary" style="margin-top:10px" onclick="configureMultiKitchen(' + i + ')">Configurer le PMS</button>';
+    return '<div class="recap-block">' +
+      '<div class="recap-title">Cuisine ' + (i + 1) + (done ? ' · PMS prêt' : '') + '</div>' +
+      '<div class="recap-item"><span class="recap-check">' + (done ? '✓' : '○') + '</span><div><strong>' + name + '</strong></div></div>' +
+      '<div class="recap-item"><span class="recap-check">#</span><div>Code site : <strong>' + code + '</strong></div></div>' +
+      actions +
+    '</div>';
+  }).join('');
+}
+
+function _startKitchenQuiz(kitchen) {
+  if (!kitchen || !kitchen.code) return;
+  try {
+    var state = _readMultiKitchens() || { v: 1, plan: 'multi', kitchens: [] };
+    state.plan = 'multi';
+    state.quizKitchen = { id: kitchen.id || null, code: kitchen.code, name: kitchen.name || kitchen.code };
+    state.kitchens = Array.isArray(state.kitchens) ? state.kitchens : [];
+    var found = false;
+    state.kitchens.forEach(function(k){
+      if (!k || k.code !== kitchen.code) return;
+      found = true;
+      k.pmsDone = false;
+      k.id = k.id || kitchen.id || null;
+      k.name = kitchen.name || k.name;
+    });
+    if (!found) state.kitchens.push({ id: kitchen.id || null, code: kitchen.code, name: kitchen.name || kitchen.code, pmsDone: false });
+    _writeMultiKitchens(state);
+  } catch (e) { console.warn('[Onboarding] quiz cuisine:', e); }
+  _sites = [kitchen.name || kitchen.code];
+  _data.nom = kitchen.name || '';
+  try {
+    var nomEl = document.getElementById('a-nom');
+    if (nomEl && _data.nom) nomEl.value = _data.nom;
+    var skip = document.getElementById('btn-gen-skip');
+    if (skip) skip.style.display = 'none';
+  } catch (e) { console.warn('[Onboarding] préremplissage quiz:', e); }
+  goStep(3);
+  try {
+    var hd = document.getElementById('hd-title');
+    if (hd) hd.textContent = 'PMS · ' + (kitchen.name || kitchen.code);
+  } catch (e) { console.warn('[Onboarding] titre quiz:', e); }
+}
+
+window.configureMultiKitchen = function(idx) {
+  _hideErr('err-10');
+  var state = _readMultiKitchens();
+  var kitchen = state && state.kitchens && state.kitchens[idx];
+  if (!kitchen) { _showErr('err-10', 'Cuisine introuvable.'); return; }
+  if (kitchen.pmsDone) {
+    _showErr('err-10', 'Cette cuisine a déjà un PMS. Entrez dans la cuisine, ou rouvrez-la depuis le siège.');
+    return;
+  }
+  try { _startKitchenQuiz(kitchen); }
+  catch (e) {
+    console.warn('[Onboarding] ouvrir questionnaire:', e);
+    _showErr('err-10', 'Impossible d\'ouvrir le questionnaire. Réessayez.');
+  }
+};
+
+window.enterMultiKitchen = function(idx) {
+  try {
+    var state = _readMultiKitchens();
+    var kitchen = state && state.kitchens && state.kitchens[idx];
+    if (!kitchen || !kitchen.pmsDone) {
+      _showErr('err-10', 'Terminez le PMS de cette cuisine avant d\'y entrer.');
+      return;
+    }
+    _pointCfgAtKitchen(kitchen, state.tenantId);
+    window.location.href = 'cuisine.html';
+  } catch (e) {
+    console.warn('[Onboarding] entrer cuisine:', e);
+    _showErr('err-10', 'Ouverture de la cuisine impossible.');
+  }
+};
+
+window.openSiegeDashboard = function() {
+  try { window.location.href = 'dashboard.html'; }
+  catch (e) { console.warn('[Onboarding] siège:', e); }
+};
+
+function _templateFromSiteRow(row) {
+  if (!row || !row.config || row.config.pmsPending === true) return null;
+  var cloud;
+  try { cloud = JSON.parse(JSON.stringify(row.config)); } catch (e) { return null; }
+  delete cloud.pmsPending;
+  delete cloud.pmsConfigured;
+  var cfg = cloud.config || {};
+  if (!cloud.navCfg && !cfg.enrActifs && !cfg.chefs && !cfg.enceintes && !cloud.nett_ref) return null;
+  return {
+    cloud: cloud,
+    encData: cfg.enceintes || [],
+    snap: {
+      chefsNames: cfg.chefs || [],
+      nettRefData: cloud.nett_ref || [],
+      distribSvcs: cfg.distribServices || [],
+      enrActifsData: cfg.enrActifs || [],
+      fournData: cloud.fournisseurs || [],
+      poubData: cfg.poubelles || [],
+      navCfgData: cloud.navCfg || null,
+      adminPinData: cloud.adminPin || null,
+      headerGroupe: cfg.etab || ''
+    }
+  };
+}
+
+async function _hydratePendingKitchens(state) {
+  var token = await _onbFreshToken();
+  var tenantId = (state && state.tenantId) || '';
+  if (!tenantId) {
+    try {
+      var sc = JSON.parse(localStorage.getItem('haccp_supa_cfg_v1') || '{}');
+      tenantId = sc.tenantId || '';
+    } catch (e) {}
+  }
+  if (!tenantId) {
+    try {
+      var sess = JSON.parse(localStorage.getItem('haccpro_session') || '{}');
+      tenantId = sess.tenantId || '';
+    } catch (e2) {}
+  }
+  if (!token || !tenantId) return state;
+  var resp;
+  try {
+    resp = await fetch(SUPABASE_URL + '/rest/v1/sites?tenant_id=eq.' + encodeURIComponent(tenantId) + '&select=id,name,code,config', {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
+    });
+  } catch (e) {
+    console.warn('[Onboarding] cuisines:', e);
+    return state;
+  }
+  if (!resp.ok) return state;
+  var rows = [];
+  try { rows = await resp.json(); } catch (e3) { return state; }
+  if (!Array.isArray(rows)) return state;
+  if (!state || typeof state !== 'object') state = { v: 1, plan: 'multi', kitchens: [] };
+  state.plan = state.plan || 'multi';
+  state.tenantId = state.tenantId || tenantId;
+  state.kitchens = Array.isArray(state.kitchens) ? state.kitchens : [];
+  if (!state.cloudSiteConfig) {
+    var tpl = null;
+    rows.forEach(function(row){ if (!tpl) tpl = _templateFromSiteRow(row); });
+    if (tpl) {
+      state.cloudSiteConfig = tpl.cloud;
+      state.encData = tpl.encData;
+      if (!state.snap || !state.snap.navCfgData) state.snap = tpl.snap;
+    }
+  }
+  rows.forEach(function(row){
+    if (!row || !row.code || !row.config || row.config.pmsPending !== true) return;
+    var i = -1;
+    state.kitchens.forEach(function(k, idx){ if (k && k.code === row.code) i = idx; });
+    /* Tant que le serveur dit pmsPending, le questionnaire n'est pas enregistré.
+       Un pmsDone local (PATCH vide pris pour un succès) ne doit pas afficher « PMS prêt ». */
+    if (i < 0) state.kitchens.push({ id: row.id || null, code: row.code, name: row.name || row.code, pmsDone: false });
+    else {
+      state.kitchens[i].pmsDone = false;
+      state.kitchens[i].id = state.kitchens[i].id || row.id || null;
+      state.kitchens[i].name = row.name || state.kitchens[i].name;
+    }
+  });
+  try { _writeMultiKitchens(state); } catch (e4) { console.warn('[Onboarding] mémoire cuisines:', e4); }
+  return state;
+}
+
+async function _maybeResumeKitchenPicker() {
+  try {
+    var qs = new URLSearchParams(window.location.search || '');
+    var state = _readMultiKitchens();
+    var pending = state && state.plan === 'multi' && (state.kitchens || []).some(function(k){ return k && !k.pmsDone; });
+    if (qs.get('cuisines') === '1' || pending || (state && state.quizKitchen)) {
+      try { state = await _hydratePendingKitchens(state); }
+      catch (e) { console.warn('[Onboarding] cuisines en attente:', e); }
+      var quiz = state && state.quizKitchen;
+      var quizOpen = false;
+      if (quiz && quiz.code && state && state.kitchens) {
+        state.kitchens.forEach(function(k){
+          if (k && k.code === quiz.code && !k.pmsDone) quizOpen = true;
+        });
+      }
+      if (quiz && quizOpen) {
+        try { _startKitchenQuiz(quiz); }
+        catch (e) { console.warn('[Onboarding] questionnaire:', e); _showKitchenPicker(); }
+        return true;
+      }
+      if (qs.get('cuisines') === '1' || (state && state.kitchens && state.kitchens.length)) {
+        _showKitchenPicker();
+        return true;
+      }
+    }
+  } catch (e) { console.warn('[Onboarding] reprise cuisines:', e); }
+  return false;
+}
+
+window.skipOnboarding = function() {
+  try {
+    var st = _readMultiKitchens();
+    if (st && st.quizKitchen && st.quizKitchen.code) {
+      _showErr('err-8', 'Terminez le questionnaire pour enregistrer le PMS de cette cuisine.');
+      return;
+    }
+  } catch (e) { console.warn('[Onboarding] skip:', e); }
+  window.location.href = 'cuisine.html';
+};
 
 /* ─── Helpers ─── */
 function _showErr(id, msg) {

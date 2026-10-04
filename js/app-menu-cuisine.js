@@ -202,6 +202,8 @@ function renderMenuJour(){
     .mn-plat-st.partial{background:#fed7aa;color:#9a3412}
     .mn-plat-st.ok{background:#dcfce7;color:#166534}
     .mn-plat-st.auto{background:#dbeafe;color:#1e3a8a}
+    button.mn-plat-st{border:none;cursor:pointer;font-family:inherit}
+    .mn-chip{font-size:.62rem;font-weight:800;background:#fff;color:#5C1E5A;border:1px solid #d8b4d8;border-radius:999px;padding:1px 7px}
     .mn-plat-comp{font-size:.66rem;color:#7A6579;font-style:italic}
     .mn-cov{background:linear-gradient(135deg,#1b5e20,#2e7d32);color:#fff;border-radius:14px;padding:11px 14px;margin-bottom:10px}
     .mn-cov.warn{background:linear-gradient(135deg,#92400e,#d97706)}
@@ -291,6 +293,207 @@ function renderCatBlock(menu, cat){
   </div>`;
 }
 
+// Un lot ENR31 → plusieurs plats. _plat_id (1er) reste pour les anciennes lectures.
+function _ligneHasPlat(l, platId){
+  try {
+    if(!l || platId == null || platId === '') return false;
+    const id = String(platId);
+    if(l._plat_id != null && String(l._plat_id) === id) return true;
+    if(Array.isArray(l._plat_ids) && l._plat_ids.some(x => String(x) === id)) return true;
+    if(Array.isArray(l._plat_liens) && l._plat_liens.some(x => x && String(x.plat_id) === id)) return true;
+  } catch(e){}
+  return false;
+}
+function _menuPlatRefsFromLigne(l){
+  const out = [];
+  try {
+    const seen = {};
+    const push = (id, nom, menu_id, profil) => {
+      if(id == null || id === '' || seen[String(id)]) return;
+      seen[String(id)] = 1;
+      out.push({ plat_id:String(id), nom:nom||'', menu_id:menu_id||'', profil:profil||'' });
+    };
+    if(l && Array.isArray(l._plat_liens)) l._plat_liens.forEach(x => { if(x) push(x.plat_id, x.nom, x.menu_id, x.profil); });
+    if(l && Array.isArray(l._plat_ids)) l._plat_ids.forEach(id => push(id, '', '', ''));
+    if(l && l._plat_id) push(l._plat_id, l._plat_nom, l._menu_id, l._plat_profil);
+  } catch(e){ console.warn('[menu] refs ligne', e); }
+  return out;
+}
+function _menuWritePlatLiens(l, refs){
+  try {
+    if(!l) return;
+    const clean = [];
+    const seen = {};
+    (refs||[]).forEach(r => {
+      if(!r || r.plat_id == null || r.plat_id === '' || seen[String(r.plat_id)]) return;
+      seen[String(r.plat_id)] = 1;
+      clean.push({ plat_id:String(r.plat_id), nom:r.nom||'', menu_id:r.menu_id||'', profil:r.profil_haccp||r.profil||'' });
+    });
+    l._plat_liens = clean;
+    l._plat_ids = clean.map(x => x.plat_id);
+    if(clean[0]){
+      l._plat_id = clean[0].plat_id;
+      l._plat_nom = clean[0].nom || l._plat_nom || '';
+      if(clean[0].menu_id) l._menu_id = clean[0].menu_id;
+      if(clean[0].profil) l._plat_profil = clean[0].profil;
+    } else {
+      delete l._plat_id; delete l._plat_nom; delete l._menu_id; delete l._plat_profil;
+    }
+  } catch(e){ console.warn('[menu] write liens', e); }
+}
+let _menuLinkPendingMulti = {};
+function _menuPendingRefs(enrId){
+  try {
+    const arr = _menuLinkPendingMulti[enrId];
+    if(Array.isArray(arr) && arr.length) return arr.slice();
+    const one = (typeof _menuLinkPending !== 'undefined') ? _menuLinkPending[enrId] : null;
+    if(one && one.plat_id) return [one];
+  } catch(e){}
+  return [];
+}
+function _menuTogglePending(enrId, ref){
+  try {
+    if(!_menuLinkPendingMulti[enrId]) _menuLinkPendingMulti[enrId] = [];
+    const arr = _menuLinkPendingMulti[enrId];
+    const i = arr.findIndex(x => x && String(x.plat_id) === String(ref.plat_id));
+    if(i >= 0) arr.splice(i, 1); else arr.push(ref);
+    if(typeof _menuLinkPending !== 'undefined'){
+      if(arr[0]) _menuLinkPending[enrId] = arr[0];
+      else delete _menuLinkPending[enrId];
+    }
+  } catch(e){ console.warn('[menu] toggle pending', e); }
+}
+function _menuChipsForPlat(plat){
+  try {
+    const names = [];
+    const seen = {};
+    const add = (n) => {
+      const t = String(n||'').trim();
+      if(!t || seen[t.toLowerCase()]) return;
+      seen[t.toLowerCase()] = 1;
+      names.push(t);
+    };
+    ((S.enr31 && S.enr31.lignes) || []).forEach(l => {
+      try {
+        if(!l || l._deleted) return;
+        if(!_ligneHasPlat(l, plat && plat.plat_id)) return;
+        add(l.produit);
+      } catch(e){}
+    });
+    ((plat && plat.composants) || []).forEach(add);
+    return names;
+  } catch(e){ return []; }
+}
+function _menuFindEnr31(uuid){
+  try {
+    const lignes = (S.enr31 && S.enr31.lignes) || [];
+    return lignes.find(l => l && String(l._uuid||'') === String(uuid||'')) || null;
+  } catch(e){ return null; }
+}
+function _menuSetLotPlat(uuid, ref, on){
+  try {
+    const l = _menuFindEnr31(uuid);
+    if(!l || !ref || !ref.plat_id) return;
+    let refs = _menuPlatRefsFromLigne(l);
+    if(on){
+      if(!refs.some(r => String(r.plat_id) === String(ref.plat_id))) refs.push(ref);
+    } else {
+      refs = refs.filter(r => String(r.plat_id) !== String(ref.plat_id));
+    }
+    _menuWritePlatLiens(l, refs);
+    save();
+    try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr31', l); } catch(e){}
+  } catch(e){ console.warn('[menu] set lot plat', e); }
+}
+function _menuAddMpToPlats(nom, lot, refs){
+  try {
+    const name = String(nom||'').trim();
+    if(!name) return;
+    const chef = (typeof getActiveSession==='function' ? (getActiveSession()||'') : '') ||
+                 ((S.config && S.config.chefs && S.config.chefs[0]) || '') || '—';
+    const rec = (typeof stampEntry==='function' ? stampEntry : (o=>o))({
+      date: (typeof today==='function' ? today() : ''),
+      produit: name,
+      lot: String(lot||'').trim() || '—',
+      dlc: (typeof today==='function' ? today() : ''),
+      estampille: '',
+      cuisinier: chef,
+      _sec: 'enr31',
+      _ts: new Date().toISOString(),
+      _from_menu: true,
+      _saisie_menu: true,
+    });
+    _menuWritePlatLiens(rec, refs||[]);
+    S.enr31 = S.enr31 || {};
+    S.enr31.lignes = S.enr31.lignes || [];
+    S.enr31.lignes.unshift(rec);
+    save();
+    try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr31', rec); } catch(e){}
+    if(typeof toast==='function') toast('✅ '+name+' lié au plat','success');
+  } catch(e){ console.warn('[menu] add mp', e); }
+}
+window._menuOpenTraces = function(catId, idx){
+  try {
+    const menu = getMenu(_menuState.date, _menuState.service);
+    const plat = menu && menu.categories && menu.categories[catId] && menu.categories[catId][idx];
+    if(!plat) return;
+    const prev = document.getElementById('mn-trace-ov');
+    if(prev) prev.remove();
+    const ref = { plat_id:plat.plat_id, nom:plat.nom, menu_id:menu.menu_id, profil_haccp:plat.profil_haccp||'' };
+    const lignes = ((S.enr31 && S.enr31.lignes) || []).filter(l => l && !l._deleted).slice(0, 40);
+    const lots = lignes.map(l => {
+      const on = _ligneHasPlat(l, plat.plat_id);
+      const lot = l.lot ? ' · lot '+escH(l.lot) : '';
+      return `<label style="display:flex;align-items:flex-start;gap:8px;padding:8px 4px;border-bottom:1px solid #f1e6f1;font-size:.82rem">
+        <input type="checkbox" data-mp-uuid="${escH(l._uuid||'')}" ${on?'checked':''} style="margin-top:3px;width:18px;height:18px;accent-color:#5C1E5A">
+        <span><b>${escH(l.produit||'—')}</b><span style="color:#7A6579">${lot}</span></span>
+      </label>`;
+    }).join('') || '<div style="color:#94a3b8;font-size:.8rem;padding:8px 0">Aucun lot. Ajoutez un ingrédient ci-dessous, ou ouvrez la fiche Traçabilité MP.</div>';
+    let others = [];
+    try { others = todayMenuPlats().filter(x => x && x.p && String(x.p.plat_id) !== String(plat.plat_id)).slice(0, 24); } catch(e){ others = []; }
+    const otherChecks = others.map(x => `<label style="display:inline-flex;align-items:center;gap:4px;margin:3px 8px 3px 0;font-size:.75rem;font-weight:700;color:#3b1e3b"><input type="checkbox" data-extra-plat="${escH(x.p.plat_id)}" data-extra-nom="${escH(x.p.nom)}" data-extra-menu="${escH(x.menu_id||'')}" style="accent-color:#5C1E5A"> ${escH(x.p.nom)}</label>`).join('');
+    const ov = document.createElement('div');
+    ov.id = 'mn-trace-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9000;display:flex;align-items:flex-end;justify-content:center';
+    ov.innerHTML = `<div style="background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:16px 14px 22px;max-height:88vh;overflow:auto">
+      <div style="font-size:.95rem;font-weight:900;color:#5C1E5A;margin-bottom:4px">Traçabilité — ${escH(plat.nom)}</div>
+      <div style="font-size:.75rem;color:#7A6579;margin-bottom:8px">Cochez les lots de ce plat. Un même lot peut servir plusieurs plats.</div>
+      <div style="font-size:.68rem;font-weight:800;color:#5C1E5A;text-transform:uppercase;letter-spacing:.3px">Lots existants</div>
+      <div id="mn-trace-lots">${lots}</div>
+      <div style="font-size:.68rem;font-weight:800;color:#5C1E5A;text-transform:uppercase;letter-spacing:.3px;margin-top:12px">Ajouter un ingrédient à la main</div>
+      <input id="mn-trace-nom" placeholder="Ex : œufs, farine, beurre…" style="width:100%;box-sizing:border-box;margin-top:6px;border:1.5px solid #ddd0dd;border-radius:9px;padding:8px 10px;font-family:inherit">
+      <input id="mn-trace-lot" placeholder="N° de lot (facultatif)" style="width:100%;box-sizing:border-box;margin-top:6px;border:1.5px solid #ddd0dd;border-radius:9px;padding:8px 10px;font-family:inherit">
+      ${otherChecks ? `<div style="font-size:.72rem;color:#7A6579;margin-top:8px">Aussi utilisé dans :</div><div>${otherChecks}</div>` : ''}
+      <button id="mn-trace-add" type="button" style="width:100%;margin-top:8px;padding:11px;background:#5C1E5A;color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Ajouter et lier à ce plat</button>
+      <button id="mn-trace-close" type="button" style="width:100%;margin-top:8px;padding:11px;background:#f3e8f3;color:#5C1E5A;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Fermer</button>
+    </div>`;
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e){ if(e.target===ov){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); }catch(err){} } });
+    document.getElementById('mn-trace-close').onclick = function(){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); }catch(e){} };
+    ov.querySelectorAll('input[data-mp-uuid]').forEach(cb => {
+      cb.addEventListener('change', function(){
+        try { _menuSetLotPlat(cb.getAttribute('data-mp-uuid'), ref, cb.checked); } catch(err){ console.warn('[menu] toggle lot', err); }
+      });
+    });
+    document.getElementById('mn-trace-add').onclick = function(){
+      try {
+        const nomEl = document.getElementById('mn-trace-nom');
+        const lotEl = document.getElementById('mn-trace-lot');
+        const nom = (nomEl && nomEl.value || '').trim();
+        const lot = (lotEl && lotEl.value || '').trim();
+        if(!nom){ if(typeof toast==='function') toast('Indiquez l\'ingrédient','warning'); return; }
+        const extras = [];
+        ov.querySelectorAll('input[data-extra-plat]:checked').forEach(el => {
+          extras.push({ plat_id:el.getAttribute('data-extra-plat'), nom:el.getAttribute('data-extra-nom')||'', menu_id:el.getAttribute('data-extra-menu')||'' });
+        });
+        _menuAddMpToPlats(nom, lot, [ref].concat(extras));
+        ov.remove();
+        if(typeof renderMain==='function') renderMain();
+      } catch(err){ console.warn('[menu] add mp', err); }
+    };
+  } catch(e){ console.warn('[menu] open traces', e); }
+};
+
 function renderPlatRow(catId, plat, idx){
   const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
   const stat = computePlatStatus(plat);
@@ -299,16 +502,25 @@ function renderPlatRow(catId, plat, idx){
   const mxBadge = variants.mixe
     ? ` <button onclick="event.preventDefault();event.stopPropagation();window._menuToggleMixeProfil('${catId}',${idx})" style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 7px;border-radius:5px;font-weight:800;vertical-align:middle;border:none;cursor:pointer;font-family:inherit;touch-action:manipulation">${mxp.label} ⇄</button>`
     : '';
+  const showProf = plat.profil_haccp !== 'BF_CUIT' && plat.profil_haccp !== 'BF_CRU';
+  const profBtn = showProf
+    ? `<button class="mn-plat-prof" style="background:${prof.color}" onclick="window._menuChangeProfil('${catId}',${idx})" title="Changer le profil HACCP">${prof.ico} ${prof.label}</button>`
+    : '';
+  let chips = '';
+  try {
+    const names = _menuChipsForPlat(plat);
+    if(names.length) chips = names.map(n => `<span class="mn-chip">${escH(n)}</span>`).join('');
+  } catch(e){}
   return `
   <div class="mn-plat">
     <div class="mn-plat-row1">
       <div class="mn-plat-name">${escH(plat.nom)}</div>
-      <button class="mn-plat-prof" style="background:${prof.color}" onclick="window._menuChangeProfil('${catId}',${idx})" title="Changer le profil HACCP">${prof.ico} ${prof.label}</button>
+      ${profBtn}
       <button class="mn-plat-del" onclick="window._menuRemove('${catId}',${idx})">✕</button>
     </div>
     <div class="mn-plat-row2">
-      <span class="mn-plat-st ${stat.cls}">${stat.label}</span>
-      ${plat.composants && plat.composants.length ? `<span class="mn-plat-comp">📝 ${plat.composants.map(escH).join(', ')}</span>` : ''}
+      <button type="button" class="mn-plat-st ${stat.cls}" onclick="window._menuOpenTraces('${catId}',${idx})" title="Lier les lots et les ingrédients">${stat.label}</button>
+      ${chips}
     </div>
     <div class="mn-plat-row3">
       <label class="mn-plat-chk">
@@ -328,10 +540,11 @@ function renderPlatRow(catId, plat, idx){
 }
 
 function computePlatStatus(plat){
+  let linked = 0;
+  try { linked = countEnrLinkedToPlat(plat.plat_id); } catch(e){ linked = 0; }
+  if(linked > 0) return { cls:'ok', label:`✓ ${linked} tracé${linked>1?'s':''}` };
   if(plat.statut_auto === 'preparé_minute') return { cls:'auto', label:'⚡ Préparé minute' };
-  const linked = countEnrLinkedToPlat(plat.plat_id);
-  if(linked === 0) return { cls:'todo', label:'À tracer' };
-  return { cls:'ok', label:`✓ ${linked} tracé${linked>1?'s':''}` };
+  return { cls:'todo', label:'À tracer' };
 }
 
 function countEnrLinkedToPlat(platId){
@@ -339,11 +552,15 @@ function countEnrLinkedToPlat(platId){
   let n = 0;
   const d = _menuState.date;
   const SECT = ['enr01','enr02','enr03','enr04','enr07','enr08','enr09','enr10','enr11','enr12',
-                'enr13','enr14','enr15','enr16','enr23','enr30','enr33','enr34','enr_tc_distrib'];
-  SECT.forEach(s => {
-    const lignes = (S[s]?.lignes || S[s]?.saisies || []);
+                'enr13','enr14','enr15','enr16','enr23','enr30','enr31','enr33','enr34','enr_tc_distrib'];
+  SECT.forEach(sec => {
+    const lignes = (S[sec]?.lignes || S[sec]?.saisies || []);
     lignes.forEach(l => {
-      if(l._plat_id === platId && (l.date === d || (l._ts||'').slice(0,10) === d)) n++;
+      try {
+        if(!_ligneHasPlat(l, platId)) return;
+        if(sec === 'enr31'){ if(l && l._deleted) return; n++; return; }
+        if(l.date === d || (l._ts||'').slice(0,10) === d) n++;
+      } catch(e){}
     });
   });
   return n;
@@ -1444,7 +1661,7 @@ function platDejaSaisi(enrId, plat){
     const nom = String(plat && plat.nom || '').trim().toLowerCase();
     return lignes.some(l => {
       if(!ligneIsToday(l)) return false;
-      if(plat && plat.plat_id && l._plat_id && l._plat_id === plat.plat_id) return true;
+      if(plat && plat.plat_id && _ligneHasPlat(l, plat.plat_id)) return true;
       const alt = String(l._plat_nom || l.produit || '').trim().toLowerCase();
       if(nom && alt && alt === nom) return true;
       if(!l._plat_id && plat && plat.plat_id){
@@ -1564,6 +1781,11 @@ function bindBannerPick(banner, enrId){
     try {
       const ref = findBannerPlat(enrId, btn.getAttribute('data-plat-id'));
       if(!ref) return;
+      if(enrId === 'enr31'){
+        try { _menuTogglePending(enrId, ref); } catch(e){}
+        try { applyBannerContent(banner, enrId); } catch(e){}
+        return;
+      }
       _menuLinkPending[enrId] = ref;
       try { markBannerPick(banner, btn); } catch(e){}
       fillFormWithPlat(enrId, ref);
@@ -1585,24 +1807,29 @@ function buildBannerInner(enrId){
     if(!info.groups.length) return '';
     const nPlats = info.groups.reduce((n,g) => n + g.plats.length, 0);
     const open = !!_bannerOpen[enrId];
-    let pickedId = '';
-    try { pickedId = (_menuLinkPending[enrId] && _menuLinkPending[enrId].plat_id) || ''; } catch(e){ pickedId = ''; }
+    const picked = {};
+    try {
+      const refs = (enrId === 'enr31') ? _menuPendingRefs(enrId) : [];
+      if(refs.length) refs.forEach(r => { if(r && r.plat_id) picked[String(r.plat_id)] = 1; });
+      else if(_menuLinkPending[enrId] && _menuLinkPending[enrId].plat_id) picked[String(_menuLinkPending[enrId].plat_id)] = 1;
+    } catch(e){}
     const rows = info.groups.map(g => {
       const items = g.plats.map(p => {
         const pastille = platDejaSaisi(enrId, p)
           ? `<span style="display:inline-block;margin-left:6px;font-size:.58rem;font-weight:800;line-height:1;padding:2px 6px;border-radius:8px;background:#dcfce7;color:#166534;vertical-align:middle">✓ saisi</span>`
           : '';
-        const on = pickedId && String(p.plat_id) === String(pickedId);
+        const on = !!picked[String(p.plat_id)];
         return `<button type="button" data-mn-pick="1" data-plat-id="${escH(p.plat_id)}" class="mn-link-pick${on ? ' mn-link-on' : ''}" style="display:flex;align-items:center;width:100%;text-align:left;background:#f7f2f7;border:1.5px solid #ede0ed;border-radius:10px;padding:8px 10px;margin-bottom:4px;cursor:pointer;font-family:inherit">
         <span style="flex:1;min-width:0;font-size:.84rem;font-weight:800;color:#3b1e3b;line-height:1.3;word-break:break-word">${escH(p.nom)}${pastille}</span>
       </button>`;
       }).join('');
       return `<div style="font-size:.68rem;font-weight:800;color:#5C1E5A;margin:8px 0 4px">${escH(g.label)}</div>${items}`;
     }).join('');
+    const hint = (enrId === 'enr31' && open) ? `<div style="font-size:.72rem;color:#7A6579;margin:6px 0 2px">Cochez tous les plats qui utilisent ce lot. Un même lot peut servir plusieurs plats. Le nom du produit se saisit dans la fiche, pas ici.</div>` : '';
     return `<button type="button" data-mn-fold="1" style="display:flex;align-items:center;width:100%;text-align:left;background:none;border:none;padding:0;cursor:pointer;font-family:inherit">
       <span style="flex:1;font-size:.7rem;font-weight:700;color:#7A6579;text-transform:uppercase;letter-spacing:.3px">Menu du jour · ${nPlats}</span>
       <span style="font-size:.72rem;font-weight:800;color:#5C1E5A">${open ? 'Replier' : 'Voir'}</span>
-    </button>${open ? rows : ''}`;
+    </button>${open ? hint + rows : ''}`;
   } catch(e){
     console.warn('[menu] buildBannerInner:', e);
     return '';
@@ -1697,6 +1924,18 @@ function hookSaveRow(){
       const ref = _menuLinkPending[id];
       if(!ajoutee){
         // Enregistrement bloqué (ex. ENR02 sans refroidissement) : ne rien rattacher à une ancienne ligne
+      } else if(id === 'enr31' && S[id] && Array.isArray(S[id].lignes) && S[id].lignes[0]){
+        try {
+          const last = S[id].lignes[0];
+          const refs = _menuPendingRefs('enr31');
+          if(refs.length){
+            _menuWritePlatLiens(last, _menuPlatRefsFromLigne(last).concat(refs));
+            save();
+            try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue(id, last); } catch(e){}
+            _menuLinkPendingMulti['enr31'] = [];
+            delete _menuLinkPending['enr31'];
+          }
+        } catch(e){ console.warn('[menu] enr31 liens', e); }
       } else if(!(ref && ref.plat_id)){
         autoLinkLigne(id, S[id].lignes[0]);
       } else if(ref && ref.plat_id && S[id] && Array.isArray(S[id].lignes) && S[id].lignes.length > 0){
