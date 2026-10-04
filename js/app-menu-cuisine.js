@@ -1364,6 +1364,12 @@ function platShowsOnEnr(p, enrId){
   try {
     if(!p || !enrId) return false;
     if(!enrHasProfil(enrId)) return true;
+    // Bien Faits cuit (ENR07) / sans cuisson (ENR08) : seulement les plats cochés « Mixé »,
+    // rangés selon leur profil mixé (décision Jérémie, oct. 2026).
+    if(enrId === 'enr07' || enrId === 'enr08'){
+      if(!(p.variants && p.variants.mixe)) return false;
+      return enrIdsForProfil(p.variants.mixe_profil || mixeProfil(p)).includes(enrId);
+    }
     if(enrIdsForProfil(p.profil_haccp).includes(enrId)) return true;
     if(p.variants && p.variants.mixe){
       const mx = p.variants.mixe_profil || mixeProfil(p);
