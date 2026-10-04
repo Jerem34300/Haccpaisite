@@ -7573,23 +7573,9 @@ function renderMissionBanner(){
         +'<span>Choisis ton profil (rond à côté du nuage)</span>'
         +'</div>';
     }
-    var encPend=missionEncPending();
-    if(encPend.length){
-      return '<div role="button" tabindex="0" onclick="try{var el=document.querySelector(\'.qenc-tile.qenc-mission\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'});}catch(e){}" style="background:#f5f3ff;border:1.5px solid #c4b5fd;color:#5b21b6;cursor:pointer;'+base+'">'
-        +'<span style="font-size:1.1rem">🌡️</span>'
-        +'<span>Premier geste : relever 1 enceinte</span>'
-        +'</div>';
-    }
-    if(missionHasNettPriority()){
-      return '<div role="button" tabindex="0" onclick="try{_nettTab=\'priorites\';goTo(\'enr28\')}catch(e){}" style="background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;cursor:pointer;'+base+'">'
-        +'<span style="font-size:1.1rem">🧹</span>'
-        +'<span>Ensuite : 1 nettoyage</span>'
-        +'</div>';
-    }
-    return '<div style="background:#f0fdf4;border:1.5px solid #86efac;color:#166534;'+base+'">'
-      +'<span style="font-size:1.1rem">✅</span>'
-      +'<span>Tout est à jour</span>'
-      +'</div>';
+    // Bandeaux « Premier geste / Ensuite / Tout est à jour » retirés : doublon des widgets
+    // et faux « tout est bon » dès 1 enceinte relevée. Seul le rappel de profil reste.
+    return '';
   }catch(e){ return ''; }
 }
 

@@ -2035,6 +2035,21 @@ window._menuOpenStep = function(ev, enrId, svcId, catId, idx){
   } catch(e){ console.warn('[menu] _menuOpenStep:', e); try { goTo('menu_jour'); } catch(_){} }
 };
 
+// Repli du détail des plats sur l'accueil (seule la barre de traçabilité reste) — mémorisé dans S.config
+window._menuWgToggle = function(ev){
+  try { if(ev){ ev.preventDefault(); ev.stopPropagation(); } } catch(e){}
+  try {
+    S.config = S.config || {};
+    const folded = S.config.menuWgFolded !== false;
+    S.config.menuWgFolded = !folded;
+    save();
+    const box = document.getElementById('menu-wg-plats');
+    const btn = document.getElementById('menu-wg-fold');
+    if(box) box.style.display = folded ? '' : 'none';
+    if(btn) btn.textContent = folded ? '▴ Replier' : '▾ Voir les plats';
+  } catch(e){ console.warn('[menu] _menuWgToggle:', e); }
+};
+
 function renderMenuHomeWidget(){
   const t = today();
   const services = SERVICES.filter(s => getMenu(t, s.id));
@@ -2097,6 +2112,8 @@ function renderMenuHomeWidget(){
 
   const pct = stepsTotal ? Math.round(stepsDone * 100 / stepsTotal) : 0;
   const barCol = pct >= 100 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
+  let folded = true;
+  try { folded = !(S.config && S.config.menuWgFolded === false); } catch(e){}
 
   return `<div class="wc" style="cursor:pointer;background:linear-gradient(135deg,#fdf4fd,#fff);border:1.5px solid #d8b4d8" onclick="goTo('menu_jour')">
     <div style="display:flex;align-items:center;gap:8px">
@@ -2105,6 +2122,7 @@ function renderMenuHomeWidget(){
         <div style="font-size:.85rem;font-weight:900;color:#5C1E5A">Menu du jour</div>
         <div style="font-size:.62rem;font-weight:700;color:#7A6579">${escH(services.map(s=>s.label).join(' • '))} • ${totalPlats} plat${totalPlats>1?'s':''}</div>
       </div>
+      <button type="button" id="menu-wg-fold" onclick="window._menuWgToggle(event)" style="flex:none;font-family:inherit;cursor:pointer;background:#fff;border:1px solid #d8b4d8;color:#5C1E5A;border-radius:999px;padding:4px 10px;font-size:.66rem;font-weight:800">${folded ? '▾ Voir les plats' : '▴ Replier'}</button>
     </div>
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;font-size:.66rem;font-weight:800;color:#5C1E5A;margin-bottom:3px">
@@ -2112,7 +2130,7 @@ function renderMenuHomeWidget(){
       </div>
       <div style="height:8px;background:#f1e6f1;border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barCol};border-radius:999px"></div></div>
     </div>
-    ${blocks}
+    <div id="menu-wg-plats" style="${folded ? 'display:none' : ''}">${blocks}</div>
   </div>`;
 }
 
