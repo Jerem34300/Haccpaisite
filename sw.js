@@ -36,6 +36,7 @@ const PRECACHE_ASSETS = [
   '/js/app-cuisine.js',
   '/js/app-dashboard.js',
   '/js/app-menu-cuisine.js',
+  '/js/tuto-premiers-pas.js',
   '/js/app-menu-dashboard.js',
   '/js/app-signup.js',
   '/js/app-onboarding.js',
