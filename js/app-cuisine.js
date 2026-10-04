@@ -12475,7 +12475,7 @@ function renderENR31() {
   return `
     <div class="card">
       <div class="card-title">${def.title}</div>
-      <div class="regle">${def.regle}</div>
+      <div class="regle">${def.regle} Le bandeau « Menu du jour » relie ce lot à un ou plusieurs plats.</div>
 
       <div style="margin-bottom:12px">
         <div style="font-size:.7rem;font-weight:800;color:var(--plum);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📷 Photos étiquettes (max 3) <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--gris2)">(recommandé)</span></div>
@@ -12767,6 +12767,17 @@ function e33Save(){
   } else { doSave(); }
 }
 
+function etiqRegimeHtml(rec){
+  try {
+    const v = String((rec && rec._variant) || '');
+    const nom = String((rec && rec.produit) || '');
+    const bits = [];
+    if(v === 'sans_sel' || v === 'SANS SEL' || /sans sel/i.test(nom)) bits.push('SANS SEL');
+    if(v === 'hp' || v === 'HP' || /\(HP\)/.test(nom)) bits.push('HP');
+    if(!bits.length) return '';
+    return '<div class="row" style="font-weight:900;color:#9a3412">'+bits.join(' · ')+'</div>';
+  } catch(e){ return ''; }
+}
 function e33Print(rec, nb){
   nb=nb||1;
   const logoLine=etiqLogoLine();
@@ -12783,6 +12794,7 @@ function e33Print(rec, nb){
     </div>
     <div class="service">${ico} ${service||'Service'}</div>
     <div class="prod">${rec.produit||'—'}</div>
+    ${etiqRegimeHtml(rec)}
     <div class="row">Prélevé le : <b>${datePrelev}</b> à <b>${heure}</b></div>
     <div class="row">Par : ${rec.operateur||'—'}</div>
     <div class="conserve">🌡️ Conserver 0°C / +3°C — NE PAS OUVRIR</div>
@@ -14458,6 +14470,7 @@ function _doPrintAllLabels(logoLine, total){
       <div class="ehd ehd-temoin"><span class="elogo">${logoLine}</span><span class="etitle etitle-temoin">PLAT TÉMOIN</span></div>
       <div class="eservice">${ico} ${service||'Service'}</div>
       <div class="eprod">${b.produit||'—'}</div>
+      ${etiqRegimeHtml(b)}
       <div class="erow">Prélevé le : <b>${datePrelev}</b> à <b>${heure}</b></div>
       <div class="erow">Par : ${b.operateur||'—'}</div>
       <div class="econserve">🌡️ 0°C/+3°C — NE PAS OUVRIR</div>

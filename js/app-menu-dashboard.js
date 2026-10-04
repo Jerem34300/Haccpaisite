@@ -121,7 +121,14 @@ function getEnrLinkedToPlat(platId, siteCode, menuDate){
   return _records.filter(r => {
     if(r.enr_type === 'enr_menu') return false;
     // Match par plat_id (priorité)
+    try { if(typeof haccRecordLinksPlat === 'function' && haccRecordLinksPlat(r, platId)) return true; } catch(e){}
     if(r.data?._plat_id === platId) return true;
+    try {
+      const liens = r.data && r.data._plat_liens;
+      if(Array.isArray(liens) && liens.some(x => x && String(x.plat_id) === String(platId))) return true;
+      const ids = r.data && r.data._plat_ids;
+      if(Array.isArray(ids) && ids.some(x => String(x) === String(platId))) return true;
+    } catch(e){}
     // Match large : même site + même date + plat_nom dans le payload
     if(r.site_id !== siteCode) return false;
     const recDate = (r.recorded_at||'').slice(0,10);
@@ -134,6 +141,10 @@ function getEnrLinkedToMenu(menuId, siteCode, menuDate){
   return _records.filter(r => {
     if(r.enr_type === 'enr_menu') return false;
     if(r.data?._menu_id === menuId) return true;
+    try {
+      const liens = r.data && r.data._plat_liens;
+      if(Array.isArray(liens) && liens.some(x => x && x.menu_id && x.menu_id === menuId)) return true;
+    } catch(e){}
     // Fallback : tous les ENR du jour pour ce site
     if(r.site_id !== siteCode) return false;
     const recDate = (r.recorded_at||'').slice(0,10);
@@ -390,6 +401,48 @@ window._menuDashOpenDetail = function(recId){
   renderMenuDetailPanel(menu);
 };
 
+
+function _dashLinksPlat(r, platId){
+  try {
+    if(typeof haccRecordLinksPlat === 'function' && haccRecordLinksPlat(r, platId)) return true;
+  } catch(e){}
+  try {
+    const d = (r && r.data) || {};
+    if(d._plat_id != null && String(d._plat_id) === String(platId)) return true;
+    if(Array.isArray(d._plat_ids) && d._plat_ids.some(x => String(x) === String(platId))) return true;
+    if(Array.isArray(d._plat_liens) && d._plat_liens.some(x => x && String(x.plat_id) === String(platId))) return true;
+  } catch(e){}
+  return false;
+}
+function _dashPlatFlags(p){
+  try {
+    const v = (p && p.variants) || {};
+    const bits = [];
+    if(v.sans_sel) bits.push('🚫 Sans sel');
+    if(v.hp) bits.push('💪 HP');
+    if(v.mixe) bits.push('🥄 Mixé');
+    return bits.join(' · ');
+  } catch(e){ return ''; }
+}
+function _dashMpNoms(platId, enrs){
+  try {
+    const out = [];
+    const seen = {};
+    const push = (r) => {
+      try {
+        if(!r || r.enr_type !== 'enr31' || !_dashLinksPlat(r, platId)) return;
+        const d = r.data || {};
+        const nom = String(d.produit||'').trim();
+        if(!nom || seen[nom.toLowerCase()]) return;
+        seen[nom.toLowerCase()] = 1;
+        out.push(nom);
+      } catch(e){}
+    };
+    (enrs||[]).forEach(push);
+    if(typeof _records !== 'undefined' && Array.isArray(_records)) _records.forEach(push);
+    return out;
+  } catch(e){ return []; }
+}
 function renderMenuDetailPanel(menu){
   const ov = document.getElementById('detail-overlay');
   if(!ov) return;
@@ -432,7 +485,15 @@ function renderMenuDetailPanel(menu){
       <div class="md-grp-tit">${c.label} (${items.length})</div>
       ${items.map(p => {
         const prof = PROFILS[p.profil_haccp] || PROFILS.BF_CUIT;
-        const linked = enrs.filter(r => r.data?._plat_id === p.plat_id);
+        const linked = enrs.filter(r => _dashLinksPlat(r, p.plat_id));
+        let mpLine = '';
+        let flagLine = '';
+        try {
+          const mps = _dashMpNoms(p.plat_id, enrs);
+          if(mps.length) mpLine = '<div class="md-plat-meta">🥕 '+mps.map(escH).join(', ')+'</div>';
+          const fl = _dashPlatFlags(p);
+          if(fl) flagLine = '<div class="md-plat-meta">'+fl+'</div>';
+        } catch(e){}
         let algHtml = '';
         try {
           const af = _ficheForPlat(algFiches, p);
@@ -448,6 +509,8 @@ function renderMenuDetailPanel(menu){
             ${p.composants && p.composants.length ? '📝 '+p.composants.map(escH).join(', ')+' • ' : ''}
             ${linked.length} ENR lié${linked.length>1?'s':''} ${p.statut_auto==='preparé_minute'?'• ⚡ auto-validé':''}
           </div>
+          ${flagLine}
+          ${mpLine}
           ${algHtml}
         </div>`;
       }).join('')}
@@ -522,6 +585,7 @@ function renderFichePlat(plat, menu){
   <span class="fp-back" onclick="window._menuDashOpenDetail('${escAttr(menu.id)}')">‹ Retour au menu</span>
   <div class="fp-prof" style="background:${prof.color}">${prof.ico} ${prof.label}</div>
   ${plat.composants && plat.composants.length ? `<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Composants :</strong> ${plat.composants.map(escH).join(', ')}</div>` : ''}
+  ${(() => { try { const fl=_dashPlatFlags(plat); const mps=_dashMpNoms(plat.plat_id, enrs); const parts=[]; if(fl) parts.push('<div style="font-size:.78rem;font-weight:800;color:#9a3412;margin-bottom:8px">'+fl+'</div>'); if(mps.length) parts.push('<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Matières premières :</strong> '+mps.map(escH).join(', ')+'</div>'); return parts.join(''); } catch(e){ return ''; } })()}
 
   <div class="fp-stats">
     <div class="fp-stat ${hasReception?'ok':''}"><div class="fp-stat-ico">📦</div><div class="fp-stat-lbl">Réception</div><div class="fp-stat-val">${hasReception?'✓':'—'}</div></div>
@@ -607,8 +671,15 @@ window._menuDashExportMenu = function(menuId){
   <table><tr><th>Catégorie</th><th>Nom</th><th>Profil HACCP</th><th>Composants</th><th>ENR liés</th></tr>
   ${plats.map(p => {
     const prof = PROFILS[p.profil_haccp]||PROFILS.BF_CUIT;
-    const linked = enrs.filter(r => r.data?._plat_id === p.plat_id).length;
-    return `<tr><td>${escH(p.catLabel)}</td><td><strong>${escH(p.nom)}</strong></td><td>${prof.ico} ${prof.label}</td><td>${(p.composants||[]).map(escH).join(', ')||'—'}</td><td>${linked}</td></tr>`;
+    const linked = enrs.filter(r => _dashLinksPlat(r, p.plat_id)).length;
+    let comp = (p.composants||[]).map(escH).join(', ');
+    try {
+      const mps = _dashMpNoms(p.plat_id, enrs);
+      const fl = _dashPlatFlags(p);
+      if(mps.length) comp = (comp ? comp+' · ' : '') + mps.map(escH).join(', ');
+      if(fl) comp = (comp ? comp+' · ' : '') + fl;
+    } catch(e){}
+    return `<tr><td>${escH(p.catLabel)}</td><td><strong>${escH(p.nom)}</strong></td><td>${prof.ico} ${prof.label}</td><td>${comp||'—'}</td><td>${linked}</td></tr>`;
   }).join('')}
   </table>
   <h2>Chronologie complète des ENR (${enrs.length})</h2>
@@ -665,6 +736,7 @@ window._menuDashExportPlat = function(platId, menuId){
   <div class="meta">${escH(siteName)} • ${dFr} • ${SERVICES[menu.service]||menu.service}</div>
   <div class="prof">${prof.ico} ${prof.label}</div>
   ${plat.composants && plat.composants.length ? '<h2>Composants</h2><div style="font-size:12px">'+plat.composants.map(escH).join(', ')+'</div>' : ''}
+  ${(() => { try { const fl=_dashPlatFlags(plat); const mps=_dashMpNoms(plat.plat_id, enrs); let h=''; if(fl) h+='<div style="font-size:12px;font-weight:700;margin-top:6px">'+fl+'</div>'; if(mps.length) h+='<h2>Matières premières</h2><div style="font-size:12px">'+mps.map(escH).join(', ')+'</div>'; return h; } catch(e){ return ''; } })()}
   <h2>Chronologie HACCP (${enrs.length} ENR)</h2>
   <table><tr><th>Heure</th><th>Type</th><th>Détail</th><th>Conf.</th></tr>
   ${enrs.map(r => {

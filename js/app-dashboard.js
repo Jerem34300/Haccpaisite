@@ -5492,6 +5492,17 @@ function _setSort(s) { _sortField = s; renderSaisies(); }
 // ════════════════════════════════════════════════════
 // DETAIL PANEL
 // ════════════════════════════════════════════════════
+function haccRecordLinksPlat(rec, platId){
+  try {
+    if(!rec || platId == null || String(platId) === '') return false;
+    const d = (rec.data && typeof rec.data === 'object') ? rec.data : rec;
+    const id = String(platId);
+    if(d._plat_id != null && String(d._plat_id) === id) return true;
+    if(Array.isArray(d._plat_ids) && d._plat_ids.some(function(x){ return String(x) === id; })) return true;
+    if(Array.isArray(d._plat_liens) && d._plat_liens.some(function(x){ return x && String(x.plat_id) === id; })) return true;
+  } catch(e){}
+  return false;
+}
 function openDetail(id) {
   const r = _records.find(x=>x.id===id);
   if (!r) return;
@@ -5526,6 +5537,7 @@ function openDetail(id) {
   const isEnr25Field = k => r.enr_type==='enr25'&&['type_analyse','zone_produit','laboratoire','reference','resultats','actions'].includes(k);
   Object.entries(d).forEach(([k,v]) => {
     if (SKIP_FIELDS.includes(k) || !v || v==='' ) return;
+    if (k === '_plat_liens' || k === '_plat_ids') return;
     if (isAlgField(k)||isEnr24Field(k)||isEnr25Field(k)) return; // handled in special blocks
     if (PHOTO_FIELDS.includes(k)) { photos[k]=v; return; }
     if (TEMP_FIELDS.includes(k)) { temps[k]=v; return; }
@@ -5673,6 +5685,41 @@ function openDetail(id) {
       }
     </div>`;
   }
+
+  try {
+    if(r.enr_type === 'enr33'){
+      const flags = [];
+      const vv = String(d._variant||'');
+      const nom33 = String(d.produit||'');
+      if(vv === 'sans_sel' || vv === 'SANS SEL' || /sans sel/i.test(nom33)) flags.push('🚫 Sans sel');
+      if(vv === 'hp' || vv === 'HP' || /\(HP\)/.test(nom33)) flags.push('💪 HP');
+      const mps = [];
+      if(d._plat_id && typeof _records !== 'undefined'){
+        _records.forEach(function(x){
+          try {
+            if(!x || x.enr_type !== 'enr31') return;
+            if(!haccRecordLinksPlat(x, d._plat_id)) return;
+            const pn = (x.data && x.data.produit) || '';
+            if(pn && mps.indexOf(pn) < 0) mps.push(pn);
+          } catch(e){}
+        });
+      }
+      if(flags.length || mps.length){
+        body += '<div class="detail-section"><div class="detail-section-title">Plat témoin</div><div class="detail-grid">'
+          + (flags.length ? '<div class="detail-field"><div class="detail-field-label">Régime</div><div class="detail-field-value">'+flags.map(escH).join(' · ')+'</div></div>' : '')
+          + (mps.length ? '<div class="detail-field full"><div class="detail-field-label">Matières premières liées</div><div class="detail-field-value">'+mps.map(escH).join(', ')+'</div></div>' : '')
+          + '</div></div>';
+      }
+    }
+    if(r.enr_type === 'enr31'){
+      const liens = Array.isArray(d._plat_liens) ? d._plat_liens : [];
+      let noms = liens.map(function(x){ return x && (x.nom || x.plat_id); }).filter(Boolean);
+      if(!noms.length && d._plat_nom) noms = [d._plat_nom];
+      if(noms.length){
+        body += '<div class="detail-section"><div class="detail-section-title">Plats liés</div><div class="detail-field-value">'+noms.map(escH).join(', ')+'</div></div>';
+      }
+    }
+  } catch(e){}
 
   if (!body) body = '<div style="padding:20px;color:var(--muted);text-align:center">Aucun champ disponible</div>';
 
