@@ -28,13 +28,24 @@ var _data = {
     fritures:          false,
     livraison:         false,
     distribution:      false,
+    mixes:             false,
+    excedents:         false,
     plats_temoins:     true
   },
   services: '1',
   /* Section E */
   nbPersonnes: 2,
-  noms:        []
+  noms:        [],
+  responsable: '',
+  pin:         ''
 };
+
+/* Services de distribution, fournisseurs, poubelles (format attendu par cuisine.html) */
+var _svcs = [];        // [{id,label,ico,midi:bool,midi_deb,midi_fin,soir:bool,soir_deb,soir_fin}]
+var _fournisseurs = []; // [{id,nom,jours:['Lun',…],heure}]
+var _poubelles = [];    // [{id,ico,label,on:bool,jours:[]}]
+var _prefilled = {};    // pré-remplissages déjà faits (une seule fois par étape)
+var JOURS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
 
 /* ─── Init ─── */
 document.addEventListener('DOMContentLoaded', function(){
@@ -117,13 +128,14 @@ window.goStep = function(to) {
     4: 'B — Production',
     5: 'C — Enceintes froides',
     6: 'D — Plan de nettoyage',
-    7: 'E — Équipe',
-    8: 'F — Récapitulatif'
+    7: 'E — Livraisons & déchets',
+    8: 'F — Équipe',
+    9: 'G — Récapitulatif'
   };
   var STEP_LABELS = {
     1: '', 2: 'Étape 1 / 2',
     3: 'Section A', 4: 'Section B', 5: 'Section C',
-    6: 'Section D', 7: 'Section E', 8: 'Section F'
+    6: 'Section D', 7: 'Section E', 8: 'Section F', 9: 'Section G'
   };
 
   var hdTitle = document.getElementById('hd-title');
@@ -131,13 +143,13 @@ window.goStep = function(to) {
   var prog    = document.getElementById('progress');
   if (hdTitle) hdTitle.textContent = TITLES[to] || '';
   if (hdStep)  hdStep.textContent  = STEP_LABELS[to] || '';
-  if (prog)    prog.style.width    = Math.round((to - 1) / 7 * 100) + '%';
+  if (prog)    prog.style.width    = Math.round((to - 1) / 8 * 100) + '%';
 
   /* Dots (visibles uniquement pour les sections A-F) */
   var dotsEl = document.getElementById('step-dots');
   if (dotsEl) {
     dotsEl.style.display = (to >= 3) ? 'flex' : 'none';
-    for (var i = 1; i <= 6; i++) {
+    for (var i = 1; i <= 7; i++) {
       var d = document.getElementById('dot-' + i);
       if (!d) continue;
       var secIdx = to - 2; /* step 3 = section 1, etc. */
@@ -151,8 +163,16 @@ window.goStep = function(to) {
     _renderNettoyage();
   }
 
+  /* Pré-remplissages selon le type d'établissement (modifiables) */
+  try {
+    if (to === 4) _prefillProduction();
+    if (to === 5) _prefillEnceintes();
+    if (to === 7) _prefillLivraisons();
+    if (to === 8) _renderResponsable();
+  } catch(e){ console.warn('[Onboarding] pré-remplissage étape ' + to + ':', e); }
+
   /* Initialiser le recap */
-  if (to === 8) _renderRecap();
+  if (to === 9) _renderRecap();
 
   window.scrollTo(0, 0);
 };
@@ -182,12 +202,24 @@ function _validateStep(n) {
     _data.processes.livraison       = document.getElementById('proc-livraison').checked;
     _data.processes.distribution    = document.getElementById('proc-distribution').checked;
     _data.processes.plats_temoins   = document.getElementById('proc-plats-temoins').checked;
+    _data.processes.mixes           = !!(document.getElementById('proc-mixes') || {}).checked;
+    _data.processes.excedents       = !!(document.getElementById('proc-excedents') || {}).checked;
+    var hasSoir = _svcs.some(function(v){ return v.soir; });
+    _data.services = hasSoir ? '2' : '1';
   }
-  if (n === 7) {
+  if (n === 8) {
     _data.noms = [];
     document.querySelectorAll('.nom-input').forEach(function(inp){
       _data.noms.push(inp.value || '');
     });
+    var respEl = document.getElementById('e-responsable');
+    _data.responsable = respEl ? (respEl.value || '') : '';
+    var p1 = ((document.getElementById('e-pin') || {}).value || '').trim();
+    var p2 = ((document.getElementById('e-pin2') || {}).value || '').trim();
+    if (!/^\d{4}$/.test(p1)) { _showErr('err-7', 'Choisissez un code administrateur de 4 chiffres.'); return false; }
+    if (p1 !== p2) { _showErr('err-7', 'Les deux codes ne sont pas identiques.'); return false; }
+    _data.pin = p1;
+    _hideErr('err-7');
   }
   return true;
 }
@@ -278,6 +310,206 @@ window.selectTile = function(group, val, el) {
   if      (group === 'a-type')     { _data.type     = val; _nettoyage = []; }
   else if (group === 'b-services') { _data.services  = val; }
 };
+
+/* ─── Section B — Pré-remplissage + services de distribution ─── */
+var SVC_PRESETS = [
+  { key:'salle',     ico:'🍽️', label:'Salle à manger' },
+  { key:'plateaux',  ico:'🛏️', label:'Plateaux chambres' },
+  { key:'self',      ico:'🍴', label:'Self' },
+  { key:'livraison', ico:'🚚', label:'Livraison / portage' },
+  { key:'up',        ico:'🧠', label:'Unité protégée' },
+  { key:'emporter',  ico:'🥡', label:'Vente à emporter' }
+];
+var SVC_DEFAULT_BY_TYPE = {
+  collectivite: [['salle','12:00','13:15','18:30','19:30']],
+  restaurant:   [['salle','12:00','14:00','19:00','22:00']],
+  traiteur:     [['livraison','11:00','12:30','','']],
+  fast_food:    [['emporter','11:30','14:30','18:30','22:00']],
+  boulangerie:  [['emporter','11:30','14:00','','']],
+  autre:        [['salle','12:00','13:30','','']]
+};
+var SVC_HOURS = { salle:['12:00','13:15','18:30','19:30'], plateaux:['11:45','12:45','18:15','19:00'], self:['11:30','13:30','18:30','19:30'],
+  livraison:['11:00','12:30','17:30','18:30'], up:['12:00','13:00','18:30','19:15'], emporter:['11:30','14:00','18:30','21:00'] };
+
+function _svcId(base) {
+  var id = _slug(base).replace(/-/g, '_') || 'service';
+  var n = 2, out = id;
+  while (_svcs.some(function(v){ return v.id === out; })) { out = id + '_' + n; n++; }
+  return out;
+}
+
+window.addService = function(key, label, ico) {
+  var pr = SVC_PRESETS.filter(function(x){ return x.key === key; })[0];
+  if (!label) {
+    if (pr) { label = pr.label; ico = pr.ico; }
+    else {
+      label = (window.prompt('Nom du service (ex : Crèche, Internat…)') || '').trim();
+      if (!label) return;
+      ico = '🍽️';
+    }
+  }
+  var h = SVC_HOURS[key] || ['12:00','13:30','19:00','20:00'];
+  var midiOnly = _data.type === 'traiteur' || _data.type === 'boulangerie';
+  _svcs.push({ id:_svcId(pr ? pr.key : label), label:label, ico:ico || '🍽️',
+    midi:true, midi_deb:h[0], midi_fin:h[1], soir:!midiOnly, soir_deb:midiOnly ? '' : h[2], soir_fin:midiOnly ? '' : h[3] });
+  _renderServices();
+};
+window.removeService = function(idx) { _svcs.splice(idx, 1); _renderServices(); };
+window.updateService = function(idx, field, val) {
+  var v = _svcs[idx]; if (!v) return;
+  v[field] = val;
+  if (field === 'midi' || field === 'soir') _renderServices();
+};
+
+function _renderServices() {
+  var sug = document.getElementById('svc-sug');
+  if (sug) {
+    sug.innerHTML = SVC_PRESETS.map(function(p){
+      var on = _svcs.some(function(v){ return v.label === p.label; });
+      return '<button type="button" class="sug-chip' + (on ? ' on' : '') + '" onclick="addService(\'' + p.key + '\')">' + p.ico + ' ' + _escHtml(p.label) + '</button>';
+    }).join('') + '<button type="button" class="sug-chip" onclick="addService(\'autre\')">＋ Autre</button>';
+  }
+  var list = document.getElementById('svc-list');
+  if (!list) return;
+  if (!_svcs.length) { list.innerHTML = '<div class="hint">Aucun service : ajoutez-en au moins un.</div>'; return; }
+  list.innerHTML = _svcs.map(function(v, idx){
+    function slot(k, lbl){
+      return '<div class="slot-row"><label style="display:flex;align-items:center;gap:6px;min-width:84px"><input type="checkbox"' + (v[k] ? ' checked' : '') +
+        ' onchange="updateService(' + idx + ',\'' + k + '\',this.checked)">' + lbl + '</label>' +
+        (v[k] ? 'de <input type="time" value="' + _escAttr(v[k + '_deb']) + '" onchange="updateService(' + idx + ',\'' + k + '_deb\',this.value)">' +
+                ' à <input type="time" value="' + _escAttr(v[k + '_fin']) + '" onchange="updateService(' + idx + ',\'' + k + '_fin\',this.value)">' : '') +
+      '</div>';
+    }
+    return '<div class="enc-card">' +
+      '<button class="enc-del" onclick="removeService(' + idx + ')" title="Supprimer">✕</button>' +
+      '<input class="enc-input" type="text" value="' + _escAttr(v.label) + '" oninput="updateService(' + idx + ',\'label\',this.value)" style="width:calc(100% - 34px)">' +
+      slot('midi', '🌞 Midi') + slot('soir', '🌙 Soir') +
+    '</div>';
+  }).join('');
+}
+
+function _prefillProduction() {
+  if (!_prefilled.prod) {
+    _prefilled.prod = true;
+    var t = _data.type;
+    var on = {
+      collectivite: ['refroidissement','remise-temp','distribution','mixes','plats-temoins'],
+      restaurant:   ['refroidissement','remise-temp','plats-temoins'],
+      traiteur:     ['refroidissement','remise-temp','livraison','plats-temoins'],
+      fast_food:    ['cuisson-steaks','fritures'],
+      boulangerie:  ['refroidissement'],
+      autre:        ['plats-temoins']
+    }[t] || [];
+    on.forEach(function(k){ var cb = document.getElementById('proc-' + k); if (cb) cb.checked = true; });
+    if (!_svcs.length) {
+      (SVC_DEFAULT_BY_TYPE[t] || SVC_DEFAULT_BY_TYPE.autre).forEach(function(d){
+        var pr = SVC_PRESETS.filter(function(x){ return x.key === d[0]; })[0];
+        _svcs.push({ id:_svcId(pr.key), label:pr.label, ico:pr.ico, midi:!!d[1], midi_deb:d[1], midi_fin:d[2], soir:!!d[3], soir_deb:d[3], soir_fin:d[4] });
+      });
+    }
+  }
+  _renderServices();
+}
+
+function _prefillEnceintes() {
+  if (_prefilled.enc || _enceintes.length) { _prefilled.enc = true; return; }
+  _prefilled.enc = true;
+  var t = _data.type;
+  _enceintes = t === 'boulangerie'
+    ? [{nom:'Chambre froide positive', type:'positif'}, {nom:'Congélateur', type:'negatif'}]
+    : [{nom:'Chambre froide positive', type:'positif'}, {nom:'Chambre froide fruits & légumes', type:'legumes'},
+       {nom:'Chambre froide négative', type:'negatif'}];
+  if (_data.processes.plats_temoins || t === 'collectivite' || t === 'restaurant') _enceintes.push({nom:'Frigo plats témoins', type:'positif'});
+  _renderEnceintes();
+}
+
+/* ─── Section E — Fournisseurs & poubelles ─── */
+var FOUR_SUG = ['Transgourmet','Pomona','Metro','Sysco','Brake','Davigel','Promocash','Boulangerie','Boucherie','Crèmerie'];
+var POUB_PRESETS = [
+  { id:'pb_om',     ico:'🗑️', label:'Ordures ménagères' },
+  { id:'pb_tri',    ico:'♻️', label:'Tri sélectif / emballages' },
+  { id:'pb_bio',    ico:'🥬', label:'Biodéchets' },
+  { id:'pb_carton', ico:'🟫', label:'Cartons' },
+  { id:'pb_verre',  ico:'🫙', label:'Verre' },
+  { id:'pb_huile',  ico:'🛢️', label:'Huiles usagées' }
+];
+
+window.addFournisseur = function(nom) {
+  if (!nom) { nom = (window.prompt('Nom du fournisseur') || '').trim(); if (!nom) return; }
+  if (_fournisseurs.some(function(f){ return f.nom.toLowerCase() === nom.toLowerCase(); })) return;
+  _fournisseurs.push({ id:'f_' + _slug(nom) + '_' + _fournisseurs.length, nom:nom, jours:[], heure:'' });
+  _renderLivraisons();
+};
+window.removeFournisseur = function(idx) { _fournisseurs.splice(idx, 1); _renderLivraisons(); };
+window.updateFournisseur = function(idx, field, val) { if (_fournisseurs[idx]) _fournisseurs[idx][field] = val; };
+window.toggleJour = function(kind, idx, jour) {
+  var o = (kind === 'f' ? _fournisseurs : _poubelles)[idx]; if (!o) return;
+  var i = o.jours.indexOf(jour);
+  if (i >= 0) o.jours.splice(i, 1); else o.jours.push(jour);
+  if (kind === 'p' && o.jours.length) o.on = true;
+  _renderLivraisons();
+};
+window.togglePoubelle = function(idx, on) { if (_poubelles[idx]) _poubelles[idx].on = on; _renderLivraisons(); };
+
+function _dayChips(kind, idx, jours) {
+  return '<div class="day-row">' + JOURS.map(function(j){
+    return '<button type="button" class="day-chip' + (jours.indexOf(j) >= 0 ? ' on' : '') + '" onclick="toggleJour(\'' + kind + '\',' + idx + ',\'' + j + '\')">' + j + '</button>';
+  }).join('') + '</div>';
+}
+
+function _renderLivraisons() {
+  var sug = document.getElementById('four-sug');
+  if (sug) sug.innerHTML = FOUR_SUG.map(function(n){
+    var on = _fournisseurs.some(function(f){ return f.nom === n; });
+    return '<button type="button" class="sug-chip' + (on ? ' on' : '') + '" onclick="addFournisseur(\'' + n.replace(/'/g, "\\'") + '\')">' + (on ? '✓ ' : '＋ ') + _escHtml(n) + '</button>';
+  }).join('');
+  var fl = document.getElementById('four-list');
+  if (fl) fl.innerHTML = _fournisseurs.map(function(f, idx){
+    return '<div class="enc-card">' +
+      '<button class="enc-del" onclick="removeFournisseur(' + idx + ')" title="Supprimer">✕</button>' +
+      '<input class="enc-input" type="text" value="' + _escAttr(f.nom) + '" oninput="updateFournisseur(' + idx + ',\'nom\',this.value)" style="width:calc(100% - 34px)">' +
+      '<div class="mini-lbl">Jours de livraison</div>' + _dayChips('f', idx, f.jours) +
+      '<div class="slot-row">🕖 Heure habituelle <input type="time" value="' + _escAttr(f.heure) + '" onchange="updateFournisseur(' + idx + ',\'heure\',this.value)"></div>' +
+    '</div>';
+  }).join('');
+  var pl = document.getElementById('poub-list');
+  if (pl) pl.innerHTML = _poubelles.map(function(p, idx){
+    return '<div class="enc-card" style="' + (p.on ? '' : 'opacity:.6') + '">' +
+      '<label class="slot-row" style="margin-top:0"><input type="checkbox"' + (p.on ? ' checked' : '') + ' onchange="togglePoubelle(' + idx + ',this.checked)"> ' + p.ico + ' ' + _escHtml(p.label) + '</label>' +
+      (p.on ? _dayChips('p', idx, p.jours) : '') +
+    '</div>';
+  }).join('');
+}
+
+function _prefillLivraisons() {
+  if (!_prefilled.liv) {
+    _prefilled.liv = true;
+    var defOn = { pb_om:true, pb_tri:true, pb_bio:true, pb_carton:_data.type !== 'boulangerie' };
+    _poubelles = POUB_PRESETS.map(function(p){ return { id:p.id, ico:p.ico, label:p.label, on:!!defOn[p.id], jours:[] }; });
+  }
+  _renderLivraisons();
+}
+
+/* ─── Section F — Responsable HACCP ─── */
+function _renderResponsable() {
+  var sel = document.getElementById('e-responsable');
+  if (!sel) return;
+  var nl = document.getElementById('noms-list');
+  if (nl && !_prefilled.noms) {
+    _prefilled.noms = true;
+    nl.addEventListener('input', function(){ try { _data.responsable = sel.value; _renderResponsable(); } catch(e){ console.warn('[Onboarding] responsable:', e); } });
+    var me0 = ((_signupData.firstName || '') + ' ' + (_signupData.lastName || '')).trim();
+    if (me0 && !nl.querySelector('.nom-input')) { addNomInput(); var i0 = nl.querySelector('.nom-input'); if (i0) i0.value = me0; }
+  }
+  var names = [];
+  document.querySelectorAll('.nom-input').forEach(function(inp){ if ((inp.value || '').trim()) names.push(inp.value.trim()); });
+  var me = ((_signupData.firstName || '') + ' ' + (_signupData.lastName || '')).trim();
+  if (me && names.indexOf(me) < 0) names.unshift(me);
+  var cur = _data.responsable || sel.value || me;
+  sel.innerHTML = '<option value="">— Choisir —</option>' + names.map(function(n){
+    return '<option' + (n === cur ? ' selected' : '') + '>' + _escHtml(n) + '</option>';
+  }).join('');
+}
 
 /* ─── Section C — Enceintes ─── */
 window.addEnceinte = function() {
@@ -480,6 +712,33 @@ function _renderRecap() {
       : li('—', 'Aucune zone sélectionnée')) +
   '</div>';
 
+  var svcsOk = _svcs.filter(function(v){ return (v.label || '').trim(); });
+  html += '<div class="recap-block">' +
+    '<div class="recap-title">Services (' + svcsOk.length + ')</div>' +
+    (svcsOk.length ? svcsOk.map(function(v){
+      return li(v.ico || '🍽️', '<strong>' + _escHtml(v.label) + '</strong>' +
+        (v.midi ? ' · midi ' + _escHtml(v.midi_deb) + '–' + _escHtml(v.midi_fin) : '') +
+        (v.soir ? ' · soir ' + _escHtml(v.soir_deb) + '–' + _escHtml(v.soir_fin) : ''));
+    }).join('') : li('—', 'Aucun service')) +
+  '</div>';
+
+  var fOk = _fournisseurs.filter(function(f){ return (f.nom || '').trim(); });
+  var pOk = _poubelles.filter(function(x){ return x.on; });
+  html += '<div class="recap-block">' +
+    '<div class="recap-title">Fournisseurs (' + fOk.length + ') · Poubelles (' + pOk.length + ')</div>' +
+    fOk.map(function(f){ return li('🚚', '<strong>' + _escHtml(f.nom) + '</strong>' + (f.jours.length ? ' · ' + f.jours.join(', ') : ' · <em>jours à préciser</em>') + (f.heure ? ' · vers ' + _escHtml(f.heure) : '')); }).join('') +
+    pOk.map(function(x){ return li(x.ico, _escHtml(x.label) + (x.jours.length ? ' · ' + x.jours.join(', ') : ' · <em>jours à préciser</em>')); }).join('') +
+    (!fOk.length && !pOk.length ? li('—', 'Rien de renseigné (modifiable plus tard dans les réglages)') : '') +
+  '</div>';
+
+  var nbFiches = _visibleFiches(_data.processes).length;
+  html += '<div class="recap-block">' +
+    '<div class="recap-title">Tablette</div>' +
+    li('✓', nbFiches + ' fiches affichées dans le menu (les autres restent activables dans les réglages)') +
+    li('✓', 'Code administrateur défini') +
+    (_data.responsable ? li('✓', 'Responsable HACCP : ' + _escHtml(_data.responsable)) : '') +
+  '</div>';
+
   html += '<div class="recap-block">' +
     '<div class="recap-title">Équipe</div>' +
     li('✓', _data.nbPersonnes + ' personne' + (_data.nbPersonnes > 1 ? 's' : '') + ' en cuisine' +
@@ -679,14 +938,23 @@ window.generatePMS = async function() {
   var nettRefData = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
     return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
   });
-  var distribSvcs = [{ id:'midi', label:'Midi', heure:'12:30' }];
-  if (_data.services === '2' || _data.services === '3+') {
-    distribSvcs.push({ id:'soir', label:'Soir', heure:'19:30' });
-  }
-  if (_data.services === '3+') {
-    distribSvcs.push({ id:'matin', label:'Matin', heure:'08:00' });
-  }
+  // Format cuisine.html : {id,label,ico,midi_deb,midi_fin,soir_deb,soir_fin}
+  var distribSvcs = _svcs.filter(function(v){ return (v.label || '').trim() && (v.midi || v.soir); }).map(function(v){
+    return { id:v.id, label:v.label.trim(), ico:v.ico || '🍽️',
+      midi_deb: v.midi ? (v.midi_deb || '') : '', midi_fin: v.midi ? (v.midi_fin || '') : '',
+      soir_deb: v.soir ? (v.soir_deb || '') : '', soir_fin: v.soir ? (v.soir_fin || '') : '' };
+  });
   var enrActifsData = _buildEnrActifs(_data.processes);
+  var fournData = _fournisseurs.filter(function(f){ return (f.nom || '').trim(); }).map(function(f){
+    return { id:f.id, nom:f.nom.trim(), jours:f.jours.slice(), heure:f.heure || '', notes: f.heure ? 'Livraison vers ' + f.heure : '' };
+  });
+  var poubData = _poubelles.filter(function(x){ return x.on; }).map(function(x){
+    return { id:x.id, ico:x.ico, label:x.label, jours:x.jours.slice() };
+  });
+  var navCfgData = _buildNavCfg(_data.processes);
+  var adminPinData = null;
+  try { if (_data.pin && window.crypto && crypto.subtle) adminPinData = await _hashPinOnb(_data.pin); }
+  catch(e) { console.warn('[Onboarding] hash PIN admin:', e); }
 
   /* 5. Pousser la config (chefs, thème, nettoyage, fiches ENR actives...) dans
         sites.config pour chaque site créé. Sans ça, le 1er login sur cuisine.html
@@ -702,20 +970,28 @@ window.generatePMS = async function() {
       config: {
         themeColor:      _data.couleur,
         nbServices:      _data.services,
-        distribServices: distribSvcs,
+        distribServices: distribSvcs.length ? distribSvcs : undefined, // vide → services par défaut de la tablette
         enrActifs:       enrActifsData,
         chefs:           chefsNames,
         chefs_manuels:   chefsNames,
-        etab:            _data.nom || validSites[0] || ''
+        etab:            _data.nom || validSites[0] || '',
+        poubelles:       poubData,
+        responsable:     _data.responsable || ''
       },
-      nett_ref: nettRefData
+      nett_ref:     nettRefData,
+      fournisseurs: fournData,
+      navCfg:       navCfgData
     };
-    siteCodes.forEach(function(code){
-      fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
+    if (encData.length) cloudSiteConfig.config.enceintes = encData;
+    if (adminPinData) cloudSiteConfig.adminPin = adminPinData;
+    // Attendre l'écriture avant la redirection : la 1re ouverture de la tablette relit cette config
+    await Promise.all(siteCodes.map(function(code){
+      return fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
         method: 'PATCH', headers: hdrPatch,
         body: JSON.stringify({ config: cloudSiteConfig })
-      }).catch(function(e){ console.warn('[Onboarding] site config PATCH:', e); });
-    });
+      }).then(function(r){ if (!r.ok) console.warn('[Onboarding] site config PATCH HTTP ' + r.status); })
+        .catch(function(e){ console.warn('[Onboarding] site config PATCH:', e); });
+    }));
   }
 
   /* 6. Écrire haccp_v6 */
@@ -728,7 +1004,7 @@ window.generatePMS = async function() {
       .map(function(e, idx){ return _encToConfig(e, idx); });
     S.config.themeColor = _data.couleur;
     S.config.nbServices = _data.services;
-    S.config.distribServices = distribSvcs;
+    if (distribSvcs.length) S.config.distribServices = distribSvcs;
 
     /* ENRs actifs */
     S.config.enrActifs = enrActifsData;
@@ -739,6 +1015,13 @@ window.generatePMS = async function() {
 
     /* Nettoyage */
     S.nett_ref = nettRefData;
+
+    /* Fournisseurs, poubelles, responsable, fiches affichées, code admin */
+    S.fournisseurs = fournData;
+    S.config.poubelles = poubData;
+    if (_data.responsable) S.config.responsable = _data.responsable;
+    S.navCfg = navCfgData;
+    if (adminPinData) S.adminPin = adminPinData;
 
     /* Nom établissement pour l'en-tête */
     S.config.etab        = _data.nom || validSites[0] || '';
@@ -842,6 +1125,45 @@ function _dataUrlToBlob(dataUrl) {
   return new Blob([buf], { type: type });
 }
 
+/* ─── Fiches affichées sur la tablette selon les processus ───
+   Les ids correspondent à ALL dans app-cuisine.js. Les fiches non listées sont
+   masquées via S.navCfg.hidden (réactivables dans Réglages → Fiches). */
+var FICHES_TOUJOURS = ['enr19','enr23','enr28','enr30','enr31','enr34','enr_allergenes'];
+var FICHES_PAR_PROC = {
+  refroidissement: ['enr01','enr03'],
+  remise_temp:     ['enr02','enr03'],
+  cuisson_steaks:  ['enr04'],
+  fritures:        ['enr05'],
+  livraison:       ['enr13','enr17','enr18'],
+  mixes:           ['enr07','enr08'],
+  excedents:       ['enr36','enr52'],
+  plats_temoins:   ['enr33']
+};
+var FICHES_CONNUES = ['enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13',
+  'enr14','enr15','enr16','enr17','enr18','enr19','enr20','enr21','enr23','enr24','enr25','enr26','enr27','enr28','enr29',
+  'enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr_allergenes','enr_tc_distrib'];
+function _visibleFiches(procs) {
+  var out = FICHES_TOUJOURS.slice();
+  Object.keys(FICHES_PAR_PROC).forEach(function(k){
+    if (procs[k]) FICHES_PAR_PROC[k].forEach(function(id){ if (out.indexOf(id) < 0) out.push(id); });
+  });
+  return out;
+}
+function _buildNavCfg(procs) {
+  var vis = _visibleFiches(procs), hidden = {};
+  FICHES_CONNUES.forEach(function(id){ if (vis.indexOf(id) < 0) hidden[id] = true; });
+  return { hidden: hidden };
+}
+async function _hashPinOnb(pin) {
+  // Même format que _hashPin() d'app-cuisine.js : SHA-256(sel 16 octets + PIN), base64
+  var salt = crypto.getRandomValues(new Uint8Array(16));
+  var pb = new TextEncoder().encode(String(pin));
+  var all = new Uint8Array(salt.length + pb.length); all.set(salt, 0); all.set(pb, salt.length);
+  var dig = new Uint8Array(await crypto.subtle.digest('SHA-256', all));
+  var b64 = function(u){ var x = ''; for (var i = 0; i < u.length; i++) x += String.fromCharCode(u[i]); return btoa(x); };
+  return { v:1, salt:b64(salt), hash:b64(dig) };
+}
+
 /* ─── ENR activés selon processus ─── */
 function _buildEnrActifs(procs) {
   var enrs = [];
@@ -851,6 +1173,8 @@ function _buildEnrActifs(procs) {
   if (procs.fritures)         enrs.push('ENR05');
   if (procs.livraison)        { enrs.push('ENR17'); enrs.push('ENR18'); }
   if (procs.distribution)     { enrs.push('ENR15'); enrs.push('ENR16'); }
+  if (procs.mixes)            { enrs.push('ENR07'); enrs.push('ENR08'); }
+  if (procs.excedents)        enrs.push('ENR36');
   if (procs.plats_temoins)    enrs.push('ENR33');
   return enrs;
 }
