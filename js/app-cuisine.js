@@ -2953,6 +2953,8 @@ function renderHistoCard(secId,fieldDefs,opts){
             if(SKIP.includes(k)||IS_NC_RAISON(k)||!r[k]||!String(r[k]).trim()) return false;
             if(_histoSkipText(k, r[k])) return false;
             if(k==='signature') return false;
+            // ENR31 : champs techniques (_plat_liens, _created…) masqués, les plats liés sont affichés en boutons
+            if(secId==='enr31'&&k.charAt(0)==='_') return false;
             return true;
           }catch(e){ return false; }
         });
@@ -2995,6 +2997,7 @@ function renderHistoCard(secId,fieldDefs,opts){
                 ${r.date_refroid?`❄️ Refr. ${r.date_refroid} → 🔥 Réchauffé ${r.date_rechauff||date}`:date}${heure?' · ⏰'+heure:''}${cuisinier?' · 👨‍🍳'+escH(cuisinier):''}${secId==='enr30'&&r.cloture!=='OUI'?' · <b style="color:#991b1b">Ouverte</b>':''}</div>
               <div class="conf-badges" style="margin-top:5px">${confBadges}</div>
               ${photoCompact?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${photoCompact}</div>`:''}
+              ${opts.extraRow?opts.extraRow(r):''}
             </div>
             <div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">
               ${editNcBtn||''}
@@ -12515,6 +12518,7 @@ function renderENR31() {
       </div>
     </div>
     ${renderHistoCard('enr31', def.fields, {
+      extraRow: r => { try{ return (typeof window._menuMpPlatsChips==='function')?window._menuMpPlatsChips(r):''; }catch(e){ console.warn('[enr31] plats liés', e); return ''; } },
       extraBtn: (r,i) => `<button onclick="enr31ToEtiq(${i})" style="background:#f5eef5;border:1.5px solid var(--plum);border-radius:8px;padding:5px 8px;font-size:.7rem;cursor:pointer;font-family:inherit;color:var(--plum);font-weight:700;flex-shrink:0;touch-action:manipulation" title="Créer étiquette Entamé">🏷️</button>`
     })}`;
 }
