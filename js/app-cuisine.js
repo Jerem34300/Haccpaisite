@@ -9282,7 +9282,25 @@ function r23Save(){
     const fname = _downloadPendingPhoto('p2', row.p2_produit, row.fournisseur, dateRec);
     if(fname) S[ENR23_SEC].lignes[0].p2_photo = _photoUpdateFilename(S[ENR23_SEC].lignes[0].p2_photo||row.p2_photo, fname);
   }
-  if(!confGlobal) toast('⚠️ Réception NON CONFORME — Vérifiez les produits','warning');
+  if(!confGlobal){
+    toast('⚠️ Réception NON CONFORME — Vérifiez les produits','warning');
+    // Réception NC → fiche Non-conformité (ENR30), comme annoncé dans la règle de la fiche
+    try{
+      const _motifs=[];
+      if(row.vehicule==='NON') _motifs.push('véhicule non conforme');
+      ['p1','p2'].forEach(function(pf){
+        const nom=row[pf+'_produit']; if(!nom) return;
+        const m=[];
+        const tc=row[pf+'_tc'];
+        if(tc!==''&&!isNaN(parseFloat(tc))&&!(row[pf+'_surge']==='1'?parseFloat(tc)<=-15:parseFloat(tc)<=6)) m.push('T°C '+parseFloat(tc).toFixed(1)+'°C');
+        if(row[pf+'_emballage']==='NON') m.push('emballage');
+        if(row[pf+'_etiquetage']==='NON') m.push('étiquetage');
+        if(row[pf+'_qualite']==='NON') m.push('qualité / aspect');
+        if(m.length) _motifs.push(nom+(row[pf+'_lot']?' (lot '+row[pf+'_lot']+')':'')+' : '+m.join(', '));
+      });
+      autoCreateNC('ENR23 – Réception','Réception non conforme — '+(row.fournisseur||'fournisseur')+(_motifs.length?' — '+_motifs.join(' ; '):''),'Réception '+(row.fournisseur||''),'Refus / isolement du produit');
+    }catch(e){ console.warn('[r23Save] NC réception:', e); }
+  }
   else autoBackup();
   toast('✅ Réception enregistrée !');
   renderMain();
@@ -18392,25 +18410,27 @@ function _wgRenderOne(w){
     var slotLabel3 = slot3==='midi'?'🌞 Midi':'🌙 Soir';
     var scrollId3 = 'dsvc-slot-'+svcId+'-'+slot3;
     if(done){
-      return '<div class="wc wc-ok" onclick="goTo(\'enr_distrib_'+svcId+'\',\''+scrollId3+'\')" style="cursor:pointer">'
+      // Validé : garder le rouge sur une T°C hors seuil (NC créée) au lieu de tout afficher en vert
+      var ncF = confF==='nc', ncC = confC==='nc', ncAny = ncF||ncC;
+      return '<div class="wc '+(ncAny?'wc-danger':'wc-ok')+'" onclick="goTo(\'enr_distrib_'+svcId+'\',\''+scrollId3+'\')" style="cursor:pointer">'
         +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
         +'<span style="font-size:1.1rem">'+(svc.ico||'🍽️')+'</span>'
         +'<div style="flex:1;min-width:0">'
         +'<div style="font-size:.78rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escH(svc.label)+'</div>'
         +'<div style="font-size:.63rem;font-weight:800;color:'+(slot3==='midi'?'#d97706':'#4338ca')+'">'+slotLabel3+'</div>'
         +'</div>'
-        +'<span style="font-size:.7rem;font-weight:800;color:#166534">✓</span>'
+        +(ncAny?'<span style="font-size:.7rem;font-weight:800;color:#991b1b">⚠️ NC</span>':'<span style="font-size:.7rem;font-weight:800;color:#166534">✓</span>')
         +'</div>'
         +'<div style="display:flex;gap:6px">'
-        +'<div style="flex:1;background:#dcfce7;border-radius:8px;padding:6px 8px;text-align:center">'
-        +'<div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.3px">❄️ Froid</div>'
-        +'<div style="font-size:.95rem;font-weight:900;color:#166534">'+tF+'</div>'
-        +(platF?'<div style="font-size:.6rem;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platF)+'</div>':'')
+        +'<div style="flex:1;background:'+(ncF?'#fee2e2':'#dcfce7')+';border-radius:8px;padding:6px 8px;text-align:center">'
+        +'<div style="font-size:.58rem;font-weight:700;color:'+(ncF?'#991b1b':'#166534')+';text-transform:uppercase;letter-spacing:.3px">❄️ Froid</div>'
+        +'<div style="font-size:.95rem;font-weight:900;color:'+(ncF?'#991b1b':'#166534')+'">'+tF+'</div>'
+        +(platF?'<div style="font-size:.6rem;color:'+(ncF?'#991b1b':'#15803d')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platF)+'</div>':'')
         +'</div>'
-        +'<div style="flex:1;background:#dcfce7;border-radius:8px;padding:6px 8px;text-align:center">'
-        +'<div style="font-size:.58rem;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:.3px">🔥 Chaud</div>'
-        +'<div style="font-size:.95rem;font-weight:900;color:#166534">'+tC+'</div>'
-        +(platC?'<div style="font-size:.6rem;color:#15803d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platC)+'</div>':'')
+        +'<div style="flex:1;background:'+(ncC?'#fee2e2':'#dcfce7')+';border-radius:8px;padding:6px 8px;text-align:center">'
+        +'<div style="font-size:.58rem;font-weight:700;color:'+(ncC?'#991b1b':'#166534')+';text-transform:uppercase;letter-spacing:.3px">🔥 Chaud</div>'
+        +'<div style="font-size:.95rem;font-weight:900;color:'+(ncC?'#991b1b':'#166534')+'">'+tC+'</div>'
+        +(platC?'<div style="font-size:.6rem;color:'+(ncC?'#991b1b':'#15803d')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(platC)+'</div>':'')
         +'</div>'
         +'</div>'
         +'</div>';
