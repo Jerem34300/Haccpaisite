@@ -1644,6 +1644,38 @@ function hookBatchFunctions(){
 // ════════════════════════════════════════════════════
 // WIDGET ACCUEIL — APPROCHE BULLETPROOF
 // ════════════════════════════════════════════════════
+// ── Traçabilité par plat (accueil) ─────────────────────────────────
+// Règles Jérémie (oct. 2026) : plat témoin pour tous ; Remise T°C → ENR02 ;
+// coché Mixé → ENR07 (mixé cuit) ou ENR08 (mixé cru). Pas d'ENR01 pour BF Cuit,
+// pas de températures de distribution.
+function platTraceSteps(p){
+  const steps = [{ enr:'enr33', ico:'🍱', label:'Témoin' }];
+  try {
+    if(p && p.profil_haccp === 'REMISE_TC') steps.push({ enr:'enr02', ico:'🔥', label:'Remise T°C' });
+    if(p && p.variants && p.variants.mixe){
+      const mx = p.variants.mixe_profil || mixeProfil(p);
+      if(mx === 'BF_CUIT') steps.push({ enr:'enr07', ico:'🥄', label:'Mixé cuit' });
+      else if(mx === 'BF_CRU') steps.push({ enr:'enr08', ico:'🥄', label:'Mixé cru' });
+    }
+  } catch(e){ console.warn('[menu] platTraceSteps:', e); }
+  return steps;
+}
+
+window._menuOpenStep = function(ev, enrId, svcId, catId, idx){
+  try { if(ev){ ev.preventDefault(); ev.stopPropagation(); } } catch(e){}
+  try {
+    const m = getMenu(today(), svcId);
+    const p = m && m.categories && m.categories[catId] && m.categories[catId][idx];
+    if(!p) { goTo('menu_jour'); return; }
+    if(!enrId){
+      const todo = platTraceSteps(p).find(st => !platDejaSaisi(st.enr, p));
+      enrId = (todo || platTraceSteps(p)[0]).enr;
+    }
+    _menuLinkPending[enrId] = { plat_id:p.plat_id, nom:p.nom, profil_haccp:p.profil_haccp, menu_id:p.menu_id || m.menu_id };
+    goTo(enrId);
+  } catch(e){ console.warn('[menu] _menuOpenStep:', e); try { goTo('menu_jour'); } catch(_){} }
+};
+
 function renderMenuHomeWidget(){
   const t = today();
   const services = SERVICES.filter(s => getMenu(t, s.id));
@@ -1662,34 +1694,37 @@ function renderMenuHomeWidget(){
     </div>`;
   }
 
-  let enrLinked = 0;
-  const platIds = new Set();
-  services.forEach(s => {
-    const m = getMenu(t, s.id);
-    if(!m) return;
-    CATS.forEach(c => (m.categories?.[c.id]||[]).forEach(p => platIds.add(p.plat_id)));
-  });
-  ['enr01','enr02','enr03','enr07','enr08','enr23','enr33','enr34','enr_tc_distrib'].forEach(sec => {
-    const arr = (S[sec]?.lignes || S[sec]?.saisies || []);
-    arr.forEach(l => {
-      if(l._plat_id && platIds.has(l._plat_id) && (l.date===t || (l._ts||'').slice(0,10)===t)) enrLinked++;
-    });
-  });
+  let stepsTotal = 0, stepsDone = 0;
+  const q = v => String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-  // Tous les plats, groupés par service puis par catégorie (pastille couleur = profil HACCP)
+  // Tous les plats, groupés par service puis par catégorie, avec une coche par fiche à remplir
   const blocks = services.map(s => {
     const m = getMenu(t, s.id);
     if(!m) return '';
     const cats = CATS.map(c => {
       const plats = (m.categories?.[c.id]||[]);
       if(!plats.length) return '';
-      const items = plats.map(p => {
+      const items = plats.map((p, idx) => {
         let col = '#94a3b8';
         try { col = (PROFILS[p.profil_haccp] && PROFILS[p.profil_haccp].color) || col; } catch(e){}
-        const mixe = (p.variants && p.variants.mixe) ? ' <span style="font-size:.58rem;font-weight:800;color:#7c3aed">· mixé</span>' : '';
-        return '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;min-width:0">'
+        const steps = platTraceSteps(p);
+        let allDone = true;
+        const chips = steps.map(st => {
+          let done = false;
+          try { done = platDejaSaisi(st.enr, p); } catch(e){}
+          stepsTotal++; if(done) stepsDone++; else allDone = false;
+          return '<button type="button" onclick="window._menuOpenStep(event,\''+st.enr+'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
+            + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
+            + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fff;color:#7A6579;border:1px dashed #d8b4d8')
+            + '">' + (done ? '✅ ' : '⬜ ') + st.ico + ' ' + escH(st.label) + '</button>';
+        }).join('');
+        return '<div style="padding:4px 0;border-bottom:1px dashed #f1e6f1;min-width:0">'
+          + '<div onclick="window._menuOpenStep(event,\'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer">'
           + '<span style="flex:none;width:8px;height:8px;border-radius:50%;background:'+escH(col)+'"></span>'
-          + '<span style="font-size:.74rem;font-weight:700;color:#3b1e3b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(p.nom)+'</span>'+mixe
+          + '<span style="font-size:.74rem;font-weight:800;color:'+(allDone?'#166534':'#3b1e3b')+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(p.nom)+'</span>'
+          + (allDone ? '<span style="flex:none;font-size:.7rem">✅</span>' : '')
+          + '</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:3px 0 0 14px">'+chips+'</div>'
           + '</div>';
       }).join('');
       return '<div style="background:#fff;border:1px solid #ede0ed;border-radius:10px;padding:6px 9px;min-width:0">'
@@ -1698,18 +1733,25 @@ function renderMenuHomeWidget(){
     }).join('');
     return '<div style="margin-top:6px">'
       + (services.length > 1 ? '<div style="font-size:.66rem;font-weight:900;color:#5C1E5A;margin:2px 0 4px">'+escH(s.label)+'</div>' : '')
-      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">'+cats+'</div></div>';
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">'+cats+'</div></div>';
   }).join('');
+
+  const pct = stepsTotal ? Math.round(stepsDone * 100 / stepsTotal) : 0;
+  const barCol = pct >= 100 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
 
   return `<div class="wc" style="cursor:pointer;background:linear-gradient(135deg,#fdf4fd,#fff);border:1.5px solid #d8b4d8" onclick="goTo('menu_jour')">
     <div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:1.3rem">🍽️</span>
       <div style="flex:1;min-width:0">
         <div style="font-size:.85rem;font-weight:900;color:#5C1E5A">Menu du jour</div>
-        <div style="font-size:.62rem;font-weight:700;color:#7A6579">${escH(services.map(s=>s.label).join(' • '))}</div>
+        <div style="font-size:.62rem;font-weight:700;color:#7A6579">${escH(services.map(s=>s.label).join(' • '))} • ${totalPlats} plat${totalPlats>1?'s':''}</div>
       </div>
-      <span style="flex:none;background:#5C1E5A;color:#fff;border-radius:999px;padding:3px 9px;font-size:.66rem;font-weight:800">${totalPlats} plat${totalPlats>1?'s':''}</span>
-      <span style="flex:none;background:${enrLinked?'#dcfce7':'#f1f5f9'};color:${enrLinked?'#166534':'#64748b'};border-radius:999px;padding:3px 9px;font-size:.66rem;font-weight:800">${enrLinked} saisie${enrLinked>1?'s':''} liée${enrLinked>1?'s':''}</span>
+    </div>
+    <div style="margin-top:8px">
+      <div style="display:flex;justify-content:space-between;font-size:.66rem;font-weight:800;color:#5C1E5A;margin-bottom:3px">
+        <span>Traçabilité des plats</span><span>${stepsDone} / ${stepsTotal} fiche${stepsTotal>1?'s':''} · ${pct}%</span>
+      </div>
+      <div style="height:8px;background:#f1e6f1;border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barCol};border-radius:999px"></div></div>
     </div>
     ${blocks}
   </div>`;
