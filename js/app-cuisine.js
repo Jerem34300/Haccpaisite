@@ -3251,6 +3251,15 @@ function saveRow(id){
     // Si ENR02 validé depuis ENR01 → créer ENR03 automatiquement
     if(id==='enr02' && draftFinal._enr01_idx!==undefined){
       const r01=S['enr01']?.lignes?.[idx]||{};
+      // Liens déjà lus par le siège : _plat_id / _menu_id / _plat_nom (fiche menu)
+      // et _enr01_ts (refroidissement d'origine). Recopiés depuis l'ENR01 s'ils manquent.
+      const _row02=S['enr02']?.lignes?.[0];
+      if(_row02){
+        if(!_row02._enr01_ts && r01._ts) _row02._enr01_ts=r01._ts;
+        if(!_row02._plat_id && r01._plat_id) _row02._plat_id=r01._plat_id;
+        if(!_row02._menu_id && r01._menu_id) _row02._menu_id=r01._menu_id;
+        if(!_row02._plat_nom && r01._plat_nom) _row02._plat_nom=r01._plat_nom;
+      }
       // Recalculer les durées ENR03 depuis les heures réelles
       const durR=tdiff(r01.h_ref_deb,r01.h_ref_fin);
       const durRT=tdiff(draftFinal.h_deb,draftFinal.h_fin);
@@ -3276,9 +3285,21 @@ function saveRow(id){
         _auto:'1',_enr01_ref:r01._ts||'',_enr02_ref:ts,
         _sec:'enr03',_ts:new Date().toISOString(),
       }));
+      const _row03=S['enr03']?.lignes?.[0];
+      if(_row03){
+        if(!_row03._enr01_ts && r01._ts) _row03._enr01_ts=r01._ts;
+        if(!_row03._plat_id && r01._plat_id) _row03._plat_id=r01._plat_id;
+        if(!_row03._menu_id && r01._menu_id) _row03._menu_id=r01._menu_id;
+        if(!_row03._plat_nom && r01._plat_nom) _row03._plat_nom=r01._plat_nom;
+      }
       autoBackup();
   toast('✅ Saisie enregistrée + fiche ENR03 créée automatiquement !','success');
-      save();autoBackup();goTo(id);return;
+      save();autoBackup();
+      // Avant le return : la remise et la fiche auto doivent partir au siège
+      // (le enqueue du bas de saveRow n'est pas atteint sur ce chemin).
+      try { SupaEngine.enqueue('enr02', S['enr02'].lignes[0]); } catch(e){}
+      try { SupaEngine.enqueue('enr03', S['enr03'].lignes[0]); } catch(e){}
+      goTo(id);return;
     }
   }
 
