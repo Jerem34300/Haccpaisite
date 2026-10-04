@@ -976,7 +976,8 @@ window.generatePMS = async function() {
         chefs_manuels:   chefsNames,
         etab:            _data.nom || validSites[0] || '',
         poubelles:       poubData,
-        responsable:     _data.responsable || ''
+        responsable:     _data.responsable || '',
+        tutoStart:       true // guide « Premiers pas » sur l'accueil de la tablette
       },
       nett_ref:     nettRefData,
       fournisseurs: fournData,
@@ -1019,6 +1020,7 @@ window.generatePMS = async function() {
     /* Fournisseurs, poubelles, responsable, fiches affichées, code admin */
     S.fournisseurs = fournData;
     S.config.poubelles = poubData;
+    S.config.tutoStart = true;
     if (_data.responsable) S.config.responsable = _data.responsable;
     S.navCfg = navCfgData;
     if (adminPinData) S.adminPin = adminPinData;
