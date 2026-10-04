@@ -674,6 +674,20 @@ function renderFichePlat(plat, menu){
   `;
 }
 
+// Photos du relevé (hydratées en URL signée par l'observer data-psrc d'app-dashboard.js)
+function _menuStepPhotos(rec){
+  try {
+    const d = rec.data || {};
+    const pf = (typeof PHOTO_FIELDS !== 'undefined') ? PHOTO_FIELDS : ['photo','p1_photo','p2_photo','photo_nc','photo2','photo3'];
+    const imgs = pf.filter(k => d[k]).map(k => {
+      const url = (typeof _parsePhotoUrl === 'function') ? _parsePhotoUrl(d[k]) : String(d[k]);
+      if(!url) return '';
+      const u = escAttr(url);
+      return '<img data-psrc="'+u+'" onclick="if(typeof openLightbox===\'function\')openLightbox(\''+u+'\')" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer'+(k==='photo_nc'?';border:2px solid #fca5a5':'')+'" onerror="if(this.src)this.style.display=\'none\'">';
+    }).filter(Boolean);
+    return imgs.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+imgs.join('')+'</div>' : '';
+  } catch(e){ console.warn('[menu-dash] photos timeline', e); return ''; }
+}
 function renderTimelineStep(rec){
   const def = TRACE_ENR[rec.enr_type] || { ico:'📋', label:rec.enr_type, color:'#64748b' };
   const time = rec.recorded_at ? new Date(rec.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
@@ -685,11 +699,24 @@ function renderTimelineStep(rec){
   if(d.heure) bits.push('🕐 '+d.heure);
   const op=_menuOpName(d); if(op) bits.push('👨‍🍳 '+escH(op));
   if(d.produit) bits.push('<strong>'+escH(d.produit)+'</strong>');
-  if(d.t_debut !== undefined && d.t_debut !== '') bits.push('Début '+escH(d.t_debut)+'°C');
-  if(d.t_fin   !== undefined && d.t_fin   !== '') bits.push('Fin '+escH(d.t_fin)+'°C');
-  if(d.temp_coeur !== undefined && d.temp_coeur !== '') bits.push('Cœur '+escH(d.temp_coeur)+'°C');
-  if(d.temp !== undefined && d.temp !== '' && !d.t_debut && !d.t_fin) bits.push('T° '+escH(d.temp)+'°C');
-  if(d.duree) bits.push('Durée '+escH(d.duree));
+  // Températures / heures / durées : mêmes champs et libellés que la fiche détail du dashboard
+  // (TEMP_FIELDS / FIELD_LABELS, app-dashboard.js) — avant, seuls t_debut/temp_coeur (inexistants) étaient lus.
+  const _lbl = k => { try { return String((typeof FIELD_LABELS !== 'undefined' && FIELD_LABELS[k]) || k).replace(/^[^\wÀ-ÿ]+\s*/, ''); } catch(e){ return k; } };
+  const _vide = v => v === undefined || v === null || v === '';
+  // Champs non couverts par FIELD_LABELS (fiche ENR03 auto, mixage)
+  const _LBL_PLUS = { h1:'H. début refroid.', h2:'H. fin refroid.', h3:'H. début remise', h4:'H. fin remise',
+    t_mix_deb:'T° mixage début', t_mix_fin:'T° mixage fin', h_mix_deb:'H. début mixage', h_mix_fin:'H. fin mixage' };
+  if(rec.enr_type === 'enr03') Object.assign(_LBL_PLUS, { t1:'T° début refroid.', t2:'T° fin refroid.', t3:'T° début remise', t4:'T° fin remise' });
+  const _lbl2 = k => _LBL_PLUS[k] || _lbl(k);
+  try {
+    const keys = Object.keys(d).filter(k => k.charAt(0) !== '_' && !_vide(d[k]));
+    // Heures, puis températures (tout champ t_*, t1…t4, tc, temp), puis durées — tout ce que la tablette enregistre
+    keys.filter(k => /^h(_|\d)/.test(k)).forEach(k => bits.push(escH(_lbl2(k))+' '+escH(d[k])));
+    keys.filter(k => /^(t_|t\d$|tc$|temp$|temp_)/.test(k) && !/_plat$|_conf$/.test(k) && !isNaN(parseFloat(d[k])))
+      .forEach(k => bits.push(escH(_lbl2(k))+' <strong>'+escH(d[k])+'°C</strong>'));
+    keys.filter(k => /^duree/.test(k)).forEach(k => bits.push((k === 'duree' ? 'Durée' : escH(_lbl2(k)))+' '+escH(d[k])));
+    if(!_vide(d.mode_mixage)) bits.push('Mixage '+escH(d.mode_mixage));
+  } catch(e){ console.warn('[menu-dash] températures timeline', e); }
   if(d.lot)   bits.push('Lot '+escH(d.lot));
   if(d.fournisseur) bits.push('Fourn. '+escH(d.fournisseur));
   if(d.dlc)   bits.push('DLC '+escH(d.dlc));
@@ -704,6 +731,7 @@ function renderTimelineStep(rec){
       ${conf === 'NON' || rec.enr_type==='enr30' ? '<span class="fp-step-conf ko">✗ NC</span>' : ''}
     </div>
     <div class="fp-step-body">${bits.length ? bits.join(' • ') : '<em style="color:#94a3b8">Aucun détail</em>'}</div>
+    ${_menuStepPhotos(rec)}
   </div>`;
 }
 
