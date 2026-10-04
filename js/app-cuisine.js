@@ -3184,6 +3184,11 @@ function saveRow(id){
     }catch(e){}
   }
   if(Object.values(draft).filter(v=>v&&String(v).trim()).length===0){toast('⚠️ Aucune donnée saisie','warning');return;}
+  // ENR02 : une remise en T°C exige un refroidissement (ENR01) choisi avant → sinon on bloque
+  if(id==='enr02' && draft._enr01_idx===undefined && enr02TrouverRefroid(draft.produit)<0){
+    try { bloquerENR02SansRefroid(draft.produit); } catch(e){ console.warn('[enr02] blocage refroid:', e); toast('⚠️ Choisissez d\'abord le refroidissement du plat (ENR01)','warning'); }
+    return;
+  }
   const prod=draft.produit||draft.fournisseur||draft.association||draft.theme||'';
   if(prod)addProd(prod.trim());
   const ts=new Date().toISOString();
@@ -3704,6 +3709,42 @@ function serviFroid01(idx){
   try { SupaEngine.enqueue('enr01', S['enr01'].lignes[idx]); } catch(e){}
   save();goTo('enr01');
   toast('🍽️ Marqué servi froid','success');
+}
+// ── ENR02 : pas de remise en T°C sans refroidissement (ENR01) préalable ──
+// Même critère que l'auto-matching de saveRow : même produit, ENR01 encore « en attente ».
+function enr02TrouverRefroid(produit){
+  try {
+    const prod = String(produit||'').trim().toLowerCase();
+    if(!prod) return -1;
+    let bestIdx = -1, bestTs = 0;
+    (S['enr01']?.lignes||[]).forEach((r,i)=>{
+      if(!r || r._deleted || !r.produit) return;
+      if(r._statut && r._statut!=='en_attente') return;
+      if(String(r.produit).trim().toLowerCase()!==prod) return;
+      const ts = r._ts ? new Date(r._ts).getTime() : 0;
+      if(bestIdx<0 || ts>bestTs){ bestTs=ts; bestIdx=i; }
+    });
+    return bestIdx;
+  } catch(e){ console.warn('[enr02] enr02TrouverRefroid:', e); return -1; }
+}
+function saisirRefroidPour(produit){
+  try {
+    S['enr01']=S['enr01']||{};
+    const d=S['enr01'].draft||{};
+    if(!String(d.produit||'').trim()){ d.produit=produit||''; d.date=d.date||today(); }
+    S['enr01'].draft=d;
+    save();
+  } catch(e){ console.warn('[enr02] saisirRefroidPour:', e); }
+  goTo('enr01');
+}
+function bloquerENR02SansRefroid(produit){
+  const nom = String(produit||'').trim();
+  showConfirm('❄️ Refroidissement à choisir d\'abord',
+    'Pas de remise en T°C sans refroidissement préalable. '+
+    (nom ? 'Aucun refroidissement en attente pour « '+nom+' ». ' : 'Indiquez le produit. ')+
+    'Choisissez le refroidissement dans la liste « en attente » en haut de la fiche, ou saisissez-le maintenant. La remise en T°C saisie reste en brouillon.',
+    '❄️ Saisir le refroidissement',
+    ()=>saisirRefroidPour(nom));
 }
 function lancerENR02(idx){
   const r=S['enr01'].lignes[idx];
