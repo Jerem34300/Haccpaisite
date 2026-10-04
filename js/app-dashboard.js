@@ -842,6 +842,12 @@ async function bootApp(){
     }
     _profile=profiles[0]||{role:'siege'};
 
+    // Un cuisinier n'a rien à faire sur le tableau de bord du siège : il ne voit que sa cuisine.
+    if (_profile && _profile.role === 'cuisinier') {
+      try { window.location.replace('cuisine.html'); } catch(e){ console.warn('[bootApp] redirection cuisinier', e); }
+      return;
+    }
+
     // ── Mode impersonation super_admin ─────────────────────
     if (_profile?.role === 'super_admin') {
       try {
