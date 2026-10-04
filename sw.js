@@ -8,8 +8,8 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v451';
-const CDN_CACHE_NAME = 'haccpro-cdn-v451';
+const CACHE_NAME = 'haccpro-v452';
+const CDN_CACHE_NAME = 'haccpro-cdn-v452';
 
 // Assets à mettre en cache dès l'installation
 // ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
@@ -36,6 +36,7 @@ const PRECACHE_ASSETS = [
   '/js/app-cuisine.js',
   '/js/app-dashboard.js',
   '/js/app-menu-cuisine.js',
+  '/js/tuto-premiers-pas.js',
   '/js/app-menu-dashboard.js',
   '/js/app-signup.js',
   '/js/app-onboarding.js',

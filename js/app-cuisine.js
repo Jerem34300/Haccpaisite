@@ -7576,12 +7576,16 @@ function renderAccueil(){
   const mois = getConfigMois();
   const [y,m] = mois.split('-');
   const moisLabel = new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  // Guide « Premiers pas » (js/tuto-premiers-pas.js) : remplace le bandeau mission tant qu'il est affiché
+  let tuto='';
+  try{ tuto=(typeof renderPremiersPas==='function')?renderPremiersPas():''; }catch(e){ console.warn('[accueil] premiers pas:', e); }
   return `
-    ${renderMissionBanner()}
+    ${tuto||renderMissionBanner()}
     ${renderBadgeEmploye()}
     ${renderHomeWidgets()}
     <div style="font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#b89ab6;margin:16px 0 8px 2px">📂 Toutes les fiches — ${moisLabel}</div>
-    ${renderCatSections(mois)}`;
+    ${renderCatSections(mois)}
+    ${!tuto&&typeof tutoRelancer==='function'?'<div style="text-align:center;margin:14px 0 4px"><button type="button" onclick="tutoRelancer()" style="background:none;border:none;color:#b89ab6;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit">🎓 Revoir le guide de démarrage</button></div>':''}`;
 }
 
 // ════════════════════════════════════════════════════
