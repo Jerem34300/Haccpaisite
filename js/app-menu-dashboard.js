@@ -573,13 +573,22 @@ function renderFichePlat(plat, menu){
 
   // Stats
   const ncCount = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
+  // Cases adaptées au profil HACCP du plat : un préparé minute n'a ni cuisson ni refroidissement.
   // La réception (ENR23) contrôle 2 produits au hasard, jamais un plat : la traçabilité amont
-  // d'un plat passe par ses lots de matières premières (ENR31).
+  // passe par les lots de matières premières (ENR31). La T° de distribution se fait sur
+  // 2 plats au choix : la case n'apparaît que si le plat a été relevé.
+  const has = types => enrs.some(e => types.includes(e.enr_type));
   const nbLots = enrs.filter(e => e.enr_type === 'enr31').length;
-  const hasCuisson = enrs.some(e => ['enr04','enr07','enr08'].includes(e.enr_type));
-  const hasRefroid = enrs.some(e => ['enr01','enr03'].includes(e.enr_type));
-  const hasTemoin = enrs.some(e => e.enr_type === 'enr33');
   const hasDistrib = enrs.some(e => e.enr_type === 'enr_tc_distrib' || e.enr_type?.startsWith('enr_distrib_'));
+  const fpTiles = [{ ico:'📦', lbl:'Lots MP', ok:nbLots>0, val:nbLots||'—' }];
+  const _tile = (ico, lbl, types) => fpTiles.push({ ico, lbl, ok:has(types), val:has(types)?'✓':'—' });
+  const _prof = PROFILS[plat.profil_haccp] ? plat.profil_haccp : 'BF_CUIT';
+  if(_prof === 'BF_CUIT'){ _tile('🥘','Cuisson',['enr04','enr07']); _tile('❄️','Refroid.',['enr01','enr03']); }
+  else if(_prof === 'BF_CRU'){ _tile('🥗','Préparation',['enr08']); }
+  else if(_prof === 'REMISE_TC'){ _tile('❄️','Refroid.',['enr01','enr03']); _tile('🔥','Remise T°C',['enr02','enr03']); }
+  _tile('🍱','Témoin',['enr33']);
+  if(hasDistrib) fpTiles.push({ ico:'🌡️', lbl:'Distrib.', ok:true, val:'✓' });
+  fpTiles.push({ ico:'🚨', lbl:'NC', ok:ncCount===0, ko:ncCount>0, val:ncCount });
 
   document.getElementById('detail-body').innerHTML = `
   <style>
@@ -617,12 +626,7 @@ function renderFichePlat(plat, menu){
   ${(() => { try { const fl=_dashPlatFlags(plat); const mps=_dashMpNoms(plat.plat_id, enrs); const parts=[]; if(fl) parts.push('<div style="font-size:.78rem;font-weight:800;color:#9a3412;margin-bottom:8px">'+fl+'</div>'); if(mps.length) parts.push('<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Matières premières :</strong> '+mps.map(escH).join(', ')+'</div>'); return parts.join(''); } catch(e){ return ''; } })()}
 
   <div class="fp-stats">
-    <div class="fp-stat ${nbLots?'ok':''}"><div class="fp-stat-ico">📦</div><div class="fp-stat-lbl">Lots MP</div><div class="fp-stat-val">${nbLots?nbLots:'—'}</div></div>
-    <div class="fp-stat ${hasCuisson?'ok':''}"><div class="fp-stat-ico">🥘</div><div class="fp-stat-lbl">Cuisson</div><div class="fp-stat-val">${hasCuisson?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasRefroid?'ok':''}"><div class="fp-stat-ico">❄️</div><div class="fp-stat-lbl">Refroid.</div><div class="fp-stat-val">${hasRefroid?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasTemoin?'ok':''}"><div class="fp-stat-ico">🍱</div><div class="fp-stat-lbl">Témoin</div><div class="fp-stat-val">${hasTemoin?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasDistrib?'ok':''}"><div class="fp-stat-ico">🌡️</div><div class="fp-stat-lbl">Distrib.</div><div class="fp-stat-val">${hasDistrib?'✓':'—'}</div></div>
-    <div class="fp-stat ${ncCount>0?'ko':'ok'}"><div class="fp-stat-ico">🚨</div><div class="fp-stat-lbl">NC</div><div class="fp-stat-val">${ncCount}</div></div>
+    ${fpTiles.map(t => `<div class="fp-stat ${t.ko?'ko':(t.ok?'ok':'')}"><div class="fp-stat-ico">${t.ico}</div><div class="fp-stat-lbl">${t.lbl}</div><div class="fp-stat-val">${t.val}</div></div>`).join('')}
   </div>
 
   <button class="fp-export" onclick="window._menuDashExportPlat('${escAttr(plat.plat_id)}','${escAttr(menu.id)}')">📄 Exporter Fiche plat HACCP (PDF)</button>
