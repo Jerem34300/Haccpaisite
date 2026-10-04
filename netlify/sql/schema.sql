@@ -324,18 +324,23 @@ create policy sectors_admin_write on public.sectors
   using (public.is_super_admin() or (tenant_id = public.current_tenant_id() and public.is_admin()))
   with check (public.is_super_admin() or (tenant_id = public.current_tenant_id() and public.is_admin()));
 
+-- Lecture : uniquement le tenant du JWT.
+-- is_super_admin() ne doit PAS être en OR ici : les policies permissives
+-- s'additionnent, et ce OR renvoyait toutes les cuisines au tableau de bord.
+-- Le super-admin lit un tenant via admin-proxy (service_role) + filtre tenant_id.
 drop policy if exists sites_select on public.sites;
 create policy sites_select on public.sites
   for select to authenticated
-  using (public.is_super_admin() or tenant_id = public.current_tenant_id());
+  using (tenant_id = public.current_tenant_id());
 
--- Admins : CRUD total dans leur tenant ;
--- Cuisinier : peut PATCH son propre site (config jsonb)
+-- Admins (siège / directeur) : CRUD dans LEUR tenant seulement.
+-- Cuisinier : peut PATCH son propre site (config jsonb) via sites_own_update.
+-- FOR ALL couvre aussi SELECT : pas de branche is_super_admin() sans tenant.
 drop policy if exists sites_admin_write on public.sites;
 create policy sites_admin_write on public.sites
   for all to authenticated
-  using (public.is_super_admin() or (tenant_id = public.current_tenant_id() and public.is_admin()))
-  with check (public.is_super_admin() or (tenant_id = public.current_tenant_id() and public.is_admin()));
+  using (tenant_id = public.current_tenant_id() and public.is_admin())
+  with check (tenant_id = public.current_tenant_id() and public.is_admin());
 
 drop policy if exists sites_own_update on public.sites;
 create policy sites_own_update on public.sites
