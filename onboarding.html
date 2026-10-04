@@ -483,13 +483,13 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
         <div class="spinner" id="btn-gen-spin"></div>
       </button>
       <button class="btn-back" id="btn-gen-back" onclick="goStep(8)">← Retour</button>
-      <button class="btn-skip" id="btn-gen-skip" onclick="window.location.href='cuisine.html'">Passer, configurer plus tard</button>
+      <button class="btn-skip" id="btn-gen-skip" onclick="skipOnboarding()">Passer, configurer plus tard</button>
     </div>
 
     <!-- ─── Step 10 : cuisines Multi (après génération, pas au login) ─── -->
     <div class="step" id="step-10">
       <div class="step-title">Vos cuisines</div>
-      <div class="step-sub">Chaque cuisine est créée, avec son code. Ouvrez-en une pour appliquer le même PMS qu'une cuisine solo, puis entrez dans la cuisine ou ouvrez le siège.</div>
+      <div class="step-sub">Chaque cuisine a son code. « Configurer le PMS » ouvre le même questionnaire qu'une cuisine solo. La cuisine n'est marquée prête qu'une fois ce questionnaire enregistré.</div>
       <div id="kitchen-picker"></div>
       <div class="err" id="err-10"></div>
       <button class="btn-back" type="button" onclick="openSiegeDashboard()">Ouvrir le siège</button>
@@ -499,6 +499,6 @@ body{background:var(--bg);display:flex;flex-direction:column;align-items:center;
 </div>
 
 <script src="js/supabaseconfig.js"></script>
-<script src="js/app-onboarding.js?v=455"></script>
+<script src="js/app-onboarding.js?v=456"></script>
 </body>
 </html>
