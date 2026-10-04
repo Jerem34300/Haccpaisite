@@ -40,6 +40,7 @@ const CATS = [
 
 // ENR concernés par la traçabilité d'un plat
 const TRACE_ENR = {
+  enr31:           { ico:'🏷️', label:'Lot matière première', color:'#0369a1' },
   enr23:           { ico:'📦', label:'Réception',       color:'#0ea5e9' },
   enr01:           { ico:'❄️', label:'Refroidissement', color:'#1e40af' },
   enr02:           { ico:'🔥', label:'Remise T°C',      color:'#dc2626' },
@@ -72,7 +73,18 @@ let _menuPage = {
 // ════════════════════════════════════════════════════
 function getAllMenus(){
   if(typeof _records === 'undefined') return [];
-  return _records.filter(r => r.enr_type === 'enr_menu').map(r => ({
+  // Chaque « Enregistrer le menu » / « Tout tracé » sur la tablette envoie une nouvelle
+  // version du menu : on ne garde que la plus récente par site + date + service + régime.
+  const latest = {};
+  _records.filter(r => r.enr_type === 'enr_menu').forEach(r => {
+    try {
+      const d = r.data || {};
+      const k = [r.site_id, (d.menu_date || r.recorded_at || '').slice(0,10), d.service || 'midi', d.type_repas || 'normal'].join('|');
+      const ts = String(d._ts || r.recorded_at || '');
+      if(!latest[k] || ts > latest[k]._k_ts) latest[k] = { r, _k_ts: ts };
+    } catch(e){ console.warn('[menu-dash] dédoublonnage enr_menu', e); }
+  });
+  return Object.keys(latest).map(k => latest[k].r).map(r => ({
     id:         r.id,
     site_id:    r.site_id,
     recorded_at:r.recorded_at,
@@ -116,7 +128,21 @@ function flatPlats(menu){
   return out;
 }
 
-function getEnrLinkedToPlat(platId, siteCode, menuDate){
+function _menuNorm(s){
+  try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
+  catch(e){ return String(s||'').toLowerCase().trim(); }
+}
+// Le relevé nomme-t-il ce plat ? (plat témoin, refroidissement, lot MP… saisis sans lien _plat_id)
+function _menuRecNommePlat(r, platNom){
+  const n = _menuNorm(platNom);
+  if(!n) return false;
+  const d = (r && r.data) || {};
+  return [d._plat_nom, d.produit, d.plat, d.nom, d.libelle].some(v => {
+    const t = _menuNorm(v);
+    return t && t.indexOf(n) !== -1;
+  });
+}
+function getEnrLinkedToPlat(platId, siteCode, menuDate, platNom){
   if(typeof _records === 'undefined') return [];
   return _records.filter(r => {
     if(r.enr_type === 'enr_menu') return false;
@@ -129,10 +155,11 @@ function getEnrLinkedToPlat(platId, siteCode, menuDate){
       const ids = r.data && r.data._plat_ids;
       if(Array.isArray(ids) && ids.some(x => String(x) === String(platId))) return true;
     } catch(e){}
-    // Match large : même site + même date + plat_nom dans le payload
+    // Match large : même site + même date + nom du plat dans le relevé
+    // (avant : tous les ENR du jour → la fiche plat affichait tout l'historique de la cuisine)
     if(r.site_id !== siteCode) return false;
     const recDate = (r.recorded_at||'').slice(0,10);
-    return recDate === menuDate;
+    return recDate === menuDate && _menuRecNommePlat(r, platNom);
   }).sort((a,b) => (a.recorded_at||'').localeCompare(b.recorded_at||''));
 }
 
@@ -536,7 +563,7 @@ window._menuDashOpenPlat = function(platId, menuId){
 };
 
 function renderFichePlat(plat, menu){
-  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date);
+  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date, plat.nom);
   const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   const dFr = new Date(menu.menu_date).toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
@@ -546,7 +573,9 @@ function renderFichePlat(plat, menu){
 
   // Stats
   const ncCount = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
-  const hasReception = enrs.some(e => e.enr_type === 'enr23');
+  // La réception (ENR23) contrôle 2 produits au hasard, jamais un plat : la traçabilité amont
+  // d'un plat passe par ses lots de matières premières (ENR31).
+  const nbLots = enrs.filter(e => e.enr_type === 'enr31').length;
   const hasCuisson = enrs.some(e => ['enr04','enr07','enr08'].includes(e.enr_type));
   const hasRefroid = enrs.some(e => ['enr01','enr03'].includes(e.enr_type));
   const hasTemoin = enrs.some(e => e.enr_type === 'enr33');
@@ -588,7 +617,7 @@ function renderFichePlat(plat, menu){
   ${(() => { try { const fl=_dashPlatFlags(plat); const mps=_dashMpNoms(plat.plat_id, enrs); const parts=[]; if(fl) parts.push('<div style="font-size:.78rem;font-weight:800;color:#9a3412;margin-bottom:8px">'+fl+'</div>'); if(mps.length) parts.push('<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Matières premières :</strong> '+mps.map(escH).join(', ')+'</div>'); return parts.join(''); } catch(e){ return ''; } })()}
 
   <div class="fp-stats">
-    <div class="fp-stat ${hasReception?'ok':''}"><div class="fp-stat-ico">📦</div><div class="fp-stat-lbl">Réception</div><div class="fp-stat-val">${hasReception?'✓':'—'}</div></div>
+    <div class="fp-stat ${nbLots?'ok':''}"><div class="fp-stat-ico">📦</div><div class="fp-stat-lbl">Lots MP</div><div class="fp-stat-val">${nbLots?nbLots:'—'}</div></div>
     <div class="fp-stat ${hasCuisson?'ok':''}"><div class="fp-stat-ico">🥘</div><div class="fp-stat-lbl">Cuisson</div><div class="fp-stat-val">${hasCuisson?'✓':'—'}</div></div>
     <div class="fp-stat ${hasRefroid?'ok':''}"><div class="fp-stat-ico">❄️</div><div class="fp-stat-lbl">Refroid.</div><div class="fp-stat-val">${hasRefroid?'✓':'—'}</div></div>
     <div class="fp-stat ${hasTemoin?'ok':''}"><div class="fp-stat-ico">🍱</div><div class="fp-stat-lbl">Témoin</div><div class="fp-stat-val">${hasTemoin?'✓':'—'}</div></div>
@@ -716,7 +745,7 @@ window._menuDashExportPlat = function(platId, menuId){
   if(!win){ if(typeof showToast==='function') showToast('Bloqueur popup actif','warning'); return; }
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   const dFr = new Date(menu.menu_date).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date);
+  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date, plat.nom);
   const prof = PROFILS[plat.profil_haccp]||PROFILS.BF_CUIT;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Fiche plat — ${escH(plat.nom)}</title>
   <style>
