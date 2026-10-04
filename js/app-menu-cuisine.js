@@ -1159,6 +1159,24 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
     w.document.write(html);
     w.document.close();
     if(typeof toast==='function') toast('🖨️ '+realCount+' étiquettes prêtes à imprimer','success');
+    // Les témoins du menu ne sont validés qu'après confirmation de l'impression
+    const imprimes = [];
+    CATS.forEach(c => {
+      (menu.categories[c.id]||[]).forEach(plat => {
+        imprimes.push({ _plat_id: plat.plat_id, _variant: '' });
+        if(plat.variants?.mixe)     imprimes.push({ _plat_id: plat.plat_id, _variant: 'mixé' });
+        if(plat.variants?.sans_sel) imprimes.push({ _plat_id: plat.plat_id, _variant: 'sans_sel' });
+        if(plat.variants?.hp)       imprimes.push({ _plat_id: plat.plat_id, _variant: 'hp' });
+      });
+    });
+    setTimeout(function(){
+      try {
+        showConfirm('🖨️ Étiquettes bien imprimées ?', 'Si oui, les plats témoins seront validés.', '✅ Oui', function(){
+          window._temoinMarkImprime(imprimes);
+          if(typeof renderMain === 'function') renderMain();
+        });
+      } catch(e){ console.warn('[menu print] confirm:', e); }
+    }, 1500);
   } catch(e){
     console.warn('[menu print]', e);
     if(typeof toast==='function') toast('Erreur impression: '+e.message,'danger');
@@ -1654,6 +1672,29 @@ window._menuProdSuggest = function(q){
   } catch(e){ return []; }
 };
 
+// Plats témoins créés depuis le menu : ne comptent comme faits qu'une fois l'étiquette
+// imprimée (confirmation « Étiquettes bien imprimées ? »). Mémorisé pour le jour en cours.
+function _temoinKey(platId, variant){
+  return String(platId||'') + '|' + String(variant||'').toLowerCase().replace(/\s+/g,'_');
+}
+function _temoinImprime(l){
+  try {
+    if(!l || !l._from_menu) return true;
+    const m = S.etiqImprimees;
+    return !!(m && m.date === today() && m.keys && m.keys[_temoinKey(l._plat_id, l._variant)]);
+  } catch(e){ return true; }
+}
+window._temoinMarkImprime = function(entries){
+  try {
+    const t = today();
+    if(!S.etiqImprimees || S.etiqImprimees.date !== t) S.etiqImprimees = { date:t, keys:{} };
+    (entries||[]).forEach(b => {
+      if(b && b._plat_id) S.etiqImprimees.keys[_temoinKey(b._plat_id, b._variant)] = true;
+    });
+    save();
+  } catch(e){ console.warn('[menu] _temoinMarkImprime:', e); }
+};
+
 function platDejaSaisi(enrId, plat){
   try {
     const store = (typeof S !== 'undefined' && S[enrId]) || {};
@@ -1661,6 +1702,7 @@ function platDejaSaisi(enrId, plat){
     const nom = String(plat && plat.nom || '').trim().toLowerCase();
     return lignes.some(l => {
       if(!ligneIsToday(l)) return false;
+      if(enrId === 'enr33' && !_temoinImprime(l)) return false;
       if(plat && plat.plat_id && _ligneHasPlat(l, plat.plat_id)) return true;
       const alt = String(l._plat_nom || l.produit || '').trim().toLowerCase();
       if(nom && alt && alt === nom) return true;
