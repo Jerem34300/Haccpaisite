@@ -45,7 +45,7 @@ body{
 .signup-wrap{width:100%;max-width:480px}
 .card{
   background:#fff;border-radius:24px;
-  overflow:hidden;
+  overflow:hidden;overflow:clip;
   box-shadow:0 20px 60px rgba(15,34,64,.3),0 0 0 1px rgba(15,34,64,.08);
 }
 /* Header */
@@ -134,28 +134,23 @@ body{
 .config-haccp-list li:last-child{border-bottom:none}
 .config-haccp-list .ico{flex-shrink:0}
 .config-note{font-size:.75rem;color:var(--muted);font-weight:700;line-height:1.45;margin:8px 0 4px}
-/* Continuer always visible: fixed bottom bar (sticky fails under .card overflow:hidden
-   and still leaves the CTA below the fold on tall steps). */
+/* Continuer toujours visible, collé en bas de l'écran mais DANS la carte :
+   sticky (et non fixed). overflow:clip sur .card (au lieu de hidden) ne crée pas de
+   conteneur de défilement, donc le sticky fonctionne. Navigateur sans clip → hidden,
+   le bouton reste simplement en fin de formulaire. */
 .step-actions{
-  position:fixed;
-  left:50%;
-  transform:translateX(-50%);
+  position:sticky;
   bottom:0;
   z-index:40;
-  width:calc(100% - 40px); /* même largeur que la carte (padding 20px de .signup-main) */
-  max-width:480px;
-  box-sizing:border-box;
   background:#fff;
-  border-top:1px solid var(--border);
-  border-radius:16px 16px 0 0;
-  box-shadow:0 -10px 28px rgba(15,34,64,.14);
-  padding:12px 20px calc(12px + env(safe-area-inset-bottom,0px));
-  margin:0;
+  margin:16px -28px 0;
+  padding:12px 28px calc(12px + env(safe-area-inset-bottom,0px));
+  box-shadow:0 -10px 16px -10px rgba(15,34,64,.18);
 }
 .step-actions .btn-primary{margin-top:0}
 .step-actions .btn-back{margin-top:8px}
-/* Body — leave room so last fields aren't hidden behind the fixed bar */
-.card-body{padding:28px 28px 120px}
+/* Body — le bouton sticky est le dernier élément de chaque étape */
+.card-body{padding:28px 28px 0}
 .step{display:none}
 .step.active{display:block}
 .step-title{font-size:1.05rem;font-weight:900;color:var(--navy);margin-bottom:6px}
