@@ -146,6 +146,9 @@ function getEnrLinkedToPlat(platId, siteCode, menuDate, platNom){
   if(typeof _records === 'undefined') return [];
   return _records.filter(r => {
     if(r.enr_type === 'enr_menu') return false;
+    // ENR03 = fiche récap créée automatiquement à partir du refroidissement (ENR01) et de la
+    // remise (ENR02), déjà affichés : doublon dans la fiche plat
+    if(r.enr_type === 'enr03') return false;
     // Match par plat_id (priorité)
     try { if(typeof haccRecordLinksPlat === 'function' && haccRecordLinksPlat(r, platId)) return true; } catch(e){}
     if(r.data?._plat_id === platId) return true;
