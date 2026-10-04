@@ -283,12 +283,10 @@ function renderDayBlock(date, menus){
 function renderMenuCard(menu){
   let nbPlats = 0;
   CATS.forEach(c => nbPlats += (menu.categories?.[c.id]||[]).length);
-  // Couverture HACCP : compter ENR liés
-  const enrs = getEnrLinkedToMenu(menu.menu_id, menu.site_id, menu.menu_date)
-    .filter(r => r.enr_type !== 'enr_menu');
-  const totalExpected = nbPlats * 2; // estimation : 2 ENR par plat en moyenne
-  const pct = totalExpected ? Math.min(100, Math.round((enrs.length / totalExpected) * 100)) : 0;
-  const covColor = pct >= 70 ? '#16a34a' : (pct >= 40 ? '#ea580c' : '#dc2626');
+  // Couverture HACCP : part des plats dont la traçabilité est complète
+  const ts = _menuTraceStats(menu);
+  const pct = ts.total ? Math.round(ts.complete / ts.total * 100) : 0;
+  const covColor = ts.total && ts.complete === ts.total ? '#16a34a' : ((ts.complete + ts.entamee) > 0 ? '#ea580c' : '#dc2626');
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   return `
   <div class="mn-card" onclick="window._menuDashOpenDetail('${escAttr(menu.id)}')">
@@ -299,7 +297,7 @@ function renderMenuCard(menu){
     </div>
     <div class="mn-card-meta">
       <span>${menu.type_repas !== 'normal' ? '⚙️ '+menu.type_repas : ''}</span>
-      <span style="color:${covColor};font-weight:800">${enrs.length} ENR liés • ${pct}%</span>
+      <span style="color:${covColor};font-weight:800">${ts.complete}/${ts.total} plats tracés${ts.entamee ? ' • '+ts.entamee+' entamé'+(ts.entamee>1?'s':'') : ''}</span>
     </div>
     <div class="mn-card-cov"><div class="mn-card-cov-fill" style="width:${pct}%;background:${covColor}"></div></div>
   </div>`;
@@ -532,6 +530,7 @@ function renderMenuDetailPanel(menu){
             <span class="md-plat-name">${escH(p.nom)}</span>
             <span class="md-plat-prof" style="background:${prof.color}">${prof.ico} ${prof.label}</span>
           </div>
+          <div style="margin-top:4px">${(() => { try { return _traceBadge(_platTrace(p, getEnrLinkedToPlat(p.plat_id, menu.site_id, menu.menu_date, p.nom)), true); } catch(e){ return ''; } })()}</div>
           <div class="md-plat-meta">
             ${p.composants && p.composants.length ? '📝 '+p.composants.map(escH).join(', ')+' • ' : ''}
             ${linked.length} ENR lié${linked.length>1?'s':''} ${p.statut_auto==='preparé_minute'?'• ⚡ auto-validé':''}
@@ -562,6 +561,49 @@ window._menuDashOpenPlat = function(platId, menuId){
   renderFichePlat(plat, menu);
 };
 
+// ── Statut de traçabilité d'un plat (siège) ─────────────────────────
+// Cases adaptées au profil HACCP du plat : un préparé minute n'a ni cuisson ni refroidissement.
+// La réception (ENR23) contrôle 2 produits au hasard, jamais un plat : la traçabilité amont
+// passe par les lots de matières premières (ENR31), validés « tout tracé » sur la tablette
+// (même règle que platMpComplet côté cuisine). La T° de distribution se fait sur 2 plats
+// au choix : la case n'apparaît que si le plat a été relevé, et ne compte pas dans le statut.
+function _platTrace(plat, enrs){
+  const has = types => enrs.some(e => types.includes(e.enr_type));
+  const nbLots = enrs.filter(e => e.enr_type === 'enr31').length;
+  const lotsOk = nbLots > 0 && !!(plat && plat.mp_complet === true);
+  const tiles = [{ ico:'📦', lbl:'Lots MP', req:true, ok:lotsOk, part:nbLots>0 && !lotsOk, val:nbLots ? (lotsOk ? nbLots+' ✓' : nbLots+' · en cours') : '—' }];
+  const _tile = (ico, lbl, types) => tiles.push({ ico, lbl, req:true, ok:has(types), val:has(types)?'✓':'—' });
+  const _prof = PROFILS[plat && plat.profil_haccp] ? plat.profil_haccp : 'BF_CUIT';
+  if(_prof === 'BF_CUIT'){ _tile('🥘','Cuisson',['enr04','enr07']); _tile('❄️','Refroid.',['enr01','enr03']); }
+  else if(_prof === 'BF_CRU'){ _tile('🥗','Préparation',['enr08']); }
+  else if(_prof === 'REMISE_TC'){ _tile('❄️','Refroid.',['enr01','enr03']); _tile('🔥','Remise T°C',['enr02','enr03']); }
+  _tile('🍱','Témoin',['enr33']);
+  if(enrs.some(e => e.enr_type === 'enr_tc_distrib' || e.enr_type?.startsWith('enr_distrib_'))) tiles.push({ ico:'🌡️', lbl:'Distrib.', ok:true, val:'✓' });
+  const req = tiles.filter(t => t.req);
+  const done = req.filter(t => t.ok).length;
+  const status = done === req.length ? 'complete' : ((done > 0 || req.some(t => t.part)) ? 'entamee' : 'vide');
+  return { tiles, done, total:req.length, status };
+}
+const _TRACE_ST = {
+  complete:{ lbl:'Traçabilité complète', ico:'🟢', bg:'#dcfce7', fg:'#166534', bd:'#86efac' },
+  entamee: { lbl:'Traçabilité entamée',  ico:'🟠', bg:'#ffedd5', fg:'#9a3412', bd:'#fdba74' },
+  vide:    { lbl:'Traçabilité pas faite',ico:'🔴', bg:'#fee2e2', fg:'#991b1b', bd:'#fca5a5' },
+};
+function _traceBadge(st, court){
+  const d = _TRACE_ST[st.status] || _TRACE_ST.vide;
+  const txt = court ? (st.status==='complete' ? 'Complète' : (st.status==='entamee' ? 'Entamée '+st.done+'/'+st.total : 'Pas faite')) : d.lbl+' ('+st.done+'/'+st.total+')';
+  return '<span style="display:inline-block;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:9px;background:'+d.bg+';color:'+d.fg+';border:1px solid '+d.bd+';white-space:nowrap">'+d.ico+' '+txt+'</span>';
+}
+function _menuTraceStats(menu){
+  const plats = flatPlats(menu);
+  const out = { complete:0, entamee:0, vide:0, total:plats.length };
+  plats.forEach(p => {
+    try { out[_platTrace(p, getEnrLinkedToPlat(p.plat_id, menu.site_id, menu.menu_date, p.nom)).status]++; }
+    catch(e){ out.vide++; console.warn('[menu-dash] statut plat', e); }
+  });
+  return out;
+}
+
 function renderFichePlat(plat, menu){
   const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date, plat.nom);
   const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
@@ -573,21 +615,8 @@ function renderFichePlat(plat, menu){
 
   // Stats
   const ncCount = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
-  // Cases adaptées au profil HACCP du plat : un préparé minute n'a ni cuisson ni refroidissement.
-  // La réception (ENR23) contrôle 2 produits au hasard, jamais un plat : la traçabilité amont
-  // passe par les lots de matières premières (ENR31). La T° de distribution se fait sur
-  // 2 plats au choix : la case n'apparaît que si le plat a été relevé.
-  const has = types => enrs.some(e => types.includes(e.enr_type));
-  const nbLots = enrs.filter(e => e.enr_type === 'enr31').length;
-  const hasDistrib = enrs.some(e => e.enr_type === 'enr_tc_distrib' || e.enr_type?.startsWith('enr_distrib_'));
-  const fpTiles = [{ ico:'📦', lbl:'Lots MP', ok:nbLots>0, val:nbLots||'—' }];
-  const _tile = (ico, lbl, types) => fpTiles.push({ ico, lbl, ok:has(types), val:has(types)?'✓':'—' });
-  const _prof = PROFILS[plat.profil_haccp] ? plat.profil_haccp : 'BF_CUIT';
-  if(_prof === 'BF_CUIT'){ _tile('🥘','Cuisson',['enr04','enr07']); _tile('❄️','Refroid.',['enr01','enr03']); }
-  else if(_prof === 'BF_CRU'){ _tile('🥗','Préparation',['enr08']); }
-  else if(_prof === 'REMISE_TC'){ _tile('❄️','Refroid.',['enr01','enr03']); _tile('🔥','Remise T°C',['enr02','enr03']); }
-  _tile('🍱','Témoin',['enr33']);
-  if(hasDistrib) fpTiles.push({ ico:'🌡️', lbl:'Distrib.', ok:true, val:'✓' });
+  const _st = _platTrace(plat, enrs);
+  const fpTiles = _st.tiles.slice();
   fpTiles.push({ ico:'🚨', lbl:'NC', ok:ncCount===0, ko:ncCount>0, val:ncCount });
 
   document.getElementById('detail-body').innerHTML = `
@@ -600,6 +629,8 @@ function renderFichePlat(plat, menu){
     .fp-stat-val{font-size:.78rem;font-weight:900;margin-top:1px}
     .fp-stat.ok{background:#dcfce7;border-color:#86efac}
     .fp-stat.ko{background:#fee2e2;border-color:#fca5a5}
+    .fp-stat.part{background:#ffedd5;border-color:#fdba74}
+    .fp-stat.part .fp-stat-val{color:#9a3412}
     .fp-stat.ok .fp-stat-val{color:#166534}
     .fp-stat.ko .fp-stat-val{color:#991b1b}
     .fp-timeline{position:relative;padding-left:22px}
@@ -622,11 +653,12 @@ function renderFichePlat(plat, menu){
   </style>
   <span class="fp-back" onclick="window._menuDashOpenDetail('${escAttr(menu.id)}')">‹ Retour au menu</span>
   <div class="fp-prof" style="background:${prof.color}">${prof.ico} ${prof.label}</div>
+  <div style="margin:-2px 0 10px">${_traceBadge(_st)}</div>
   ${plat.composants && plat.composants.length ? `<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Composants :</strong> ${plat.composants.map(escH).join(', ')}</div>` : ''}
   ${(() => { try { const fl=_dashPlatFlags(plat); const mps=_dashMpNoms(plat.plat_id, enrs); const parts=[]; if(fl) parts.push('<div style="font-size:.78rem;font-weight:800;color:#9a3412;margin-bottom:8px">'+fl+'</div>'); if(mps.length) parts.push('<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Matières premières :</strong> '+mps.map(escH).join(', ')+'</div>'); return parts.join(''); } catch(e){ return ''; } })()}
 
   <div class="fp-stats">
-    ${fpTiles.map(t => `<div class="fp-stat ${t.ko?'ko':(t.ok?'ok':'')}"><div class="fp-stat-ico">${t.ico}</div><div class="fp-stat-lbl">${t.lbl}</div><div class="fp-stat-val">${t.val}</div></div>`).join('')}
+    ${fpTiles.map(t => `<div class="fp-stat ${t.ko?'ko':(t.ok?'ok':(t.part?'part':''))}"><div class="fp-stat-ico">${t.ico}</div><div class="fp-stat-lbl">${t.lbl}</div><div class="fp-stat-val">${t.val}</div></div>`).join('')}
   </div>
 
   <button class="fp-export" onclick="window._menuDashExportPlat('${escAttr(plat.plat_id)}','${escAttr(menu.id)}')">📄 Exporter Fiche plat HACCP (PDF)</button>
