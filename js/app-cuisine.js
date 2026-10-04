@@ -859,6 +859,11 @@ function navBadge(id){
         const n=_e36batch.length;
         return n>0?{n,col:'#1d4ed8'}:null;
       }
+      // ENR31 — Plats du menu du jour sans lot MP lié
+      case 'enr31':{
+        const n=(typeof window._menuMpManquants==='function')?window._menuMpManquants():0;
+        return n>0?{n,label:n+' plat'+(n>1?'s':'')+' sans lot',col:'#d97706'}:null;
+      }
       case 'enr33':{
         const n=_e33batch.length;
         const hasNom=e33d().produit&&!n;
