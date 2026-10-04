@@ -409,10 +409,15 @@ function _menuSetLotPlat(uuid, ref, on){
 function _mpSafeId(v){ return String(v == null ? '' : v).replace(/[^\w-]/g, ''); }
 window._menuMpPlatsChips = function(l){
   try {
-    if(!l || l._deleted || !l._uuid) return '';
-    const plats = todayMenuPlats();
-    if(!plats.length) return '';
+    if(!l || l._deleted) return '';
+    const plats = l._uuid ? todayMenuPlats() : [];
     const uuid = _mpSafeId(l._uuid);
+    // Plats liés hors menu du jour : affichés par leur nom (pas le code plat_id)
+    const autres = _menuPlatRefsFromLigne(l)
+      .filter(r => !plats.some(x => String(x.p.plat_id) === String(r.plat_id)))
+      .map(r => r.nom || (String(r.plat_id) === String(l._plat_id||'') ? l._plat_nom : '') || 'Plat d\'un autre jour');
+    const fixes = autres.map(n => '<span style="border-radius:999px;padding:4px 10px;font-size:.7rem;font-weight:800;background:#f0fdf4;color:#166534;border:1.5px solid #bbf7d0">🔗 ' + escH(n) + '</span>').join('');
+    if(!plats.length && !fixes) return '';
     const chips = plats.map(x => {
       const on = _ligneHasPlat(l, x.p.plat_id);
       return '<button type="button" onclick="event.stopPropagation();window._menuMpToggle(\''+uuid+'\',\''+_mpSafeId(x.p.plat_id)+'\')"'
@@ -420,8 +425,8 @@ window._menuMpPlatsChips = function(l){
         + (on ? 'background:#dcfce7;color:#166534;border:1.5px solid #86efac' : 'background:#fff;color:#7A6579;border:1.5px dashed #d8b4d8')
         + '">' + (on ? '✅ ' : '＋ ') + escH(x.p.nom) + '</button>';
     }).join('');
-    return '<div style="margin-top:8px"><div style="font-size:.62rem;font-weight:800;color:#7A6579;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Utilisé dans (menu du jour)</div>'
-      + '<div style="display:flex;flex-wrap:wrap;gap:5px">' + chips + '</div></div>';
+    return '<div style="margin-top:8px"><div style="font-size:.62rem;font-weight:800;color:#7A6579;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Utilisé dans</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:5px">' + chips + fixes + '</div></div>';
   } catch(e){ console.warn('[menu] mp chips', e); return ''; }
 };
 window._menuMpToggle = function(uuid, platId){
