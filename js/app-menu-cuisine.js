@@ -1670,28 +1670,42 @@ function renderMenuHomeWidget(){
     });
   });
 
-  const previewItems = [];
-  services.forEach(s => {
+  // Tous les plats, groupés par service puis par catégorie (pastille couleur = profil HACCP)
+  const blocks = services.map(s => {
     const m = getMenu(t, s.id);
-    if(!m) return;
-    CATS.forEach(c => {
-      (m.categories?.[c.id]||[]).slice(0,1).forEach(p => {
-        if(previewItems.length < 4) previewItems.push({ svc:s.label, cat:c.short, nom:p.nom });
-      });
-    });
-  });
+    if(!m) return '';
+    const cats = CATS.map(c => {
+      const plats = (m.categories?.[c.id]||[]);
+      if(!plats.length) return '';
+      const items = plats.map(p => {
+        let col = '#94a3b8';
+        try { col = (PROFILS[p.profil_haccp] && PROFILS[p.profil_haccp].color) || col; } catch(e){}
+        const mixe = (p.variants && p.variants.mixe) ? ' <span style="font-size:.58rem;font-weight:800;color:#7c3aed">· mixé</span>' : '';
+        return '<div style="display:flex;align-items:center;gap:6px;padding:2px 0;min-width:0">'
+          + '<span style="flex:none;width:8px;height:8px;border-radius:50%;background:'+escH(col)+'"></span>'
+          + '<span style="font-size:.74rem;font-weight:700;color:#3b1e3b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escH(p.nom)+'</span>'+mixe
+          + '</div>';
+      }).join('');
+      return '<div style="background:#fff;border:1px solid #ede0ed;border-radius:10px;padding:6px 9px;min-width:0">'
+        + '<div style="font-size:.6rem;font-weight:800;color:#7A6579;text-transform:uppercase;letter-spacing:.3px;margin-bottom:2px">'+escH(c.label)+'</div>'
+        + items + '</div>';
+    }).join('');
+    return '<div style="margin-top:6px">'
+      + (services.length > 1 ? '<div style="font-size:.66rem;font-weight:900;color:#5C1E5A;margin:2px 0 4px">'+escH(s.label)+'</div>' : '')
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px">'+cats+'</div></div>';
+  }).join('');
 
   return `<div class="wc" style="cursor:pointer;background:linear-gradient(135deg,#fdf4fd,#fff);border:1.5px solid #d8b4d8" onclick="goTo('menu_jour')">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:1.3rem">🍽️</span>
       <div style="flex:1;min-width:0">
-        <div style="font-size:.8rem;font-weight:900;color:#5C1E5A">Menu du jour</div>
-        <div style="font-size:.62rem;font-weight:700;color:#7A6579">${services.map(s=>s.label).join(' • ')} • ${totalPlats} plats • ${enrLinked} ENR liés</div>
+        <div style="font-size:.85rem;font-weight:900;color:#5C1E5A">Menu du jour</div>
+        <div style="font-size:.62rem;font-weight:700;color:#7A6579">${escH(services.map(s=>s.label).join(' • '))}</div>
       </div>
+      <span style="flex:none;background:#5C1E5A;color:#fff;border-radius:999px;padding:3px 9px;font-size:.66rem;font-weight:800">${totalPlats} plat${totalPlats>1?'s':''}</span>
+      <span style="flex:none;background:${enrLinked?'#dcfce7':'#f1f5f9'};color:${enrLinked?'#166534':'#64748b'};border-radius:999px;padding:3px 9px;font-size:.66rem;font-weight:800">${enrLinked} saisie${enrLinked>1?'s':''} liée${enrLinked>1?'s':''}</span>
     </div>
-    ${previewItems.length ? '<div style="font-size:.68rem;color:#3b1e3b;line-height:1.5;background:#fff;border-radius:8px;padding:6px 8px;border:1px solid #ede0ed;max-height:90px;overflow:hidden">'
-      + previewItems.map(p=>'<div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#7A6579">'+escH(p.cat)+' :</span> <strong>'+escH(p.nom)+'</strong></div>').join('')
-      +'</div>' : ''}
+    ${blocks}
   </div>`;
 }
 
