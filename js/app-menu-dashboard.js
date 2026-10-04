@@ -128,6 +128,18 @@ function flatPlats(menu){
   return out;
 }
 
+// Conformité globale d'un relevé : la tablette ne remplit pas toujours « conforme » —
+// BF cuit / mixage (ENR07) stocke conf_cuisson, conf_mix_deb, conf_duree, conf_deb…
+// Un seul « NON » → non conforme ; sinon au moins un « OUI » → conforme.
+function _recConf(r){
+  try {
+    const d = (r && r.data) || {};
+    const vals = Object.keys(d).filter(k => k === 'conforme' || /^conf_?/.test(k)).map(k => d[k]);
+    if(vals.includes('NON')) return 'NON';
+    if(vals.includes('OUI')) return 'OUI';
+  } catch(e){ console.warn('[menu-dash] conformité', e); }
+  return '';
+}
 function _menuNorm(s){
   try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
   catch(e){ return String(s||'').toLowerCase().trim(); }
@@ -585,7 +597,7 @@ function _platTrace(plat, enrs){
   const req = tiles.filter(t => t.req);
   const done = req.filter(t => t.ok).length;
   const status = done === req.length ? 'complete' : ((done > 0 || req.some(t => t.part)) ? 'entamee' : 'vide');
-  const nc = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
+  const nc = enrs.filter(e => e.enr_type === 'enr30' || _recConf(e) === 'NON').length;
   return { tiles, done, total:req.length, status, nc };
 }
 const _TRACE_ST = {
@@ -620,7 +632,7 @@ function renderFichePlat(plat, menu){
   document.getElementById('detail-sub').textContent = `${siteName} • ${dFr} • ${SERVICES[menu.service]||menu.service}`;
 
   // Stats
-  const ncCount = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
+  const ncCount = enrs.filter(e => e.enr_type === 'enr30' || _recConf(e) === 'NON').length;
   const _st = _platTrace(plat, enrs);
   const fpTiles = _st.tiles.slice();
   fpTiles.push({ ico:'🚨', lbl:'NC', ok:ncCount===0, ko:ncCount>0, val:ncCount });
@@ -694,7 +706,7 @@ function _menuStepPhotos(rec){
 function renderTimelineStep(rec){
   const def = TRACE_ENR[rec.enr_type] || { ico:'📋', label:rec.enr_type, color:'#64748b' };
   const time = rec.recorded_at ? new Date(rec.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
-  const conf = rec.data?.conforme;
+  const conf = _recConf(rec);
   const isNC = rec.enr_type === 'enr30' || conf === 'NON';
   // Construire un résumé lisible des champs principaux
   const d = rec.data || {};
@@ -707,7 +719,7 @@ function renderTimelineStep(rec){
   const _lbl = k => { try { return String((typeof FIELD_LABELS !== 'undefined' && FIELD_LABELS[k]) || k).replace(/^[^\wÀ-ÿ]+\s*/, ''); } catch(e){ return k; } };
   const _vide = v => v === undefined || v === null || v === '';
   // Champs non couverts par FIELD_LABELS (fiche ENR03 auto, mixage)
-  const _LBL_PLUS = { h1:'H. début refroid.', h2:'H. fin refroid.', h3:'H. début remise', h4:'H. fin remise',
+  const _LBL_PLUS = { t_cuisson:'T° cuisson', h1:'H. début refroid.', h2:'H. fin refroid.', h3:'H. début remise', h4:'H. fin remise',
     t_mix_deb:'T° mixage début', t_mix_fin:'T° mixage fin', h_mix_deb:'H. début mixage', h_mix_fin:'H. fin mixage' };
   if(rec.enr_type === 'enr03') Object.assign(_LBL_PLUS, { t1:'T° début refroid.', t2:'T° fin refroid.', t3:'T° début remise', t4:'T° fin remise' });
   const _lbl2 = k => _LBL_PLUS[k] || _lbl(k);
@@ -786,7 +798,7 @@ window._menuDashExportMenu = function(menuId){
   ${enrs.map(r => {
     const def = TRACE_ENR[r.enr_type]||{label:r.enr_type,ico:''};
     const time = r.recorded_at ? new Date(r.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
-    const conf = r.data?.conforme;
+    const conf = _recConf(r);
     const isNC = conf === 'NON' || r.enr_type === 'enr30';
     const d = r.data || {};
     const bits = [];
@@ -841,7 +853,7 @@ window._menuDashExportPlat = function(platId, menuId){
   ${enrs.map(r => {
     const def = TRACE_ENR[r.enr_type]||{label:r.enr_type,ico:''};
     const time = r.recorded_at ? new Date(r.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
-    const conf = r.data?.conforme;
+    const conf = _recConf(r);
     const isNC = conf === 'NON' || r.enr_type === 'enr30';
     const d = r.data || {};
     const bits = [];
