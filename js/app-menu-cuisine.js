@@ -468,8 +468,8 @@ window._menuOpenTraces = function(catId, idx){
       <button id="mn-trace-close" type="button" style="width:100%;margin-top:8px;padding:11px;background:#f3e8f3;color:#5C1E5A;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Fermer</button>
     </div>`;
     document.body.appendChild(ov);
-    ov.addEventListener('click', function(e){ if(e.target===ov){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); }catch(err){} } });
-    document.getElementById('mn-trace-close').onclick = function(){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); }catch(e){} };
+    ov.addEventListener('click', function(e){ if(e.target===ov){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); if(typeof renderNav==='function') renderNav(); }catch(err){} } });
+    document.getElementById('mn-trace-close').onclick = function(){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); if(typeof renderNav==='function') renderNav(); }catch(e){} };
     ov.querySelectorAll('input[data-mp-uuid]').forEach(cb => {
       cb.addEventListener('change', function(){
         try { _menuSetLotPlat(cb.getAttribute('data-mp-uuid'), ref, cb.checked); } catch(err){ console.warn('[menu] toggle lot', err); }
@@ -489,6 +489,7 @@ window._menuOpenTraces = function(catId, idx){
         _menuAddMpToPlats(nom, lot, [ref].concat(extras));
         ov.remove();
         if(typeof renderMain==='function') renderMain();
+        if(typeof renderNav==='function') renderNav();
       } catch(err){ console.warn('[menu] add mp', err); }
     };
   } catch(e){ console.warn('[menu] open traces', e); }
@@ -2049,8 +2050,23 @@ function hookBatchFunctions(){
 // Règles Jérémie (oct. 2026) : plat témoin pour tous ; Remise T°C → ENR02 ;
 // coché Mixé → ENR07 (mixé cuit) ou ENR08 (mixé cru). Pas d'ENR01 pour BF Cuit,
 // pas de températures de distribution.
+// Lot matière première (ENR31) lié au plat — tous profils, sortie directe comprise
+function platMpLie(p){
+  try {
+    return ((S.enr31 && S.enr31.lignes) || []).some(l => l && !l._deleted && _ligneHasPlat(l, p && p.plat_id));
+  } catch(e){ return false; }
+}
+function platStepDone(enrId, p){
+  return enrId === 'enr31' ? platMpLie(p) : platDejaSaisi(enrId, p);
+}
+// Pastille de l'onglet Traçabilité MP : plats du menu du jour sans lot lié
+window._menuMpManquants = function(){
+  try { return todayMenuPlats().filter(x => x && x.p && !platMpLie(x.p)).length; }
+  catch(e){ return 0; }
+};
+
 function platTraceSteps(p){
-  const steps = [{ enr:'enr33', ico:'🍱', label:'Témoin' }];
+  const steps = [{ enr:'enr33', ico:'🍱', label:'Témoin' }, { enr:'enr31', ico:'📋', label:'Lots MP' }];
   try {
     if(p && p.profil_haccp === 'REMISE_TC') steps.push({ enr:'enr02', ico:'🔥', label:'Remise T°C' });
     if(p && p.variants && p.variants.mixe){
@@ -2069,8 +2085,14 @@ window._menuOpenStep = function(ev, enrId, svcId, catId, idx){
     const p = m && m.categories && m.categories[catId] && m.categories[catId][idx];
     if(!p) { goTo('menu_jour'); return; }
     if(!enrId){
-      const todo = platTraceSteps(p).find(st => !platDejaSaisi(st.enr, p));
+      const todo = platTraceSteps(p).find(st => !platStepDone(st.enr, p));
       enrId = (todo || platTraceSteps(p)[0]).enr;
+    }
+    if(enrId === 'enr31'){
+      // Lots MP : fenêtre de liaison des lots du plat (même que sur la page Menu)
+      _menuState.date = today(); _menuState.service = svcId;
+      window._menuOpenTraces(catId, idx);
+      return;
     }
     _menuLinkPending[enrId] = { plat_id:p.plat_id, nom:p.nom, profil_haccp:p.profil_haccp, menu_id:p.menu_id || m.menu_id };
     goTo(enrId);
@@ -2127,7 +2149,7 @@ function renderMenuHomeWidget(){
         let allDone = true;
         const chips = steps.map(st => {
           let done = false;
-          try { done = platDejaSaisi(st.enr, p); } catch(e){}
+          try { done = platStepDone(st.enr, p); } catch(e){}
           stepsTotal++; if(done) stepsDone++; else allDone = false;
           return '<button type="button" onclick="window._menuOpenStep(event,\''+st.enr+'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
             + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
