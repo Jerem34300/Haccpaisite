@@ -2093,6 +2093,16 @@ function platMpCount(p){
   } catch(e){ return 0; }
 }
 function platMpLie(p){ return platMpCount(p) > 0; }
+// Noms des ingrédients (lots ENR31) déjà liés au plat, pour les afficher sous le plat
+function platMpNoms(p){
+  try {
+    const seen = {};
+    return ((S.enr31 && S.enr31.lignes) || [])
+      .filter(l => l && !l._deleted && _ligneHasPlat(l, p && p.plat_id))
+      .map(l => String(l.produit || '').trim())
+      .filter(n => n && !seen[n.toLowerCase()] && (seen[n.toLowerCase()] = 1));
+  } catch(e){ return []; }
+}
 // Lots MP fait = au moins un lot lié ET le cuisinier a confirmé « tout est tracé »
 // (l'appli ne connaît pas la recette : un seul lot ne suffit pas à valider)
 function platMpComplet(p){ return !!(p && p.mp_complet === true) && platMpLie(p); }
@@ -2230,6 +2240,13 @@ function renderMenuHomeWidget(){
                 : 'background:#fff;color:#7A6579;border:1px dashed #d8b4d8')
             + '">' + (done ? '✅ ' : enCours ? '🟠 ' : '⬜ ') + st.ico + ' ' + escH(st.label) + (nMp > 0 ? ' · ' + nMp : '') + '</button>' + mpBtn;
         }).join('');
+        let mpNomsHtml = '';
+        try {
+          const noms = platMpNoms(p);
+          if(noms.length) mpNomsHtml = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin:3px 0 0 14px">'
+            + noms.map(n => '<span style="border-radius:999px;padding:1px 6px;font-size:.58rem;font-weight:800;background:#dcfce7;color:#166534;border:1px solid #86efac">'+escH(n)+'</span>').join('')
+            + '</div>';
+        } catch(e){}
         return '<div style="padding:4px 0;border-bottom:1px dashed #f1e6f1;min-width:0">'
           + '<div onclick="window._menuOpenStep(event,\'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer">'
           + '<span style="flex:none;width:8px;height:8px;border-radius:50%;background:'+escH(col)+'"></span>'
@@ -2237,6 +2254,7 @@ function renderMenuHomeWidget(){
           + (allDone ? '<span style="flex:none;font-size:.7rem">✅</span>' : '')
           + '</div>'
           + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:3px 0 0 14px">'+chips+'</div>'
+          + mpNomsHtml
           + '</div>';
       }).join('');
       return '<div style="background:#fff;border:1px solid #ede0ed;border-radius:10px;padding:6px 9px;min-width:0">'
