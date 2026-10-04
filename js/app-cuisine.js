@@ -12714,6 +12714,7 @@ function e33PrintBatch(){
   setTimeout(function(){
     showConfirm('🖨️ Étiquettes bien imprimées ?',etiqConfirmMsg(nb33),'✅ Oui, vider le lot',function(){
       etiqAfterPrint(nb33);
+      try{ if(typeof _temoinMarkImprime==='function') _temoinMarkImprime(_e33batch); }catch(e){ console.warn('[e33] témoins imprimés', e); }
       _e33batch=[]; renderNav(); renderMain(); toast('✅ Lot plats témoins vidé','success');
     });
   },1500);
@@ -14571,6 +14572,7 @@ function _doPrintAllLabels(logoLine, total){
       '✅ Oui, vider le lot',
       function(){
         etiqAfterPrint(_nbTotal);
+        try{ if(typeof _temoinMarkImprime==='function') _temoinMarkImprime(_e33batch); }catch(e){ console.warn('[print all] témoins imprimés', e); }
         _e33batch=[]; _e36batch=[]; _e34batch=[];
         renderNav(); renderMain();
         toast('✅ Lot vidé — prêt pour de nouvelles étiquettes', 'success');
