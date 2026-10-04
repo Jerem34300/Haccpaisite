@@ -297,7 +297,7 @@ function renderMenuCard(menu){
     </div>
     <div class="mn-card-meta">
       <span>${menu.type_repas !== 'normal' ? '⚙️ '+menu.type_repas : ''}</span>
-      <span style="color:${covColor};font-weight:800">${ts.complete}/${ts.total} plats tracés${ts.entamee ? ' • '+ts.entamee+' entamé'+(ts.entamee>1?'s':'') : ''}</span>
+      <span style="color:${covColor};font-weight:800">${ts.complete}/${ts.total} plats tracés${ts.entamee ? ' • '+ts.entamee+' entamé'+(ts.entamee>1?'s':'') : ''}</span>${ts.nc ? ' <span style="background:#dc2626;color:#fff;font-weight:900;padding:1px 7px;border-radius:8px;margin-left:4px">💥 '+ts.nc+' plat'+(ts.nc>1?'s':'')+' NC</span>' : ''}
     </div>
     <div class="mn-card-cov"><div class="mn-card-cov-fill" style="width:${pct}%;background:${covColor}"></div></div>
   </div>`;
@@ -582,7 +582,8 @@ function _platTrace(plat, enrs){
   const req = tiles.filter(t => t.req);
   const done = req.filter(t => t.ok).length;
   const status = done === req.length ? 'complete' : ((done > 0 || req.some(t => t.part)) ? 'entamee' : 'vide');
-  return { tiles, done, total:req.length, status };
+  const nc = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
+  return { tiles, done, total:req.length, status, nc };
 }
 const _TRACE_ST = {
   complete:{ lbl:'Traçabilité complète', ico:'🟢', bg:'#dcfce7', fg:'#166534', bd:'#86efac' },
@@ -592,13 +593,15 @@ const _TRACE_ST = {
 function _traceBadge(st, court){
   const d = _TRACE_ST[st.status] || _TRACE_ST.vide;
   const txt = court ? (st.status==='complete' ? 'Complète' : (st.status==='entamee' ? 'Entamée '+st.done+'/'+st.total : 'Pas faite')) : d.lbl+' ('+st.done+'/'+st.total+')';
-  return '<span style="display:inline-block;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:9px;background:'+d.bg+';color:'+d.fg+';border:1px solid '+d.bd+';white-space:nowrap">'+d.ico+' '+txt+'</span>';
+  // Traçabilité complète ≠ conforme : badge « explosion » à côté s'il y a une NC sur le plat
+  const ncB = st.nc ? ' <span style="display:inline-block;font-size:.66rem;font-weight:900;padding:2px 8px;border-radius:9px;background:#dc2626;color:#fff;white-space:nowrap">💥 '+st.nc+' NC</span>' : '';
+  return '<span style="display:inline-block;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:9px;background:'+d.bg+';color:'+d.fg+';border:1px solid '+d.bd+';white-space:nowrap">'+d.ico+' '+txt+'</span>'+ncB;
 }
 function _menuTraceStats(menu){
   const plats = flatPlats(menu);
-  const out = { complete:0, entamee:0, vide:0, total:plats.length };
+  const out = { complete:0, entamee:0, vide:0, nc:0, total:plats.length };
   plats.forEach(p => {
-    try { out[_platTrace(p, getEnrLinkedToPlat(p.plat_id, menu.site_id, menu.menu_date, p.nom)).status]++; }
+    try { const st = _platTrace(p, getEnrLinkedToPlat(p.plat_id, menu.site_id, menu.menu_date, p.nom)); out[st.status]++; if(st.nc) out.nc++; }
     catch(e){ out.vide++; console.warn('[menu-dash] statut plat', e); }
   });
   return out;
