@@ -2088,13 +2088,9 @@ window._menuOpenStep = function(ev, enrId, svcId, catId, idx){
       const todo = platTraceSteps(p).find(st => !platStepDone(st.enr, p));
       enrId = (todo || platTraceSteps(p)[0]).enr;
     }
-    if(enrId === 'enr31'){
-      // Lots MP : fenêtre de liaison des lots du plat (même que sur la page Menu)
-      _menuState.date = today(); _menuState.service = svcId;
-      window._menuOpenTraces(catId, idx);
-      return;
-    }
     _menuLinkPending[enrId] = { plat_id:p.plat_id, nom:p.nom, profil_haccp:p.profil_haccp, menu_id:p.menu_id || m.menu_id };
+    // Lots MP : fiche Traçabilité MP liée à ce seul plat (pas de liens restés d'une saisie précédente)
+    if(enrId === 'enr31') _menuLinkPendingMulti['enr31'] = [_menuLinkPending[enrId]];
     goTo(enrId);
   } catch(e){ console.warn('[menu] _menuOpenStep:', e); try { goTo('menu_jour'); } catch(_){} }
 };
