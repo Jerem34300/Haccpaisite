@@ -1973,6 +1973,17 @@ function renderOverview(){
   // ══════════════════════════════════════════════════════════════
   // ASSEMBLAGE HTML
   // ══════════════════════════════════════════════════════════════
+  // Uniquement les sites marqués à la création Multi (pmsPending).
+  // Jean Jaurès, Centrale Lyon, etc. n'ont pas ce drapeau : pas de rappel.
+  let _pmsPendingBanner = '';
+  try {
+    const pendingK = (_sites || []).filter(s => s && s.config && s.config.pmsPending === true);
+    if (pendingK.length) {
+      const lbl = pendingK.map(s => escH(s.name || s.code) + ' (' + escH(s.code || '') + ')').join(', ');
+      _pmsPendingBanner = '<a href="onboarding.html?cuisines=1" style="display:block;margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#f7f2f7;border:1.5px solid #ddd0dd;color:#0f2240;font-weight:800;font-size:.84rem;text-decoration:none">Configurer le PMS · ' + pendingK.length + ' cuisine' + (pendingK.length > 1 ? 's' : '') + ' : ' + lbl + '</a>';
+    }
+  } catch (e) { console.warn('[overview] pms pending', e); }
+
   const html = `
   <style>
     .ov-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
@@ -2022,6 +2033,7 @@ function renderOverview(){
   </style>
 
   ${_alertBanner||''}
+  ${_pmsPendingBanner||''}
 
   <!-- Search + Period -->
   <div class="ov-search-row">
