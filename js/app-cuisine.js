@@ -18022,19 +18022,31 @@ function wgGetCatalog(){
   var svcs = getDistribServices();
   var distribWidgets = [];
   svcs.forEach(function(svc){
-    distribWidgets.push({id:'d_'+svc.id+'_midi', ico:'🌞', name:svc.label+' — Midi', desc:'T°C froid & chaud Midi', size:'half', svcId:svc.id, slot:'midi'});
-    distribWidgets.push({id:'d_'+svc.id+'_soir', ico:'🌙', name:svc.label+' — Soir', desc:'T°C froid & chaud Soir', size:'half', svcId:svc.id, slot:'soir'});
+    if(_svcHasSlot(svc,'midi')) distribWidgets.push({id:'d_'+svc.id+'_midi', ico:'🌞', name:svc.label+' — Midi', desc:'T°C froid & chaud Midi', size:'half', svcId:svc.id, slot:'midi'});
+    if(_svcHasSlot(svc,'soir')) distribWidgets.push({id:'d_'+svc.id+'_soir', ico:'🌙', name:svc.label+' — Soir', desc:'T°C froid & chaud Soir', size:'half', svcId:svc.id, slot:'soir'});
   });
   return distribWidgets.concat(WG_CATALOG_BASE);
 }
 var WG_CATALOG = WG_CATALOG_BASE; // sera mis à jour dynamiquement
 
+// Un service n'a un widget Midi/Soir que si ce créneau a des horaires (même règle que les alertes distribution).
+// Service sans aucun horaire (ancienne config) → les deux créneaux restent affichés.
+function _svcHasSlot(svc, slot){
+  try {
+    if(!svc) return false;
+    var hasMidi = !!(svc.midi_deb || svc.midi_fin || svc.heure);
+    var hasSoir = !!(svc.soir_deb || svc.soir_fin);
+    if(!hasMidi && !hasSoir) return true;
+    return slot==='midi' ? hasMidi : hasSoir;
+  } catch(e){ console.warn('[wg] _svcHasSlot:', e); return true; }
+}
+
 function wgGetDefault(){
   var svcs = getDistribServices();
   var defs = [{id:'menu_jour_w'},{id:'enc'}];
   svcs.forEach(function(svc){
-    defs.push({id:'d_'+svc.id+'_midi'});
-    defs.push({id:'d_'+svc.id+'_soir'});
+    if(_svcHasSlot(svc,'midi')) defs.push({id:'d_'+svc.id+'_midi'});
+    if(_svcHasSlot(svc,'soir')) defs.push({id:'d_'+svc.id+'_soir'});
   });
   defs.push({id:'refroid'});
   defs.push({id:'recep'},{id:'nett'});
@@ -18059,6 +18071,7 @@ function wgGet(){
   var changed = false;
   svcs.forEach(function(svc){
     ['midi','soir'].forEach(function(slot){
+      if(!_svcHasSlot(svc, slot)) return; // créneau sans horaire : pas de widget (pas marqué vu → ajouté si horaires ajoutés plus tard)
       var wid = 'd_'+svc.id+'_'+slot;
       // Si jamais vu ET pas déjà dans la liste → ajouter une seule fois
       if(!seen[wid] && !saved.some(function(w){return w.id===wid;})){
@@ -18352,6 +18365,7 @@ function _wgRenderOne(w){
     var svcs2 = getDistribServices();
     var svc = svcs2.find(function(s){ return s.id===svcId; });
     if(!svc) return '';
+    if(!_svcHasSlot(svc, slot3)) return '';
     var todayStr2 = today();
     var draft2 = distribSvcDraft(svcId);
     var draftIsToday = draft2.date === todayStr2;
