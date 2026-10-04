@@ -2087,18 +2087,46 @@ function hookBatchFunctions(){
 // coché Mixé → ENR07 (mixé cuit) ou ENR08 (mixé cru). Pas d'ENR01 pour BF Cuit,
 // pas de températures de distribution.
 // Lot matière première (ENR31) lié au plat — tous profils, sortie directe comprise
-function platMpLie(p){
+function platMpCount(p){
   try {
-    return ((S.enr31 && S.enr31.lignes) || []).some(l => l && !l._deleted && _ligneHasPlat(l, p && p.plat_id));
-  } catch(e){ return false; }
+    return ((S.enr31 && S.enr31.lignes) || []).filter(l => l && !l._deleted && _ligneHasPlat(l, p && p.plat_id)).length;
+  } catch(e){ return 0; }
 }
+function platMpLie(p){ return platMpCount(p) > 0; }
+// Lots MP fait = au moins un lot lié ET le cuisinier a confirmé « tout est tracé »
+// (l'appli ne connaît pas la recette : un seul lot ne suffit pas à valider)
+function platMpComplet(p){ return !!(p && p.mp_complet === true) && platMpLie(p); }
 function platStepDone(enrId, p){
-  return enrId === 'enr31' ? platMpLie(p) : platDejaSaisi(enrId, p);
+  return enrId === 'enr31' ? platMpComplet(p) : platDejaSaisi(enrId, p);
 }
-// Pastille de l'onglet Traçabilité MP : plats du menu du jour sans lot lié
+// Pastille de l'onglet Traçabilité MP : plats du menu du jour pas encore complets
 window._menuMpManquants = function(){
-  try { return todayMenuPlats().filter(x => x && x.p && !platMpLie(x.p)).length; }
+  try { return todayMenuPlats().filter(x => x && x.p && !platMpComplet(x.p)).length; }
   catch(e){ return 0; }
+};
+// Bouton « ✔ Tout tracé » / « ↺ Rouvrir » du widget d'accueil
+window._menuMpComplet = function(ev, svcId, catId, idx){
+  try { if(ev){ ev.preventDefault(); ev.stopPropagation(); } } catch(e){}
+  try {
+    const t = today();
+    const m = getMenu(t, svcId);
+    const p = m && m.categories && m.categories[catId] && m.categories[catId][idx];
+    if(!p) return;
+    p.mp_complet = !(p.mp_complet === true);
+    // Menu renvoyé au cloud (sinon le prochain pull remet l'ancienne version sans mp_complet)
+    const rec = stampEntry({ menu_date:t, service:svcId, categories:m.categories, menu_id:m.menu_id, date:t, _ts:new Date().toISOString() });
+    m._ts = rec._ts;
+    setMenu(t, svcId, m);
+    try {
+      if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue){
+        SupaEngine.enqueue('enr_menu', rec);
+        if(SupaEngine.flush) setTimeout(()=>SupaEngine.flush(), 200);
+      }
+    } catch(e){ console.warn('[menu] mp complet enqueue:', e); }
+    if(typeof toast === 'function') toast(p.mp_complet ? '✅ '+p.nom+' : tous les ingrédients tracés' : '↺ '+p.nom+' : traçabilité MP rouverte', 'success');
+    if(typeof renderMain === 'function') renderMain();
+    if(typeof renderNav === 'function') renderNav();
+  } catch(e){ console.warn('[menu] _menuMpComplet:', e); }
 };
 
 function platTraceSteps(p){
@@ -2183,10 +2211,24 @@ function renderMenuHomeWidget(){
           let done = false;
           try { done = platStepDone(st.enr, p); } catch(e){}
           stepsTotal++; if(done) stepsDone++; else allDone = false;
+          // Lots MP : nombre de lots liés ; orange tant que « tout tracé » n'est pas confirmé
+          let nMp = 0, enCours = false, mpBtn = '';
+          if(st.enr === 'enr31'){
+            try { nMp = platMpCount(p); } catch(e){}
+            enCours = !done && nMp > 0;
+            if(nMp > 0){
+              mpBtn = '<button type="button" onclick="window._menuMpComplet(event,\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
+                + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
+                + (done ? 'background:#fff;color:#7A6579;border:1px solid #e5d5e5' : 'background:#5C1E5A;color:#fff;border:1px solid #5C1E5A')
+                + '">' + (done ? '↺ Rouvrir' : '✔ Tout tracé') + '</button>';
+            }
+          }
           return '<button type="button" onclick="window._menuOpenStep(event,\''+st.enr+'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
             + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
-            + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fff;color:#7A6579;border:1px dashed #d8b4d8')
-            + '">' + (done ? '✅ ' : '⬜ ') + st.ico + ' ' + escH(st.label) + '</button>';
+            + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac'
+                : enCours ? 'background:#fff7ed;color:#9a3412;border:1px solid #fdba74'
+                : 'background:#fff;color:#7A6579;border:1px dashed #d8b4d8')
+            + '">' + (done ? '✅ ' : enCours ? '🟠 ' : '⬜ ') + st.ico + ' ' + escH(st.label) + (nMp > 0 ? ' · ' + nMp : '') + '</button>' + mpBtn;
         }).join('');
         return '<div style="padding:4px 0;border-bottom:1px dashed #f1e6f1;min-width:0">'
           + '<div onclick="window._menuOpenStep(event,\'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer">'
