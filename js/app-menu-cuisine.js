@@ -2983,8 +2983,95 @@ window._menuPhotoAddPlat = function(di, svc){
   } catch(e){}
 };
 
-/** Valider : écrit dans le store menu existant. AUCUNE fiche traça auto. */
+/** Nb de plats déjà saisis dans un menu existant (toutes catégories, y.c. libre). */
+function _menuPhotoCountExisting(date, svc){
+  try {
+    const menu = getMenu(date, svc);
+    if(!menu || !menu.categories) return 0;
+    let n = 0;
+    Object.keys(menu.categories).forEach(function(k){
+      const arr = menu.categories[k];
+      if(Array.isArray(arr)) n += arr.filter(function(p){ return p && String(p.nom||'').trim(); }).length;
+    });
+    return n;
+  } catch(e){ return 0; }
+}
+
+/** Liste des (jour, service) du brouillon qui écraseraient un menu déjà saisi. */
+function _menuPhotoFindConflicts(draft){
+  const out = [];
+  const seen = {};
+  (draft && draft.days || []).forEach(function(day){
+    const date = String(day.date||'').slice(0,10);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    ['midi','gouter','soir'].forEach(function(svc){
+      const names = ((day.services && day.services[svc]) || [])
+        .map(function(n){ return String(n||'').trim(); }).filter(Boolean);
+      if(!names.length) return; // service vide dans l’import = non touché
+      const k = date+'::'+svc;
+      if(seen[k]) return;
+      seen[k] = true;
+      const n = _menuPhotoCountExisting(date, svc);
+      if(n > 0) out.push({ date: date, svc: svc, count: n });
+    });
+  });
+  return out;
+}
+
+/** Confirmation remplacement (overlay au-dessus de l’écran de validation — pas de confirm() natif, bloqué sous Android). */
+function _menuPhotoAskReplace(conflicts, onYes){
+  const old = document.getElementById('mn-photo-confirm');
+  if(old) old.remove();
+  const ov = document.createElement('div');
+  ov.id = 'mn-photo-confirm';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(30,10,30,.6);z-index:9300;display:flex;align-items:center;justify-content:center;padding:18px';
+  const lines = conflicts.map(function(c){
+    let dl = c.date;
+    try { dl = new Date(c.date+'T12:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' }); } catch(e){}
+    return `<li style="margin:3px 0"><b>${escH(dl)}</b> — ${escH(_menuPhotoSvcLabel(c.svc))} <span style="color:#7A6579">(${c.count} plat${c.count>1?'s':''})</span></li>`;
+  }).join('');
+  const plural = conflicts.length > 1;
+  ov.innerHTML = `<div role="alertdialog" aria-modal="true" aria-labelledby="mn-photo-confirm-t" style="background:#fff;border-radius:18px;max-width:380px;width:100%;padding:18px 16px 16px;box-shadow:0 10px 30px rgba(0,0,0,.25)">
+    <div id="mn-photo-confirm-t" style="font-size:.98rem;font-weight:900;color:#5C1E5A;margin-bottom:6px">⚠️ Ça remplace le menu déjà saisi</div>
+    <div style="font-size:.8rem;color:#3b1e3b;line-height:1.45">
+      ${plural ? 'Ces services ont' : 'Ce service a'} déjà des plats :
+      <ul style="margin:6px 0 8px;padding-left:18px">${lines}</ul>
+      Les plats existants seront <b>remplacés</b> par ceux de la photo (pas de fusion). Les autres services ne sont pas touchés.
+    </div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button type="button" id="mn-photo-confirm-no" style="flex:1;padding:12px;background:#f3e8f3;color:#5C1E5A;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer">Annuler</button>
+      <button type="button" id="mn-photo-confirm-yes" style="flex:1.4;padding:12px;background:#dc2626;color:#fff;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer">Remplacer</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close = function(){ ov.remove(); };
+  ov.addEventListener('click', function(e){ if(e.target===ov) close(); });
+  document.getElementById('mn-photo-confirm-no').onclick = close;
+  document.getElementById('mn-photo-confirm-yes').onclick = function(){ close(); onYes(); };
+}
+
+/** Valider : confirmation si des services cibles ont déjà des plats, puis écriture. */
 window._menuPhotoValidate = function(){
+  try {
+    const draft = _menuPhotoDraft;
+    if(!draft || !draft.days || !draft.days.length){
+      if(typeof toast==='function') toast('Rien à enregistrer','warning');
+      return;
+    }
+    const conflicts = _menuPhotoFindConflicts(draft);
+    if(conflicts.length){
+      _menuPhotoAskReplace(conflicts, function(){ _menuPhotoCommit(); });
+      return;
+    }
+    _menuPhotoCommit();
+  } catch(e){
+    console.warn('[menu photo validate]', e);
+    if(typeof toast==='function') toast('Erreur enregistrement import','danger');
+  }
+};
+
+/** Écrit dans le store menu existant (remplacement, pas de merge en v1). AUCUNE fiche traça auto. */
+function _menuPhotoCommit(){
   try {
     const draft = _menuPhotoDraft;
     if(!draft || !draft.days || !draft.days.length){
@@ -3042,10 +3129,10 @@ window._menuPhotoValidate = function(){
       toast(written ? ('✅ '+written+' service(s) importé(s) — pastilles à jour') : 'Aucun service rempli', written ? 'success' : 'warning');
     }
   } catch(e){
-    console.warn('[menu photo validate]', e);
+    console.warn('[menu photo commit]', e);
     if(typeof toast==='function') toast('Erreur enregistrement import','danger');
   }
-};
+}
 
 // ════════════════════════════════════════════════════
 // ENREGISTREMENT
