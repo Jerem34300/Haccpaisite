@@ -8560,7 +8560,7 @@ function expDistrib(){
 let _photoPfx = 'p1';   // 'p1', 'p2', ou 'enr31'
 let _photoB64 = null;   // base64 de la photo en cours
 
-let _labelOcrCtx = null; // null = photo seule ; {mode:'label'|'bl', target:'enr23'|'enr31', pfx}
+let _labelOcrCtx = null; // null = photo seule ; {mode:'label', target:'enr23'|'enr31', pfx}
 
 function openOcrModal(pfx) {
   try {
@@ -8711,7 +8711,7 @@ function photoSave() {
 
 
 // ════════════════════════════════════════════════════
-// ANALYSE PHOTO ÉTIQUETTE / BL (préremplissage champs)
+// ANALYSE PHOTO ÉTIQUETTE (préremplissage champs)
 // Invariant: l'analyse ne remplace PAS la photo —
 // Valider → champs via r23s/sd + photoSave() inchangé.
 // ════════════════════════════════════════════════════
@@ -8785,25 +8785,19 @@ function _ocrSetActionsValidate(){
   } catch(e){}
 }
 
-/** Slot photo preuve pour ENR31 (1ère case vide, sinon photo 1). */
+/** Slot photo preuve ENR31 — une seule photo (audit + analyse). */
 function _labelOcrEnr31PhotoPfx(){
-  try {
-    const d = (S['enr31']||{}).draft||{};
-    if(!d.photo) return 'enr31';
-    if(!d.photo2) return 'enr31_2';
-    if(!d.photo3) return 'enr31_3';
-    return 'enr31';
-  } catch(e){ return 'enr31'; }
+  return 'enr31';
 }
 
 /**
- * Ouvre le modal en mode analyse (étiquette ou BL).
- * target: 'enr23' | 'enr31' — mode: 'label' | 'bl'
+ * Ouvre le modal en mode analyse étiquette.
+ * target: 'enr23' | 'enr31'
  * La photo reste gérée comme aujourd'hui via _photoPfx + photoSave().
  */
 function openLabelOcr(mode, target, source){
   try {
-    mode = (mode === 'bl') ? 'bl' : 'label';
+    mode = 'label'; // BL retiré UX (fournisseur / n° BL restent saisie manuelle)
     target = (target === 'enr31') ? 'enr31' : 'enr23';
     let pfx;
     if(target === 'enr31'){
@@ -8820,9 +8814,9 @@ function openLabelOcr(mode, target, source){
     const img = document.getElementById('ocr-img');
     if(img){ img.onerror = null; img.style.display = 'none'; img.src = ''; }
     const ph = document.getElementById('ocr-placeholder');
-    if(ph){ ph.style.display = 'block'; ph.textContent = mode==='bl' ? '📄 Photo du bon de livraison' : '📷 Photo de l\'étiquette'; }
+    if(ph){ ph.style.display = 'block'; ph.textContent = '📷 Photo de l\'étiquette'; }
     const hdr = document.getElementById('ocr-hdr-title');
-    if(hdr) hdr.textContent = mode==='bl' ? '📄 Bon de livraison' : '📷 Analyse étiquette';
+    if(hdr) hdr.textContent = '📷 Analyse étiquette';
     _ocrSetActionsPhotoOnly();
     const btn = document.getElementById('ocr-apply-btn');
     if(btn){ btn.style.opacity = '.4'; btn.style.pointerEvents = 'none'; btn.textContent = '✅ Valider'; }
@@ -8839,9 +8833,8 @@ function openLabelOcr(mode, target, source){
 async function labelOcrRunAnalysis(dataUrl){
   const ctx = _labelOcrCtx;
   if(!ctx) return;
-  const mode = ctx.mode === 'bl' ? 'bl' : 'label';
-  const waitTitle = mode === 'bl' ? 'Lecture du bon de livraison…' : 'Analyse de l\'étiquette…';
-  haccShowWait({ icon: '📷', title: waitTitle, sub: 'Rien n’est enregistré pour l’instant' });
+  const mode = 'label';
+  haccShowWait({ icon: '📷', title: 'Analyse de l\'étiquette…', sub: 'Rien n’est enregistré pour l’instant' });
   try {
     const resp = await fetch('/.netlify/functions/label-ocr', {
       method: 'POST',
@@ -8862,19 +8855,6 @@ async function labelOcrRunAnalysis(dataUrl){
       _ocrSetActionsPhotoOnly();
       const btn = document.getElementById('ocr-apply-btn');
       if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
-      return;
-    }
-    if(mode === 'bl'){
-      const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
-      if(!lines.length){
-        toast('⚠️ Aucune ligne lue sur le BL — saisie manuelle','warning');
-        _ocrSetActionsPhotoOnly();
-        const btn = document.getElementById('ocr-apply-btn');
-        if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
-        return;
-      }
-      ctx.lines = lines;
-      labelOcrShowBlPicker(lines);
       return;
     }
     const proposed = {
@@ -8900,50 +8880,6 @@ async function labelOcrRunAnalysis(dataUrl){
     const btn = document.getElementById('ocr-apply-btn');
     if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
   }
-}
-
-function labelOcrShowBlPicker(lines){
-  try {
-    const wrap = document.getElementById('ocr-bl-lines');
-    const prev = document.getElementById('ocr-preview-wrap');
-    const val = document.getElementById('ocr-validate-panel');
-    const conf = document.getElementById('ocr-conflict-panel');
-    if(val) val.style.display = 'none';
-    if(conf) conf.style.display = 'none';
-    if(prev) prev.style.display = 'none';
-    if(!wrap) return;
-    let html = '<div style="font-size:.78rem;font-weight:800;color:#5C1E5A;margin-bottom:8px">Choisissez <strong>une</strong> ligne à coller dans la fiche ouverte</div>';
-    lines.forEach(function(line, i){
-      const meta = [line.lot ? ('Lot '+line.lot) : '', line.dlc ? ('DLC '+line.dlc) : ''].filter(Boolean).join(' · ');
-      html += '<button type="button" class="ocr-bl-line" onclick="labelOcrPickBlLine('+i+')">'
-        + '<div class="ocr-bl-prod">'+escH(line.produit||'(sans nom)')+'</div>'
-        + (meta ? '<div class="ocr-bl-meta">'+escH(meta)+'</div>' : '')
-        + '</button>';
-    });
-    wrap.innerHTML = html;
-    wrap.style.display = 'block';
-    const cam = document.getElementById('ocr-cam-btn');
-    const gal = document.getElementById('ocr-gal-btn');
-    const btn = document.getElementById('ocr-apply-btn');
-    if(cam){ cam.style.display=''; cam.textContent='↺ Reprendre'; }
-    if(gal) gal.style.display='none';
-    if(btn){ btn.style.opacity='.4'; btn.style.pointerEvents='none'; btn.textContent='✅ Valider'; }
-  } catch(e){ try{ console.warn('[labelOcrShowBlPicker]', e); }catch(_e){} }
-}
-
-function labelOcrPickBlLine(i){
-  try {
-    const ctx = _labelOcrCtx;
-    if(!ctx || !ctx.lines || !ctx.lines[i]) return;
-    const line = ctx.lines[i];
-    ctx.proposed = {
-      produit: String(line.produit||'').trim(),
-      lot: String(line.lot||'').trim(),
-      dlc: String(line.dlc||'').trim(),
-      estampille: String(line.estampille||'').trim(),
-    };
-    labelOcrShowValidation(ctx.proposed);
-  } catch(e){ try{ console.warn('[labelOcrPickBlLine]', e); }catch(_e){} }
 }
 
 function labelOcrShowValidation(proposed){
@@ -9151,14 +9087,10 @@ function labelOcrApplyAndSavePhoto(decisions){
 function labelOcrToolbarHtml(target){
   try {
     const t = target === 'enr31' ? 'enr31' : 'enr23';
-    let html = '<div class="label-ocr-bar">'
+    return '<div class="label-ocr-bar">'
       + '<button type="button" class="cam" onclick="openLabelOcr(\'label\',\''+t+'\',\'camera\')">📷 Caméra</button>'
-      + '<button type="button" onclick="openLabelOcr(\'label\',\''+t+'\',\'gallery\')">🖼️ Galerie</button>';
-    if(t === 'enr23'){
-      html += '<button type="button" class="bl" onclick="openLabelOcr(\'bl\',\''+t+'\',\'camera\')">📄 BL</button>';
-    }
-    html += '</div>';
-    return html;
+      + '<button type="button" onclick="openLabelOcr(\'label\',\''+t+'\',\'gallery\')">🖼️ Galerie</button>'
+      + '</div>';
   } catch(e){ return ''; }
 }
 
@@ -9715,12 +9647,14 @@ function r23ProdBlock(pfx, num){
       <span style="font-size:.78rem;font-weight:900;color:var(--plum);flex:1">
         📦 Produit ${num}${required?'':' <span style="font-size:.65rem;font-weight:600;color:#b89ab6">(optionnel)</span>'}
       </span>
-      <button class="photo-btn" style="width:auto;padding:7px 13px;margin:0;font-size:.75rem"
-        onclick="openOcrModal('${pfx}')">
-        ${d[pfx+'_photo']?'📷 Changer photo':'📷 Photo étiquette'}
-      </button>
+      <span class="label-ocr-bar" style="margin:0;flex:0 0 auto;gap:4px">
+        <button type="button" class="cam" style="min-width:0;padding:7px 10px;font-size:.72rem;flex:0 0 auto"
+          onclick="openLabelOcr('label','enr23','camera')">${d[pfx+'_photo']?'📷 Reprendre':'📷 Caméra'}</button>
+        <button type="button" style="min-width:0;padding:7px 10px;font-size:.72rem;flex:0 0 auto"
+          onclick="openLabelOcr('label','enr23','gallery')">🖼️ Galerie</button>
+      </span>
     </div>
-    ${d[pfx+'_photo']?photoThumb(d[pfx+'_photo'],'📷 Étiquette produit '+num):''}
+    ${d[pfx+'_photo']?photoThumb(d[pfx+'_photo'],'📷 Photo étiquette'):''}
     <div class="surge-toggle${surge?' on':''}" onclick="r23ToggleSurge('${pfx}',this)">
       <span style="font-size:1rem">${surge?'❄️':'🌡️'}</span>
       <span class="surge-toggle-lbl">${surge?'Surgelé — consigne ≤ -18°C':'Frais/réfrigéré — consigne ≤ +3°C'}</span>
@@ -10039,7 +9973,6 @@ function renderENR23(){
   return `<div class="card">
     <div class="card-title">📦 Contrôle à réception <span class="tag prpo">PrPo</span></div>
     <div class="regle">Réception en <strong>3 étapes</strong> : en-tête (BL / fournisseur) → produits → visa. T°C ≤ +3°C (tol. +6°C). NC → fiche Non-conformité.</div>
-    ${labelOcrToolbarHtml('enr23')}
     <div class="fg-label">Nouvelle réception</div>
     ${r23StepBar(step)}
     ${body}
@@ -13004,30 +12937,7 @@ function renderENR31() {
       <div class="card-title">${def.title}</div>
       <div class="regle">${def.regle} Le bandeau « Menu du jour » relie ce lot à un ou plusieurs plats.</div>
       ${labelOcrToolbarHtml('enr31')}
-
-      <div style="margin-bottom:12px">
-        <div style="font-size:.7rem;font-weight:800;color:var(--plum);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📷 Photos étiquettes (max 3) <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--gris2)">(recommandé)</span></div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-          <div>
-            <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31')">
-              ${(S['enr31']?.draft?.photo)?'✓ Photo 1':'📷 Photo 1'}
-            </button>
-            ${(S['enr31']?.draft?.photo)?photoThumb(S['enr31'].draft.photo,'Photo 1'):''}
-          </div>
-          <div>
-            <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31_2')">
-              ${(S['enr31']?.draft?.photo2)?'✓ Photo 2':'📷 Photo 2'}
-            </button>
-            ${(S['enr31']?.draft?.photo2)?photoThumb(S['enr31'].draft.photo2,'Photo 2'):''}
-          </div>
-          <div>
-            <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31_3')">
-              ${(S['enr31']?.draft?.photo3)?'✓ Photo 3':'📷 Photo 3'}
-            </button>
-            ${(S['enr31']?.draft?.photo3)?photoThumb(S['enr31'].draft.photo3,'Photo 3'):''}
-          </div>
-        </div>
-      </div>
+      ${(draft.photo)?('<div style="margin:0 0 12px">'+photoThumb(draft.photo,'📷 Photo étiquette')+'</div>'):''}
 
       <div class="fg-label">Nouvelle saisie</div>
       ${renderFields(fields31, 'enr31')}
