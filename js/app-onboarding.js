@@ -961,7 +961,11 @@ window.generatePMS = async function() {
   }
 
   /* Valeurs partagées entre l'écriture locale (haccp_v6) et la config cloud (sites.config) */
-  var chefsNames = _data.noms.filter(function(n){ return n.trim(); });
+  var chefsNames = _data.noms.filter(function(n){ return n.trim(); }).map(function(n){ return n.trim(); });
+  // La tablette n'affiche que les cuisiniers manuels tagués avec le code du site
+  // ({name, site}, cf. _taggedManualNames dans app-cuisine.js) : une chaîne nue est masquée
+  // puis effacée du cloud au premier enregistrement de la config.
+  var _chefsTagged = function(code){ return _chefsTaggedFor(chefsNames, code); };
   var nettRefData = _nettoyage.filter(function(z){ return z.checked; }).map(function(z) {
     return { id: z.id, zone: z.zone, materiel: z.materiel, freq: z.freq, produit: z.produit };
   });
@@ -1117,7 +1121,9 @@ window.generatePMS = async function() {
     await Promise.all(siteCodes.map(function(code){
       return fetch(SUPABASE_URL + '/rest/v1/sites?code=eq.' + encodeURIComponent(code), {
         method: 'PATCH', headers: hdrPatch,
-        body: JSON.stringify({ config: cloudSiteConfig })
+        body: JSON.stringify({ config: Object.assign({}, cloudSiteConfig, {
+          config: Object.assign({}, cloudSiteConfig.config, { chefs_manuels: _chefsTagged(code) })
+        }) })
       }).then(function(r){ if (!r.ok) console.warn('[Onboarding] site config PATCH HTTP ' + r.status); })
         .catch(function(e){ console.warn('[Onboarding] site config PATCH:', e); });
     }));
@@ -1140,7 +1146,7 @@ window.generatePMS = async function() {
 
     /* Noms chefs */
     S.config.chefs = chefsNames;
-    S.config.chefs_manuels = chefsNames;
+    S.config.chefs_manuels = _chefsTagged(siteCodes[0]);
 
     /* Nettoyage */
     S.nett_ref = nettRefData;
@@ -1283,6 +1289,12 @@ function _buildNavCfg(procs) {
   var vis = _visibleFiches(procs), hidden = {};
   FICHES_CONNUES.forEach(function(id){ if (vis.indexOf(id) < 0) hidden[id] = true; });
   return { hidden: hidden };
+}
+function _chefsTaggedFor(names, code) {
+  var site = String(code || '').trim().toUpperCase();
+  if (!site) return [];
+  return (names || []).filter(function(n){ return typeof n === 'string' && n.trim(); })
+    .map(function(n){ return { name:n.trim(), site:site }; });
 }
 async function _hashPinOnb(pin) {
   // Même format que _hashPin() d'app-cuisine.js : SHA-256(sel 16 octets + PIN), base64
@@ -1446,6 +1458,9 @@ async function _applySoloPmsToSite(kitchen) {
   try { cloud = JSON.parse(JSON.stringify(cloud)); } catch (e) { cloud = state.cloudSiteConfig; }
   cloud.pmsPending = false;
   cloud.pmsConfigured = true;
+  // Cuisiniers tagués avec le code de CETTE cuisine, sinon la tablette les masque (getChefs)
+  cloud.config = cloud.config || {};
+  cloud.config.chefs_manuels = _chefsTaggedFor(snap.chefsNames || cloud.config.chefs || [], code);
   var hdrMin = {
     'Content-Type': 'application/json',
     'apikey': SUPABASE_ANON_KEY,
@@ -1509,7 +1524,7 @@ async function _applySoloPmsToSite(kitchen) {
     if (snap.distribSvcs && snap.distribSvcs.length) S.config.distribServices = snap.distribSvcs;
     S.config.enrActifs = snap.enrActifsData || S.config.enrActifs;
     S.config.chefs = snap.chefsNames || [];
-    S.config.chefs_manuels = snap.chefsNames || [];
+    S.config.chefs_manuels = _chefsTaggedFor(snap.chefsNames || [], code);
     S.nett_ref = snap.nettRefData || [];
     S.fournisseurs = snap.fournData || [];
     S.config.poubelles = snap.poubData || [];

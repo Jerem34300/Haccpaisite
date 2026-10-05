@@ -470,6 +470,42 @@ function _menuSetLotPlat(uuid, ref, on){
     try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr31', l); } catch(e){}
   } catch(e){ console.warn('[menu] set lot plat', e); }
 }
+// Historique Traçabilité MP : un bouton par plat du jour pour lier / délier le lot après coup
+function _mpSafeId(v){ return String(v == null ? '' : v).replace(/[^\w-]/g, ''); }
+window._menuMpPlatsChips = function(l){
+  try {
+    if(!l || l._deleted) return '';
+    const plats = l._uuid ? todayMenuPlats() : [];
+    const uuid = _mpSafeId(l._uuid);
+    // Plats liés hors menu du jour : affichés par leur nom (pas le code plat_id)
+    const autres = _menuPlatRefsFromLigne(l)
+      .filter(r => !plats.some(x => String(x.p.plat_id) === String(r.plat_id)))
+      .map(r => r.nom || (String(r.plat_id) === String(l._plat_id||'') ? l._plat_nom : '') || 'Plat d\'un autre jour');
+    const fixes = autres.map(n => '<span style="border-radius:999px;padding:4px 10px;font-size:.7rem;font-weight:800;background:#f0fdf4;color:#166534;border:1.5px solid #bbf7d0">🔗 ' + escH(n) + '</span>').join('');
+    if(!plats.length && !fixes) return '';
+    const chips = plats.map(x => {
+      const on = _ligneHasPlat(l, x.p.plat_id);
+      return '<button type="button" onclick="event.stopPropagation();window._menuMpToggle(\''+uuid+'\',\''+_mpSafeId(x.p.plat_id)+'\')"'
+        + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:4px 10px;font-size:.7rem;font-weight:800;touch-action:manipulation;'
+        + (on ? 'background:#dcfce7;color:#166534;border:1.5px solid #86efac' : 'background:#fff;color:#7A6579;border:1.5px dashed #d8b4d8')
+        + '">' + (on ? '✅ ' : '＋ ') + escH(x.p.nom) + '</button>';
+    }).join('');
+    return '<div style="margin-top:8px"><div style="font-size:.62rem;font-weight:800;color:#7A6579;text-transform:uppercase;letter-spacing:.3px;margin-bottom:4px">Utilisé dans</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:5px">' + chips + fixes + '</div></div>';
+  } catch(e){ console.warn('[menu] mp chips', e); return ''; }
+};
+window._menuMpToggle = function(uuid, platId){
+  try {
+    const l = _menuFindEnr31(uuid);
+    const x = todayMenuPlats().find(y => y && y.p && _mpSafeId(y.p.plat_id) === platId);
+    if(!l || !x) return;
+    const ref = { plat_id:x.p.plat_id, nom:x.p.nom, menu_id:x.menu_id || '', profil_haccp:x.p.profil_haccp || '' };
+    _menuSetLotPlat(uuid, ref, !_ligneHasPlat(l, x.p.plat_id));
+    if(typeof renderMain === 'function') renderMain();
+    if(typeof renderNav === 'function') renderNav();
+  } catch(e){ console.warn('[menu] mp toggle', e); }
+};
+
 function _menuAddMpToPlats(nom, lot, refs){
   try {
     const name = String(nom||'').trim();
@@ -534,8 +570,8 @@ window._menuOpenTraces = function(catId, idx, svcId){
       <button id="mn-trace-close" type="button" style="width:100%;margin-top:8px;padding:11px;background:#f3e8f3;color:#5C1E5A;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">Fermer</button>
     </div>`;
     document.body.appendChild(ov);
-    ov.addEventListener('click', function(e){ if(e.target===ov){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); }catch(err){} } });
-    document.getElementById('mn-trace-close').onclick = function(){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); }catch(e){} };
+    ov.addEventListener('click', function(e){ if(e.target===ov){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); if(typeof renderNav==='function') renderNav(); }catch(err){} } });
+    document.getElementById('mn-trace-close').onclick = function(){ ov.remove(); try{ if(typeof renderMain==='function') renderMain(); if(typeof renderNav==='function') renderNav(); }catch(e){} };
     ov.querySelectorAll('input[data-mp-uuid]').forEach(cb => {
       cb.addEventListener('change', function(){
         try { _menuSetLotPlat(cb.getAttribute('data-mp-uuid'), ref, cb.checked); } catch(err){ console.warn('[menu] toggle lot', err); }
@@ -555,6 +591,7 @@ window._menuOpenTraces = function(catId, idx, svcId){
         _menuAddMpToPlats(nom, lot, [ref].concat(extras));
         ov.remove();
         if(typeof renderMain==='function') renderMain();
+        if(typeof renderNav==='function') renderNav();
       } catch(err){ console.warn('[menu] add mp', err); }
     };
   } catch(e){ console.warn('[menu] open traces', e); }
@@ -1267,6 +1304,24 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
     w.document.write(html);
     w.document.close();
     if(typeof toast==='function') toast('🖨️ '+realCount+' étiquettes prêtes à imprimer','success');
+    // Les témoins du menu ne sont validés qu'après confirmation de l'impression
+    const imprimes = [];
+    CATS.forEach(c => {
+      (menu.categories[c.id]||[]).forEach(plat => {
+        imprimes.push({ _plat_id: plat.plat_id, _variant: '' });
+        if(plat.variants?.mixe)     imprimes.push({ _plat_id: plat.plat_id, _variant: 'mixé' });
+        if(plat.variants?.sans_sel) imprimes.push({ _plat_id: plat.plat_id, _variant: 'sans_sel' });
+        if(plat.variants?.hp)       imprimes.push({ _plat_id: plat.plat_id, _variant: 'hp' });
+      });
+    });
+    setTimeout(function(){
+      try {
+        showConfirm('🖨️ Étiquettes bien imprimées ?', 'Si oui, les plats témoins seront validés.', '✅ Oui', function(){
+          window._temoinMarkImprime(imprimes);
+          if(typeof renderMain === 'function') renderMain();
+        });
+      } catch(e){ console.warn('[menu print] confirm:', e); }
+    }, 1500);
   } catch(e){
     console.warn('[menu print]', e);
     if(typeof toast==='function') toast('Erreur impression: '+e.message,'danger');
@@ -1774,6 +1829,29 @@ window._menuProdSuggest = function(q){
   } catch(e){ return []; }
 };
 
+// Plats témoins créés depuis le menu : ne comptent comme faits qu'une fois l'étiquette
+// imprimée (confirmation « Étiquettes bien imprimées ? »). Mémorisé pour le jour en cours.
+function _temoinKey(platId, variant){
+  return String(platId||'') + '|' + String(variant||'').toLowerCase().replace(/\s+/g,'_');
+}
+function _temoinImprime(l){
+  try {
+    if(!l || !l._from_menu) return true;
+    const m = S.etiqImprimees;
+    return !!(m && m.date === today() && m.keys && m.keys[_temoinKey(l._plat_id, l._variant)]);
+  } catch(e){ return true; }
+}
+window._temoinMarkImprime = function(entries){
+  try {
+    const t = today();
+    if(!S.etiqImprimees || S.etiqImprimees.date !== t) S.etiqImprimees = { date:t, keys:{} };
+    (entries||[]).forEach(b => {
+      if(b && b._plat_id) S.etiqImprimees.keys[_temoinKey(b._plat_id, b._variant)] = true;
+    });
+    save();
+  } catch(e){ console.warn('[menu] _temoinMarkImprime:', e); }
+};
+
 function platDejaSaisi(enrId, plat){
   try {
     const store = (typeof S !== 'undefined' && S[enrId]) || {};
@@ -1781,6 +1859,7 @@ function platDejaSaisi(enrId, plat){
     const nom = String(plat && plat.nom || '').trim().toLowerCase();
     return lignes.some(l => {
       if(!ligneIsToday(l)) return false;
+      if(enrId === 'enr33' && !_temoinImprime(l)) return false;
       if(plat && plat.plat_id && _ligneHasPlat(l, plat.plat_id)) return true;
       const alt = String(l._plat_nom || l.produit || '').trim().toLowerCase();
       if(nom && alt && alt === nom) return true;
@@ -2127,8 +2206,61 @@ function hookBatchFunctions(){
 // Règles Jérémie (oct. 2026) : plat témoin pour tous ; Remise T°C → ENR02 ;
 // coché Mixé → ENR07 (mixé cuit) ou ENR08 (mixé cru). Pas d'ENR01 pour BF Cuit,
 // pas de températures de distribution.
+// Lot matière première (ENR31) lié au plat — tous profils, sortie directe comprise
+function platMpCount(p){
+  try {
+    return ((S.enr31 && S.enr31.lignes) || []).filter(l => l && !l._deleted && _ligneHasPlat(l, p && p.plat_id)).length;
+  } catch(e){ return 0; }
+}
+function platMpLie(p){ return platMpCount(p) > 0; }
+// Noms des ingrédients (lots ENR31) déjà liés au plat, pour les afficher sous le plat
+function platMpNoms(p){
+  try {
+    const seen = {};
+    return ((S.enr31 && S.enr31.lignes) || [])
+      .filter(l => l && !l._deleted && _ligneHasPlat(l, p && p.plat_id))
+      .map(l => String(l.produit || '').trim())
+      .filter(n => n && !seen[n.toLowerCase()] && (seen[n.toLowerCase()] = 1));
+  } catch(e){ return []; }
+}
+// Lots MP fait = au moins un lot lié ET le cuisinier a confirmé « tout est tracé »
+// (l'appli ne connaît pas la recette : un seul lot ne suffit pas à valider)
+function platMpComplet(p){ return !!(p && p.mp_complet === true) && platMpLie(p); }
+function platStepDone(enrId, p){
+  return enrId === 'enr31' ? platMpComplet(p) : platDejaSaisi(enrId, p);
+}
+// Pastille de l'onglet Traçabilité MP : plats du menu du jour pas encore complets
+window._menuMpManquants = function(){
+  try { return todayMenuPlats().filter(x => x && x.p && !platMpComplet(x.p)).length; }
+  catch(e){ return 0; }
+};
+// Bouton « ✔ Tout tracé » / « ↺ Rouvrir » du widget d'accueil
+window._menuMpComplet = function(ev, svcId, catId, idx){
+  try { if(ev){ ev.preventDefault(); ev.stopPropagation(); } } catch(e){}
+  try {
+    const t = today();
+    const m = getMenu(t, svcId);
+    const p = m && m.categories && m.categories[catId] && m.categories[catId][idx];
+    if(!p) return;
+    p.mp_complet = !(p.mp_complet === true);
+    // Menu renvoyé au cloud (sinon le prochain pull remet l'ancienne version sans mp_complet)
+    const rec = stampEntry({ menu_date:t, service:svcId, categories:m.categories, menu_id:m.menu_id, date:t, _ts:new Date().toISOString() });
+    m._ts = rec._ts;
+    setMenu(t, svcId, m);
+    try {
+      if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue){
+        SupaEngine.enqueue('enr_menu', rec);
+        if(SupaEngine.flush) setTimeout(()=>SupaEngine.flush(), 200);
+      }
+    } catch(e){ console.warn('[menu] mp complet enqueue:', e); }
+    if(typeof toast === 'function') toast(p.mp_complet ? '✅ '+p.nom+' : tous les ingrédients tracés' : '↺ '+p.nom+' : traçabilité MP rouverte', 'success');
+    if(typeof renderMain === 'function') renderMain();
+    if(typeof renderNav === 'function') renderNav();
+  } catch(e){ console.warn('[menu] _menuMpComplet:', e); }
+};
+
 function platTraceSteps(p){
-  const steps = [{ enr:'enr33', ico:'🍱', label:'Témoin' }];
+  const steps = [{ enr:'enr33', ico:'🍱', label:'Témoin' }, { enr:'enr31', ico:'📋', label:'Lots MP' }];
   try {
     if(p && p.profil_haccp === 'REMISE_TC') steps.push({ enr:'enr02', ico:'🔥', label:'Remise T°C' });
     if(p && p.variants && p.variants.mixe){
@@ -2147,12 +2279,29 @@ window._menuOpenStep = function(ev, enrId, svcId, catId, idx){
     const p = m && m.categories && m.categories[catId] && m.categories[catId][idx];
     if(!p) { goTo('menu_jour'); return; }
     if(!enrId){
-      const todo = platTraceSteps(p).find(st => !platDejaSaisi(st.enr, p));
+      const todo = platTraceSteps(p).find(st => !platStepDone(st.enr, p));
       enrId = (todo || platTraceSteps(p)[0]).enr;
     }
     _menuLinkPending[enrId] = { plat_id:p.plat_id, nom:p.nom, profil_haccp:p.profil_haccp, menu_id:p.menu_id || m.menu_id };
+    // Lots MP : fiche Traçabilité MP liée à ce seul plat (pas de liens restés d'une saisie précédente)
+    if(enrId === 'enr31') _menuLinkPendingMulti['enr31'] = [_menuLinkPending[enrId]];
     goTo(enrId);
   } catch(e){ console.warn('[menu] _menuOpenStep:', e); try { goTo('menu_jour'); } catch(_){} }
+};
+
+// Repli du détail des plats sur l'accueil (seule la barre de traçabilité reste) — mémorisé dans S.config
+window._menuWgToggle = function(ev){
+  try { if(ev){ ev.preventDefault(); ev.stopPropagation(); } } catch(e){}
+  try {
+    S.config = S.config || {};
+    const folded = S.config.menuWgFolded !== false;
+    S.config.menuWgFolded = !folded;
+    save();
+    const box = document.getElementById('menu-wg-plats');
+    const btn = document.getElementById('menu-wg-fold');
+    if(box) box.style.display = folded ? '' : 'none';
+    if(btn) btn.textContent = folded ? '▴ Replier' : '▾ Voir les plats';
+  } catch(e){ console.warn('[menu] _menuWgToggle:', e); }
 };
 
 function renderMenuHomeWidget(){
@@ -2190,13 +2339,34 @@ function renderMenuHomeWidget(){
         let allDone = true;
         const chips = steps.map(st => {
           let done = false;
-          try { done = platDejaSaisi(st.enr, p); } catch(e){}
+          try { done = platStepDone(st.enr, p); } catch(e){}
           stepsTotal++; if(done) stepsDone++; else allDone = false;
+          // Lots MP : nombre de lots liés ; orange tant que « tout tracé » n'est pas confirmé
+          let nMp = 0, enCours = false, mpBtn = '';
+          if(st.enr === 'enr31'){
+            try { nMp = platMpCount(p); } catch(e){}
+            enCours = !done && nMp > 0;
+            if(nMp > 0){
+              mpBtn = '<button type="button" onclick="window._menuMpComplet(event,\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
+                + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
+                + (done ? 'background:#fff;color:#7A6579;border:1px solid #e5d5e5' : 'background:#5C1E5A;color:#fff;border:1px solid #5C1E5A')
+                + '">' + (done ? '↺ Rouvrir' : '✔ Tout tracé') + '</button>';
+            }
+          }
           return '<button type="button" onclick="window._menuOpenStep(event,\''+st.enr+'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
             + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
-            + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac' : 'background:#fff;color:#7A6579;border:1px dashed #d8b4d8')
-            + '">' + (done ? '✅ ' : '⬜ ') + st.ico + ' ' + escH(st.label) + '</button>';
+            + (done ? 'background:#dcfce7;color:#166534;border:1px solid #86efac'
+                : enCours ? 'background:#fff7ed;color:#9a3412;border:1px solid #fdba74'
+                : 'background:#fff;color:#7A6579;border:1px dashed #d8b4d8')
+            + '">' + (done ? '✅ ' : enCours ? '🟠 ' : '⬜ ') + st.ico + ' ' + escH(st.label) + (nMp > 0 ? ' · ' + nMp : '') + '</button>' + mpBtn;
         }).join('');
+        let mpNomsHtml = '';
+        try {
+          const noms = platMpNoms(p);
+          if(noms.length) mpNomsHtml = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin:3px 0 0 14px">'
+            + noms.map(n => '<span style="border-radius:999px;padding:1px 6px;font-size:.58rem;font-weight:800;background:#dcfce7;color:#166534;border:1px solid #86efac">'+escH(n)+'</span>').join('')
+            + '</div>';
+        } catch(e){}
         return '<div style="padding:4px 0;border-bottom:1px dashed #f1e6f1;min-width:0">'
           + '<div onclick="window._menuOpenStep(event,\'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')" style="display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer">'
           + '<span style="flex:none;width:8px;height:8px;border-radius:50%;background:'+escH(col)+'"></span>'
@@ -2204,6 +2374,7 @@ function renderMenuHomeWidget(){
           + (allDone ? '<span style="flex:none;font-size:.7rem">✅</span>' : '')
           + '</div>'
           + '<div style="display:flex;flex-wrap:wrap;gap:4px;margin:3px 0 0 14px">'+chips+'</div>'
+          + mpNomsHtml
           + '</div>';
       }).join('');
       return '<div style="background:#fff;border:1px solid #ede0ed;border-radius:10px;padding:6px 9px;min-width:0">'
@@ -2217,6 +2388,8 @@ function renderMenuHomeWidget(){
 
   const pct = stepsTotal ? Math.round(stepsDone * 100 / stepsTotal) : 0;
   const barCol = pct >= 100 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
+  let folded = true;
+  try { folded = !(S.config && S.config.menuWgFolded === false); } catch(e){}
 
   return `<div class="wc" style="cursor:pointer;background:linear-gradient(135deg,#fdf4fd,#fff);border:1.5px solid #d8b4d8" onclick="goTo('menu_jour')">
     <div style="display:flex;align-items:center;gap:8px">
@@ -2225,6 +2398,7 @@ function renderMenuHomeWidget(){
         <div style="font-size:.85rem;font-weight:900;color:#5C1E5A">Menu du jour</div>
         <div style="font-size:.62rem;font-weight:700;color:#7A6579">${escH(services.map(s=>s.label).join(' • '))} • ${totalPlats} plat${totalPlats>1?'s':''}</div>
       </div>
+      <button type="button" id="menu-wg-fold" onclick="window._menuWgToggle(event)" style="flex:none;font-family:inherit;cursor:pointer;background:#fff;border:1px solid #d8b4d8;color:#5C1E5A;border-radius:999px;padding:4px 10px;font-size:.66rem;font-weight:800">${folded ? '▾ Voir les plats' : '▴ Replier'}</button>
     </div>
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;font-size:.66rem;font-weight:800;color:#5C1E5A;margin-bottom:3px">
@@ -2232,7 +2406,7 @@ function renderMenuHomeWidget(){
       </div>
       <div style="height:8px;background:#f1e6f1;border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barCol};border-radius:999px"></div></div>
     </div>
-    ${blocks}
+    <div id="menu-wg-plats" style="${folded ? 'display:none' : ''}">${blocks}</div>
   </div>`;
 }
 

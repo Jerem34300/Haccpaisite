@@ -51,8 +51,15 @@ function updatePlanReminder(){
     el.textContent = 'Vous avez choisi Entreprise — sur devis';
   } else {
     el.className = 'plan-reminder muted';
-    el.innerHTML = 'Choisissez Solo ou Multi — <a href="/#pricing">voir les tarifs</a>';
+    el.innerHTML = 'Choisissez Solo ou Multi — <a href="#" onclick="togglePlanPrices(event)">voir les tarifs</a>';
   }
+}
+
+// Affiche les tarifs dans la page : /#pricing renvoie vers le dashboard/cuisine si une session existe déjà
+function togglePlanPrices(ev){
+  try{ if(ev) ev.preventDefault(); }catch(e){ console.warn(e); }
+  const box = document.getElementById('plan-prices');
+  if(box) box.hidden = !box.hidden;
 }
 
 function updateBillingBlock(){

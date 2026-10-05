@@ -40,6 +40,7 @@ const CATS = [
 
 // ENR concernés par la traçabilité d'un plat
 const TRACE_ENR = {
+  enr31:           { ico:'🏷️', label:'Lot matière première', color:'#0369a1' },
   enr23:           { ico:'📦', label:'Réception',       color:'#0ea5e9' },
   enr01:           { ico:'❄️', label:'Refroidissement', color:'#1e40af' },
   enr02:           { ico:'🔥', label:'Remise T°C',      color:'#dc2626' },
@@ -72,7 +73,18 @@ let _menuPage = {
 // ════════════════════════════════════════════════════
 function getAllMenus(){
   if(typeof _records === 'undefined') return [];
-  return _records.filter(r => r.enr_type === 'enr_menu').map(r => ({
+  // Chaque « Enregistrer le menu » / « Tout tracé » sur la tablette envoie une nouvelle
+  // version du menu : on ne garde que la plus récente par site + date + service + régime.
+  const latest = {};
+  _records.filter(r => r.enr_type === 'enr_menu').forEach(r => {
+    try {
+      const d = r.data || {};
+      const k = [r.site_id, (d.menu_date || r.recorded_at || '').slice(0,10), d.service || 'midi', d.type_repas || 'normal'].join('|');
+      const ts = String(d._ts || r.recorded_at || '');
+      if(!latest[k] || ts > latest[k]._k_ts) latest[k] = { r, _k_ts: ts };
+    } catch(e){ console.warn('[menu-dash] dédoublonnage enr_menu', e); }
+  });
+  return Object.keys(latest).map(k => latest[k].r).map(r => ({
     id:         r.id,
     site_id:    r.site_id,
     recorded_at:r.recorded_at,
@@ -116,10 +128,39 @@ function flatPlats(menu){
   return out;
 }
 
-function getEnrLinkedToPlat(platId, siteCode, menuDate){
+// Conformité globale d'un relevé : la tablette ne remplit pas toujours « conforme » —
+// BF cuit / mixage (ENR07) stocke conf_cuisson, conf_mix_deb, conf_duree, conf_deb…
+// Un seul « NON » → non conforme ; sinon au moins un « OUI » → conforme.
+function _recConf(r){
+  try {
+    const d = (r && r.data) || {};
+    const vals = Object.keys(d).filter(k => k === 'conforme' || /^conf_?/.test(k)).map(k => d[k]);
+    if(vals.includes('NON')) return 'NON';
+    if(vals.includes('OUI')) return 'OUI';
+  } catch(e){ console.warn('[menu-dash] conformité', e); }
+  return '';
+}
+function _menuNorm(s){
+  try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
+  catch(e){ return String(s||'').toLowerCase().trim(); }
+}
+// Le relevé nomme-t-il ce plat ? (plat témoin, refroidissement, lot MP… saisis sans lien _plat_id)
+function _menuRecNommePlat(r, platNom){
+  const n = _menuNorm(platNom);
+  if(!n) return false;
+  const d = (r && r.data) || {};
+  return [d._plat_nom, d.produit, d.plat, d.nom, d.libelle].some(v => {
+    const t = _menuNorm(v);
+    return t && t.indexOf(n) !== -1;
+  });
+}
+function getEnrLinkedToPlat(platId, siteCode, menuDate, platNom){
   if(typeof _records === 'undefined') return [];
   return _records.filter(r => {
     if(r.enr_type === 'enr_menu') return false;
+    // ENR03 = fiche récap créée automatiquement à partir du refroidissement (ENR01) et de la
+    // remise (ENR02), déjà affichés : doublon dans la fiche plat
+    if(r.enr_type === 'enr03') return false;
     // Match par plat_id (priorité)
     try { if(typeof haccRecordLinksPlat === 'function' && haccRecordLinksPlat(r, platId)) return true; } catch(e){}
     if(r.data?._plat_id === platId) return true;
@@ -129,10 +170,11 @@ function getEnrLinkedToPlat(platId, siteCode, menuDate){
       const ids = r.data && r.data._plat_ids;
       if(Array.isArray(ids) && ids.some(x => String(x) === String(platId))) return true;
     } catch(e){}
-    // Match large : même site + même date + plat_nom dans le payload
+    // Match large : même site + même date + nom du plat dans le relevé
+    // (avant : tous les ENR du jour → la fiche plat affichait tout l'historique de la cuisine)
     if(r.site_id !== siteCode) return false;
     const recDate = (r.recorded_at||'').slice(0,10);
-    return recDate === menuDate;
+    return recDate === menuDate && _menuRecNommePlat(r, platNom);
   }).sort((a,b) => (a.recorded_at||'').localeCompare(b.recorded_at||''));
 }
 
@@ -256,12 +298,10 @@ function renderDayBlock(date, menus){
 function renderMenuCard(menu){
   let nbPlats = 0;
   CATS.forEach(c => nbPlats += (menu.categories?.[c.id]||[]).length);
-  // Couverture HACCP : compter ENR liés
-  const enrs = getEnrLinkedToMenu(menu.menu_id, menu.site_id, menu.menu_date)
-    .filter(r => r.enr_type !== 'enr_menu');
-  const totalExpected = nbPlats * 2; // estimation : 2 ENR par plat en moyenne
-  const pct = totalExpected ? Math.min(100, Math.round((enrs.length / totalExpected) * 100)) : 0;
-  const covColor = pct >= 70 ? '#16a34a' : (pct >= 40 ? '#ea580c' : '#dc2626');
+  // Couverture HACCP : part des plats dont la traçabilité est complète
+  const ts = _menuTraceStats(menu);
+  const pct = ts.total ? Math.round(ts.complete / ts.total * 100) : 0;
+  const covColor = ts.total && ts.complete === ts.total ? '#16a34a' : ((ts.complete + ts.entamee) > 0 ? '#ea580c' : '#dc2626');
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   return `
   <div class="mn-card" onclick="window._menuDashOpenDetail('${escAttr(menu.id)}')">
@@ -272,7 +312,7 @@ function renderMenuCard(menu){
     </div>
     <div class="mn-card-meta">
       <span>${menu.type_repas !== 'normal' ? '⚙️ '+menu.type_repas : ''}</span>
-      <span style="color:${covColor};font-weight:800">${enrs.length} ENR liés • ${pct}%</span>
+      <span style="color:${covColor};font-weight:800">${ts.complete}/${ts.total} plats tracés${ts.entamee ? ' • '+ts.entamee+' entamé'+(ts.entamee>1?'s':'') : ''}</span>${ts.nc ? ' <span style="background:#dc2626;color:#fff;font-weight:900;padding:1px 7px;border-radius:8px;margin-left:4px">💥 '+ts.nc+' plat'+(ts.nc>1?'s':'')+' NC</span>' : ''}
     </div>
     <div class="mn-card-cov"><div class="mn-card-cov-fill" style="width:${pct}%;background:${covColor}"></div></div>
   </div>`;
@@ -505,6 +545,7 @@ function renderMenuDetailPanel(menu){
             <span class="md-plat-name">${escH(p.nom)}</span>
             <span class="md-plat-prof" style="background:${prof.color}">${prof.ico} ${prof.label}</span>
           </div>
+          <div style="margin-top:4px">${(() => { try { return _traceBadge(_platTrace(p, getEnrLinkedToPlat(p.plat_id, menu.site_id, menu.menu_date, p.nom)), true); } catch(e){ return ''; } })()}</div>
           <div class="md-plat-meta">
             ${p.composants && p.composants.length ? '📝 '+p.composants.map(escH).join(', ')+' • ' : ''}
             ${linked.length} ENR lié${linked.length>1?'s':''} ${p.statut_auto==='preparé_minute'?'• ⚡ auto-validé':''}
@@ -535,8 +576,54 @@ window._menuDashOpenPlat = function(platId, menuId){
   renderFichePlat(plat, menu);
 };
 
+// ── Statut de traçabilité d'un plat (siège) ─────────────────────────
+// Cases adaptées au profil HACCP du plat : un préparé minute n'a ni cuisson ni refroidissement.
+// La réception (ENR23) contrôle 2 produits au hasard, jamais un plat : la traçabilité amont
+// passe par les lots de matières premières (ENR31), validés « tout tracé » sur la tablette
+// (même règle que platMpComplet côté cuisine). La T° de distribution se fait sur 2 plats
+// au choix : la case n'apparaît que si le plat a été relevé, et ne compte pas dans le statut.
+function _platTrace(plat, enrs){
+  const has = types => enrs.some(e => types.includes(e.enr_type));
+  const nbLots = enrs.filter(e => e.enr_type === 'enr31').length;
+  const lotsOk = nbLots > 0 && !!(plat && plat.mp_complet === true);
+  const tiles = [{ ico:'📦', lbl:'Lots MP', req:true, ok:lotsOk, part:nbLots>0 && !lotsOk, val:nbLots ? (lotsOk ? nbLots+' ✓' : nbLots+' · en cours') : '—' }];
+  const _tile = (ico, lbl, types) => tiles.push({ ico, lbl, req:true, ok:has(types), val:has(types)?'✓':'—' });
+  const _prof = PROFILS[plat && plat.profil_haccp] ? plat.profil_haccp : 'BF_CUIT';
+  if(_prof === 'BF_CUIT'){ _tile('🥘','Cuisson',['enr04','enr07']); _tile('❄️','Refroid.',['enr01','enr03']); }
+  else if(_prof === 'BF_CRU'){ _tile('🥗','Préparation',['enr08']); }
+  else if(_prof === 'REMISE_TC'){ _tile('❄️','Refroid.',['enr01','enr03']); _tile('🔥','Remise T°C',['enr02','enr03']); }
+  _tile('🍱','Témoin',['enr33']);
+  if(enrs.some(e => e.enr_type === 'enr_tc_distrib' || e.enr_type?.startsWith('enr_distrib_'))) tiles.push({ ico:'🌡️', lbl:'Distrib.', ok:true, val:'✓' });
+  const req = tiles.filter(t => t.req);
+  const done = req.filter(t => t.ok).length;
+  const status = done === req.length ? 'complete' : ((done > 0 || req.some(t => t.part)) ? 'entamee' : 'vide');
+  const nc = enrs.filter(e => e.enr_type === 'enr30' || _recConf(e) === 'NON').length;
+  return { tiles, done, total:req.length, status, nc };
+}
+const _TRACE_ST = {
+  complete:{ lbl:'Traçabilité complète', ico:'🟢', bg:'#dcfce7', fg:'#166534', bd:'#86efac' },
+  entamee: { lbl:'Traçabilité entamée',  ico:'🟠', bg:'#ffedd5', fg:'#9a3412', bd:'#fdba74' },
+  vide:    { lbl:'Traçabilité pas faite',ico:'🔴', bg:'#fee2e2', fg:'#991b1b', bd:'#fca5a5' },
+};
+function _traceBadge(st, court){
+  const d = _TRACE_ST[st.status] || _TRACE_ST.vide;
+  const txt = court ? (st.status==='complete' ? 'Complète' : (st.status==='entamee' ? 'Entamée '+st.done+'/'+st.total : 'Pas faite')) : d.lbl+' ('+st.done+'/'+st.total+')';
+  // Traçabilité complète ≠ conforme : badge « explosion » à côté s'il y a une NC sur le plat
+  const ncB = st.nc ? ' <span style="display:inline-block;font-size:.66rem;font-weight:900;padding:2px 8px;border-radius:9px;background:#dc2626;color:#fff;white-space:nowrap">💥 '+st.nc+' NC</span>' : '';
+  return '<span style="display:inline-block;font-size:.66rem;font-weight:800;padding:2px 8px;border-radius:9px;background:'+d.bg+';color:'+d.fg+';border:1px solid '+d.bd+';white-space:nowrap">'+d.ico+' '+txt+'</span>'+ncB;
+}
+function _menuTraceStats(menu){
+  const plats = flatPlats(menu);
+  const out = { complete:0, entamee:0, vide:0, nc:0, total:plats.length };
+  plats.forEach(p => {
+    try { const st = _platTrace(p, getEnrLinkedToPlat(p.plat_id, menu.site_id, menu.menu_date, p.nom)); out[st.status]++; if(st.nc) out.nc++; }
+    catch(e){ out.vide++; console.warn('[menu-dash] statut plat', e); }
+  });
+  return out;
+}
+
 function renderFichePlat(plat, menu){
-  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date);
+  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date, plat.nom);
   const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   const dFr = new Date(menu.menu_date).toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long', year:'numeric' });
@@ -545,12 +632,10 @@ function renderFichePlat(plat, menu){
   document.getElementById('detail-sub').textContent = `${siteName} • ${dFr} • ${SERVICES[menu.service]||menu.service}`;
 
   // Stats
-  const ncCount = enrs.filter(e => e.enr_type === 'enr30' || e.data?.conforme === 'NON').length;
-  const hasReception = enrs.some(e => e.enr_type === 'enr23');
-  const hasCuisson = enrs.some(e => ['enr04','enr07','enr08'].includes(e.enr_type));
-  const hasRefroid = enrs.some(e => ['enr01','enr03'].includes(e.enr_type));
-  const hasTemoin = enrs.some(e => e.enr_type === 'enr33');
-  const hasDistrib = enrs.some(e => e.enr_type === 'enr_tc_distrib' || e.enr_type?.startsWith('enr_distrib_'));
+  const ncCount = enrs.filter(e => e.enr_type === 'enr30' || _recConf(e) === 'NON').length;
+  const _st = _platTrace(plat, enrs);
+  const fpTiles = _st.tiles.slice();
+  fpTiles.push({ ico:'🚨', lbl:'NC', ok:ncCount===0, ko:ncCount>0, val:ncCount });
 
   document.getElementById('detail-body').innerHTML = `
   <style>
@@ -562,6 +647,8 @@ function renderFichePlat(plat, menu){
     .fp-stat-val{font-size:.78rem;font-weight:900;margin-top:1px}
     .fp-stat.ok{background:#dcfce7;border-color:#86efac}
     .fp-stat.ko{background:#fee2e2;border-color:#fca5a5}
+    .fp-stat.part{background:#ffedd5;border-color:#fdba74}
+    .fp-stat.part .fp-stat-val{color:#9a3412}
     .fp-stat.ok .fp-stat-val{color:#166534}
     .fp-stat.ko .fp-stat-val{color:#991b1b}
     .fp-timeline{position:relative;padding-left:22px}
@@ -584,16 +671,12 @@ function renderFichePlat(plat, menu){
   </style>
   <span class="fp-back" onclick="window._menuDashOpenDetail('${escAttr(menu.id)}')">‹ Retour au menu</span>
   <div class="fp-prof" style="background:${prof.color}">${prof.ico} ${prof.label}</div>
+  <div style="margin:-2px 0 10px">${_traceBadge(_st)}</div>
   ${plat.composants && plat.composants.length ? `<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Composants :</strong> ${plat.composants.map(escH).join(', ')}</div>` : ''}
   ${(() => { try { const fl=_dashPlatFlags(plat); const mps=_dashMpNoms(plat.plat_id, enrs); const parts=[]; if(fl) parts.push('<div style="font-size:.78rem;font-weight:800;color:#9a3412;margin-bottom:8px">'+fl+'</div>'); if(mps.length) parts.push('<div style="font-size:.78rem;color:#475569;margin-bottom:10px"><strong>Matières premières :</strong> '+mps.map(escH).join(', ')+'</div>'); return parts.join(''); } catch(e){ return ''; } })()}
 
   <div class="fp-stats">
-    <div class="fp-stat ${hasReception?'ok':''}"><div class="fp-stat-ico">📦</div><div class="fp-stat-lbl">Réception</div><div class="fp-stat-val">${hasReception?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasCuisson?'ok':''}"><div class="fp-stat-ico">🥘</div><div class="fp-stat-lbl">Cuisson</div><div class="fp-stat-val">${hasCuisson?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasRefroid?'ok':''}"><div class="fp-stat-ico">❄️</div><div class="fp-stat-lbl">Refroid.</div><div class="fp-stat-val">${hasRefroid?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasTemoin?'ok':''}"><div class="fp-stat-ico">🍱</div><div class="fp-stat-lbl">Témoin</div><div class="fp-stat-val">${hasTemoin?'✓':'—'}</div></div>
-    <div class="fp-stat ${hasDistrib?'ok':''}"><div class="fp-stat-ico">🌡️</div><div class="fp-stat-lbl">Distrib.</div><div class="fp-stat-val">${hasDistrib?'✓':'—'}</div></div>
-    <div class="fp-stat ${ncCount>0?'ko':'ok'}"><div class="fp-stat-ico">🚨</div><div class="fp-stat-lbl">NC</div><div class="fp-stat-val">${ncCount}</div></div>
+    ${fpTiles.map(t => `<div class="fp-stat ${t.ko?'ko':(t.ok?'ok':(t.part?'part':''))}"><div class="fp-stat-ico">${t.ico}</div><div class="fp-stat-lbl">${t.lbl}</div><div class="fp-stat-val">${t.val}</div></div>`).join('')}
   </div>
 
   <button class="fp-export" onclick="window._menuDashExportPlat('${escAttr(plat.plat_id)}','${escAttr(menu.id)}')">📄 Exporter Fiche plat HACCP (PDF)</button>
@@ -606,10 +689,24 @@ function renderFichePlat(plat, menu){
   `;
 }
 
+// Photos du relevé (hydratées en URL signée par l'observer data-psrc d'app-dashboard.js)
+function _menuStepPhotos(rec){
+  try {
+    const d = rec.data || {};
+    const pf = (typeof PHOTO_FIELDS !== 'undefined') ? PHOTO_FIELDS : ['photo','p1_photo','p2_photo','photo_nc','photo2','photo3'];
+    const imgs = pf.filter(k => d[k]).map(k => {
+      const url = (typeof _parsePhotoUrl === 'function') ? _parsePhotoUrl(d[k]) : String(d[k]);
+      if(!url) return '';
+      const u = escAttr(url);
+      return '<img data-psrc="'+u+'" onclick="if(typeof openLightbox===\'function\')openLightbox(\''+u+'\')" loading="lazy" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;cursor:pointer'+(k==='photo_nc'?';border:2px solid #fca5a5':'')+'" onerror="if(this.src)this.style.display=\'none\'">';
+    }).filter(Boolean);
+    return imgs.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+imgs.join('')+'</div>' : '';
+  } catch(e){ console.warn('[menu-dash] photos timeline', e); return ''; }
+}
 function renderTimelineStep(rec){
   const def = TRACE_ENR[rec.enr_type] || { ico:'📋', label:rec.enr_type, color:'#64748b' };
   const time = rec.recorded_at ? new Date(rec.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
-  const conf = rec.data?.conforme;
+  const conf = _recConf(rec);
   const isNC = rec.enr_type === 'enr30' || conf === 'NON';
   // Construire un résumé lisible des champs principaux
   const d = rec.data || {};
@@ -617,11 +714,24 @@ function renderTimelineStep(rec){
   if(d.heure) bits.push('🕐 '+d.heure);
   const op=_menuOpName(d); if(op) bits.push('👨‍🍳 '+escH(op));
   if(d.produit) bits.push('<strong>'+escH(d.produit)+'</strong>');
-  if(d.t_debut !== undefined && d.t_debut !== '') bits.push('Début '+escH(d.t_debut)+'°C');
-  if(d.t_fin   !== undefined && d.t_fin   !== '') bits.push('Fin '+escH(d.t_fin)+'°C');
-  if(d.temp_coeur !== undefined && d.temp_coeur !== '') bits.push('Cœur '+escH(d.temp_coeur)+'°C');
-  if(d.temp !== undefined && d.temp !== '' && !d.t_debut && !d.t_fin) bits.push('T° '+escH(d.temp)+'°C');
-  if(d.duree) bits.push('Durée '+escH(d.duree));
+  // Températures / heures / durées : mêmes champs et libellés que la fiche détail du dashboard
+  // (TEMP_FIELDS / FIELD_LABELS, app-dashboard.js) — avant, seuls t_debut/temp_coeur (inexistants) étaient lus.
+  const _lbl = k => { try { return String((typeof FIELD_LABELS !== 'undefined' && FIELD_LABELS[k]) || k).replace(/^[^\wÀ-ÿ]+\s*/, ''); } catch(e){ return k; } };
+  const _vide = v => v === undefined || v === null || v === '';
+  // Champs non couverts par FIELD_LABELS (fiche ENR03 auto, mixage)
+  const _LBL_PLUS = { t_cuisson:'T° cuisson', h1:'H. début refroid.', h2:'H. fin refroid.', h3:'H. début remise', h4:'H. fin remise',
+    t_mix_deb:'T° mixage début', t_mix_fin:'T° mixage fin', h_mix_deb:'H. début mixage', h_mix_fin:'H. fin mixage' };
+  if(rec.enr_type === 'enr03') Object.assign(_LBL_PLUS, { t1:'T° début refroid.', t2:'T° fin refroid.', t3:'T° début remise', t4:'T° fin remise' });
+  const _lbl2 = k => _LBL_PLUS[k] || _lbl(k);
+  try {
+    const keys = Object.keys(d).filter(k => k.charAt(0) !== '_' && !_vide(d[k]));
+    // Heures, puis températures (tout champ t_*, t1…t4, tc, temp), puis durées — tout ce que la tablette enregistre
+    keys.filter(k => /^h(_|\d)/.test(k)).forEach(k => bits.push(escH(_lbl2(k))+' '+escH(d[k])));
+    keys.filter(k => /^(t_|t\d$|tc$|temp$|temp_)/.test(k) && !/_plat$|_conf$/.test(k) && !isNaN(parseFloat(d[k])))
+      .forEach(k => bits.push(escH(_lbl2(k))+' <strong>'+escH(d[k])+'°C</strong>'));
+    keys.filter(k => /^duree/.test(k)).forEach(k => bits.push((k === 'duree' ? 'Durée' : escH(_lbl2(k)))+' '+escH(d[k])));
+    if(!_vide(d.mode_mixage)) bits.push('Mixage '+escH(d.mode_mixage));
+  } catch(e){ console.warn('[menu-dash] températures timeline', e); }
   if(d.lot)   bits.push('Lot '+escH(d.lot));
   if(d.fournisseur) bits.push('Fourn. '+escH(d.fournisseur));
   if(d.dlc)   bits.push('DLC '+escH(d.dlc));
@@ -636,6 +746,7 @@ function renderTimelineStep(rec){
       ${conf === 'NON' || rec.enr_type==='enr30' ? '<span class="fp-step-conf ko">✗ NC</span>' : ''}
     </div>
     <div class="fp-step-body">${bits.length ? bits.join(' • ') : '<em style="color:#94a3b8">Aucun détail</em>'}</div>
+    ${_menuStepPhotos(rec)}
   </div>`;
 }
 
@@ -687,7 +798,7 @@ window._menuDashExportMenu = function(menuId){
   ${enrs.map(r => {
     const def = TRACE_ENR[r.enr_type]||{label:r.enr_type,ico:''};
     const time = r.recorded_at ? new Date(r.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
-    const conf = r.data?.conforme;
+    const conf = _recConf(r);
     const isNC = conf === 'NON' || r.enr_type === 'enr30';
     const d = r.data || {};
     const bits = [];
@@ -716,7 +827,7 @@ window._menuDashExportPlat = function(platId, menuId){
   if(!win){ if(typeof showToast==='function') showToast('Bloqueur popup actif','warning'); return; }
   const siteName = (typeof _sites !== 'undefined' ? _sites : []).find(s => s.code === menu.site_id)?.name || menu.site_id;
   const dFr = new Date(menu.menu_date).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date);
+  const enrs = getEnrLinkedToPlat(plat.plat_id, menu.site_id, menu.menu_date, plat.nom);
   const prof = PROFILS[plat.profil_haccp]||PROFILS.BF_CUIT;
   win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Fiche plat — ${escH(plat.nom)}</title>
   <style>
@@ -742,7 +853,7 @@ window._menuDashExportPlat = function(platId, menuId){
   ${enrs.map(r => {
     const def = TRACE_ENR[r.enr_type]||{label:r.enr_type,ico:''};
     const time = r.recorded_at ? new Date(r.recorded_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}) : '—';
-    const conf = r.data?.conforme;
+    const conf = _recConf(r);
     const isNC = conf === 'NON' || r.enr_type === 'enr30';
     const d = r.data || {};
     const bits = [];

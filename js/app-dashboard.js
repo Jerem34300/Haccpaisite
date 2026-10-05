@@ -842,6 +842,12 @@ async function bootApp(){
     }
     _profile=profiles[0]||{role:'siege'};
 
+    // Un cuisinier n'a rien à faire sur le tableau de bord du siège : il ne voit que sa cuisine.
+    if (_profile && _profile.role === 'cuisinier') {
+      try { window.location.replace('cuisine.html'); } catch(e){ console.warn('[bootApp] redirection cuisinier', e); }
+      return;
+    }
+
     // ── Mode impersonation super_admin ─────────────────────
     if (_profile?.role === 'super_admin') {
       try {
@@ -974,6 +980,27 @@ function stopAutoRefresh() {
   if (indicator) indicator.style.display = 'none';
 }
 
+function _activeTenantId(){
+  return (_viewTenant && _viewTenant.id) || (_profile && _profile.tenant_id) || null;
+}
+// Ne jamais garder une cuisine d'un autre tenant, même si l'API en renvoie.
+function _scopeRowsToTenant(rows, tenantId){
+  const tid = tenantId || null;
+  const list = Array.isArray(rows) ? rows : [];
+  if(!tid) return [];
+  return list.filter(row => row && String(row.tenant_id||'') === String(tid));
+}
+async function _fetchTenantSites(tenantId){
+  if(!tenantId) return [];
+  const q = `select=*,sectors(*,territories(*))&order=name&tenant_id=eq.${encodeURIComponent(tenantId)}`;
+  // super_admin : JWT sans tenant_id — lecture via le proxy (service_role) déjà filtrée.
+  // Les autres rôles passent par le JWT : RLS sites_select = tenant courant uniquement.
+  const rows = (_profile?.role === 'super_admin')
+    ? await supaAdmin('GET', `/rest/v1/sites?${q}`, null)
+    : await supaGet('sites', q);
+  return _scopeRowsToTenant(rows, tenantId);
+}
+
 async function loadData(){
   stopAutoRefresh();
   // Animation bouton refresh
@@ -996,7 +1023,14 @@ async function loadData(){
     const _effectiveTenantId = _viewTenant?.id || _profile?.tenant_id || null;
     const tenantFilter = _effectiveTenantId ? `&tenant_id=eq.${_effectiveTenantId}` : '';
 
-    _sites=await _get('sites',`select=*,sectors(*,territories(*))&order=name${tenantFilter}`);
+    // Jamais de select sites sans tenant_id : un super_admin sans vue entreprise
+    // ne doit pas recevoir les cuisines des autres sociétés.
+    if(_effectiveTenantId){
+      _setStep('Chargement sites…');
+      _sites = await _fetchTenantSites(_effectiveTenantId);
+    } else {
+      _sites = [];
+    }
     _sectors=await _get('sectors',`select=*,territories(*)&order=name${tenantFilter}`);
     if(_profile?.role==='siege'||_profile?.role==='super_admin'||_profile?.role==='directeur')
       _territories=await _get('territories',`select=*&order=name${tenantFilter}`);
@@ -5158,7 +5192,19 @@ async function saveAdminModal(){
       const sector_id=document.getElementById('am-site-sect').value||null;
       const address=document.getElementById('am-site-addr').value.trim()||null;
       if(!name||!code){showToast('Remplissez nom et code site','error');return;}
-      if(id) await supa('PATCH',`/rest/v1/sites?id=eq.${id}`,{name,code,sector_id,address});
+      const siteTid = _activeTenantId();
+      if(id){
+        if(!siteTid){ showToast('Modification refusée : aucun établissement associé à ce compte','error'); return; }
+        const row = (_sites||[]).find(x => String(x.id)===String(id));
+        if(!row || (row.tenant_id && String(row.tenant_id)!==String(siteTid))){
+          showToast('Modification refusée : cette cuisine n\'appartient pas à votre établissement','error');
+          return;
+        }
+        const patchPath = `/rest/v1/sites?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(siteTid)}`;
+        const patchBody = {name,code,sector_id,address};
+        if(_profile?.role==='super_admin') await supaAdmin('PATCH', patchPath, patchBody, {'Prefer':'return=minimal'});
+        else await supa('PATCH', patchPath, patchBody);
+      }
       else {
         const scoped = _kitchenScoped();
         const planKey = scoped ? await _loadTenantPlan() : 'enterprise';
@@ -5176,7 +5222,11 @@ async function saveAdminModal(){
           let finalCode = created.code;
           if (created.id && Object.keys(patch).length) {
             try {
-              await supa('PATCH', `/rest/v1/sites?id=eq.${created.id}`, patch);
+              const createdPath = siteTid
+                ? `/rest/v1/sites?id=eq.${encodeURIComponent(created.id)}&tenant_id=eq.${encodeURIComponent(siteTid)}`
+                : `/rest/v1/sites?id=eq.${encodeURIComponent(created.id)}`;
+              if (_profile?.role==='super_admin' && siteTid) await supaAdmin('PATCH', createdPath, patch, {'Prefer':'return=minimal'});
+              else await supa('PATCH', createdPath, patch);
               if (patch.code) finalCode = patch.code;
             } catch (e2) {
               console.warn('[site patch]', e2);
@@ -5190,8 +5240,7 @@ async function saveAdminModal(){
         }
         await supaPost('sites',{name,code,sector_id,address,...(tid?{tenant_id:tid}:{})});
       }
-      const sitef = (!['super_admin'].includes(_profile?.role) && tid) ? `&tenant_id=eq.${tid}` : '';
-      _sites=await supaGet('sites',`select=*,sectors(*,territories(*))&order=name${sitef}`);
+      _sites = await _fetchTenantSites(_activeTenantId());
       showToast(id?'✅ Site modifié':'✅ Site créé','success');
     }
     else if(type==='user'){
@@ -5328,13 +5377,28 @@ async function execDelete(){
   try{
     if(table==='corrective_actions' || table==='nc_action_mapping'){
       await supaAdmin('DELETE',`/rest/v1/${table}?id=eq.${id}`,null,{'Prefer':'return=minimal'});
+    } else if(table==='sites'){
+      const tid = _activeTenantId();
+      const row = (_sites||[]).find(x => String(x.id)===String(id));
+      if(!tid || !row || (row.tenant_id && String(row.tenant_id)!==String(tid))){
+        showToast('Suppression refusée : cette cuisine n\'appartient pas à votre établissement','error');
+        return;
+      }
+      const delPath = `/rest/v1/sites?id=eq.${encodeURIComponent(id)}&tenant_id=eq.${encodeURIComponent(tid)}`;
+      const deleted = (_profile?.role==='super_admin')
+        ? await supaAdmin('DELETE', delPath, null, {'Prefer':'return=representation'})
+        : await supa('DELETE', delPath, null, false, {'Prefer':'return=representation'});
+      if(Array.isArray(deleted) && deleted.length===0){
+        showToast('Suppression refusée : cette cuisine n\'appartient pas à votre établissement','error');
+        return;
+      }
     } else {
       await supa('DELETE',`/rest/v1/${table}?id=eq.${id}`,null);
     }
     showToast(`✅ "${name}" supprimé`,'success');
     if(table==='territories')_territories=await supaGet('territories','select=*&order=name');
     else if(table==='sectors')_sectors=await supaGet('sectors','select=*,territories(*)&order=name');
-    else if(table==='sites')_sites=await supaGet('sites','select=*,sectors(*,territories(*))&order=name');
+    else if(table==='sites') _sites = await _fetchTenantSites(_activeTenantId());
     else if(table==='corrective_actions'){ await loadAdminCorrectiveData(); _adminTab='corrective'; }
     closeAdminModal();
     renderAdmin();

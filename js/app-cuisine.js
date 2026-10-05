@@ -859,6 +859,11 @@ function navBadge(id){
         const n=_e36batch.length;
         return n>0?{n,col:'#1d4ed8'}:null;
       }
+      // ENR31 — Plats du menu du jour sans lot MP lié
+      case 'enr31':{
+        const n=(typeof window._menuMpManquants==='function')?window._menuMpManquants():0;
+        return n>0?{n,label:n+' plat'+(n>1?'s':'')+' sans lot',col:'#d97706'}:null;
+      }
       case 'enr33':{
         const n=_e33batch.length;
         const hasNom=e33d().produit&&!n;
@@ -2948,6 +2953,8 @@ function renderHistoCard(secId,fieldDefs,opts){
             if(SKIP.includes(k)||IS_NC_RAISON(k)||!r[k]||!String(r[k]).trim()) return false;
             if(_histoSkipText(k, r[k])) return false;
             if(k==='signature') return false;
+            // ENR31 : champs techniques (_plat_liens, _created…) masqués, les plats liés sont affichés en boutons
+            if(secId==='enr31'&&k.charAt(0)==='_') return false;
             return true;
           }catch(e){ return false; }
         });
@@ -2990,6 +2997,7 @@ function renderHistoCard(secId,fieldDefs,opts){
                 ${r.date_refroid?`❄️ Refr. ${r.date_refroid} → 🔥 Réchauffé ${r.date_rechauff||date}`:date}${heure?' · ⏰'+heure:''}${cuisinier?' · 👨‍🍳'+escH(cuisinier):''}${secId==='enr30'&&r.cloture!=='OUI'?' · <b style="color:#991b1b">Ouverte</b>':''}</div>
               <div class="conf-badges" style="margin-top:5px">${confBadges}</div>
               ${photoCompact?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${photoCompact}</div>`:''}
+              ${opts.extraRow?opts.extraRow(r):''}
             </div>
             <div style="display:flex;gap:4px;align-items:flex-start;flex-shrink:0">
               ${editNcBtn||''}
@@ -3142,6 +3150,19 @@ function ncAutoDismiss(idx){
 }
 
 function saveRow(id){
+  // ENR07 : mixage chaud interdit sur un produit refroidi (le produit a pu être choisi après le mode)
+  if(id==='enr07'){
+    const d07=((S['enr07']||{}).draft||{});
+    if(d07.mode_mixage==='chaud'&&_enr07ProduitRefroidi(d07.produit)){
+      d07.mode_mixage='froid'; _enr07PurgeAutreMode(d07);
+      try { doAutoCalc('enr07'); } catch(e){ console.warn('[enr07] autocalc', e); }
+      save();
+      toast('⛔ Produit refroidi : mixage chaud interdit. Mixer froid (≤ +3°C) puis cuire — fiche repassée en mixage froid.','error');
+      renderMain();
+      return;
+    }
+    _enr07PurgeAutreMode(d07);
+  }
   // Quand ENR07 est sauvegardé, marquer les ENR01 BF Cuit liés comme traités → lève le blocage
   if(id==='enr07'){
     const draft=((S['enr07']||{}).draft||{});
@@ -7573,23 +7594,9 @@ function renderMissionBanner(){
         +'<span>Choisis ton profil (rond à côté du nuage)</span>'
         +'</div>';
     }
-    var encPend=missionEncPending();
-    if(encPend.length){
-      return '<div role="button" tabindex="0" onclick="try{var el=document.querySelector(\'.qenc-tile.qenc-mission\');if(el)el.scrollIntoView({behavior:\'smooth\',block:\'center\'});}catch(e){}" style="background:#f5f3ff;border:1.5px solid #c4b5fd;color:#5b21b6;cursor:pointer;'+base+'">'
-        +'<span style="font-size:1.1rem">🌡️</span>'
-        +'<span>Premier geste : relever 1 enceinte</span>'
-        +'</div>';
-    }
-    if(missionHasNettPriority()){
-      return '<div role="button" tabindex="0" onclick="try{_nettTab=\'priorites\';goTo(\'enr28\')}catch(e){}" style="background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;cursor:pointer;'+base+'">'
-        +'<span style="font-size:1.1rem">🧹</span>'
-        +'<span>Ensuite : 1 nettoyage</span>'
-        +'</div>';
-    }
-    return '<div style="background:#f0fdf4;border:1.5px solid #86efac;color:#166534;'+base+'">'
-      +'<span style="font-size:1.1rem">✅</span>'
-      +'<span>Tout est à jour</span>'
-      +'</div>';
+    // Bandeaux « Premier geste / Ensuite / Tout est à jour » retirés : doublon des widgets
+    // et faux « tout est bon » dès 1 enceinte relevée. Seul le rappel de profil reste.
+    return '';
   }catch(e){ return ''; }
 }
 
@@ -10718,7 +10725,30 @@ function initLastBackupDisplay(){
 // ════════════════════════════════════════════════════
 // ENR07 — Bien Faits avec cuisson (mixage froid ET chaud)
 // ════════════════════════════════════════════════════
-function enr07s(k,v){S['enr07']=S['enr07']||{};S['enr07'].draft=S['enr07'].draft||{};S['enr07'].draft[k]=v;doAutoCalc('enr07');save();renderMain();}
+function enr07s(k,v){S['enr07']=S['enr07']||{};S['enr07'].draft=S['enr07'].draft||{};S['enr07'].draft[k]=v;if(k==='mode_mixage')_enr07PurgeAutreMode(S['enr07'].draft);doAutoCalc('enr07');save();renderMain();}
+// Changement de mode : on retire les relevés de l'autre mode (sinon fiche mixte froid + chaud enregistrée)
+function _enr07PurgeAutreMode(d){
+  try {
+    const autres=(d.mode_mixage==='chaud')?['t_deb','conf_deb']:['t_mix_deb','t_mix_fin','conf_mix_deb','conf_mix_fin'];
+    autres.forEach(k=>{delete d[k];});
+  } catch(e){ console.warn('[enr07] purge mode', e); }
+}
+// Produit refroidi (ENR01, aujourd'hui ou la veille) → il doit être mixé froid puis cuit :
+// jamais réchauffé pour être mixé chaud, même si le refroidissement est déjà traité / réchauffé.
+function _enr07ProduitRefroidi(produit){
+  try {
+    const p=String(produit||'').toLowerCase().trim();
+    if(!p) return false;
+    const hier=new Date(); hier.setDate(hier.getDate()-1);
+    const cutoff=hier.getFullYear()+'-'+String(hier.getMonth()+1).padStart(2,'0')+'-'+String(hier.getDate()).padStart(2,'0');
+    return ((S['enr01']||{}).lignes||[]).some(r=>{
+      if(!r||r._deleted) return false;
+      if((r.date||'')<cutoff) return false;
+      const p01=String(r.produit||'').toLowerCase().trim();
+      return !!p01&&(p01===p||p.includes(p01)||p01.includes(p));
+    });
+  } catch(e){ console.warn('[enr07] produit refroidi', e); return false; }
+}
 
 // Slider T°C à plage personnalisée — appelle tpSet pour déclencher doAutoCalc
 function tpHtmlR(id,sec,presets,label,tMin,tMax){
@@ -10760,7 +10790,7 @@ function renderENR07(){
   if(!S[SEC].draft.date)  S[SEC].draft.date=today();
   if(!S[SEC].draft.h_deb) S[SEC].draft.h_deb=nowT();
   const d=S[SEC].draft;
-  const mode=d.mode_mixage||'froid';
+  let mode=d.mode_mixage||'froid';
 
   // Vérifier si un refroidissement BF Cuit actif bloque le mixage chaud
   // Blocage mixage chaud : ENR01 lié BF Cuit EN ATTENTE (pas encore traité)
@@ -10769,7 +10799,13 @@ function renderENR07(){
     (!r._statut || r._statut==='en_attente') &&
     r._lienBF!=='traite'
   );
-  const _blocChaud = _bfCuitActif;
+  const _blocChaud = _bfCuitActif || _enr07ProduitRefroidi(d.produit);
+  // Mode chaud déjà choisi mais produit refroidi → retour forcé en froid
+  if(_blocChaud && d.mode_mixage==='chaud'){
+    d.mode_mixage='froid'; _enr07PurgeAutreMode(d);
+    try { save(); } catch(e){ console.warn('[enr07] save mode froid', e); }
+    mode='froid';
+  }
 
   // Sélecteur de mode
   const modeSelector=`
@@ -12524,6 +12560,7 @@ function renderENR31() {
       </div>
     </div>
     ${renderHistoCard('enr31', def.fields, {
+      extraRow: r => { try{ return (typeof window._menuMpPlatsChips==='function')?window._menuMpPlatsChips(r):''; }catch(e){ console.warn('[enr31] plats liés', e); return ''; } },
       extraBtn: (r,i) => `<button onclick="enr31ToEtiq(${i})" style="background:#f5eef5;border:1.5px solid var(--plum);border-radius:8px;padding:5px 8px;font-size:.7rem;cursor:pointer;font-family:inherit;color:var(--plum);font-weight:700;flex-shrink:0;touch-action:manipulation" title="Créer étiquette Entamé">🏷️</button>`
     })}`;
 }
@@ -12728,6 +12765,7 @@ function e33PrintBatch(){
   setTimeout(function(){
     showConfirm('🖨️ Étiquettes bien imprimées ?',etiqConfirmMsg(nb33),'✅ Oui, vider le lot',function(){
       etiqAfterPrint(nb33);
+      try{ if(typeof _temoinMarkImprime==='function') _temoinMarkImprime(_e33batch); }catch(e){ console.warn('[e33] témoins imprimés', e); }
       _e33batch=[]; renderNav(); renderMain(); toast('✅ Lot plats témoins vidé','success');
     });
   },1500);
@@ -14585,6 +14623,7 @@ function _doPrintAllLabels(logoLine, total){
       '✅ Oui, vider le lot',
       function(){
         etiqAfterPrint(_nbTotal);
+        try{ if(typeof _temoinMarkImprime==='function') _temoinMarkImprime(_e33batch); }catch(e){ console.warn('[print all] témoins imprimés', e); }
         _e33batch=[]; _e36batch=[]; _e34batch=[];
         renderNav(); renderMain();
         toast('✅ Lot vidé — prêt pour de nouvelles étiquettes', 'success');
