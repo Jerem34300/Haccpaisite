@@ -27,15 +27,15 @@ const PROFILS = {
   SORTIE_DIRECTE:{ ico:'📦', label:'Sortie directe', color:'#0ea5e9' },
   PREP_MINUTE:   { ico:'⚡', label:'Préparé minute', color:'#7c3aed' },
 };
-const SERVICES = { petitdej:'☕ P-déj', midi:'🌞 Midi', gouter:'🍪 Goûter', soir:'🌙 Soir' };
+const SERVICES = { petitdej:'☕ Petit-déjeuner', midi:'🌞 Midi', gouter:'🍪 Goûter', soir:'🌙 Soir' };
 const CATS = [
+  { id:'libre',      label:'🍽️ Liste' },
   { id:'potages',    label:'🍲 Potages' },
   { id:'entrees',    label:'🥗 Entrées' },
   { id:'plats',      label:'🍽️ Plats' },
   { id:'garnitures', label:'🥦 Garnitures' },
   { id:'fromages',   label:'🧀 Fromages' },
   { id:'desserts',   label:'🍰 Desserts' },
-  { id:'pains',      label:'🥖 Pains' },
 ];
 
 // ENR concernés par la traçabilité d'un plat
@@ -84,7 +84,16 @@ function getAllMenus(){
       if(!latest[k] || ts > latest[k]._k_ts) latest[k] = { r, _k_ts: ts };
     } catch(e){ console.warn('[menu-dash] dédoublonnage enr_menu', e); }
   });
-  return Object.keys(latest).map(k => latest[k].r).map(r => ({
+  return Object.keys(latest).map(k => latest[k].r).map(r => {
+    const cats = Object.assign({}, r.data?.categories || {});
+    // Affichage : pains historiques → Entrées (catégorie retirée UI)
+    try {
+      if(Array.isArray(cats.pains) && cats.pains.length){
+        cats.entrees = (cats.entrees || []).concat(cats.pains);
+        cats.pains = [];
+      }
+    } catch(e){}
+    return {
     id:         r.id,
     site_id:    r.site_id,
     recorded_at:r.recorded_at,
@@ -92,9 +101,10 @@ function getAllMenus(){
     service:    r.data?.service || 'midi',
     type_repas: r.data?.type_repas || 'normal',
     menu_id:    r.data?.menu_id || r.id,
-    categories: r.data?.categories || {},
+    categories: cats,
     raw:        r,
-  }));
+  };
+  });
 }
 
 function getMenusForSite(siteCode){
