@@ -3,7 +3,7 @@
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>HACC.PRO — Cuisine v36.3 · haccpro-v481</title>
+  <title>HACC.PRO — Cuisine v36.3 · haccpro-v482</title>
   <meta name="application-name" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-title" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,7 +15,7 @@
   
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" id="pwa-manifest-link" href="/manifest.json">
-  <link rel="stylesheet" href="css/cuisine.css?v=439">
+  <link rel="stylesheet" href="css/cuisine.css?v=482">
   <!-- Bibliotheques externes -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -35,8 +35,8 @@
   <script src="js/utils.js?v=433"></script>
 
   <script>
-    // Libellé visible = CACHE_NAME du SW (haccpro-v481). Ne pas laisser un build figé (un ancien build).
-    var HACC_CACHE = 'haccpro-v481';
+    // Libellé visible = CACHE_NAME du SW (haccpro-v482). Ne pas laisser un build figé (un ancien build).
+    var HACC_CACHE = 'haccpro-v482';
     function haccApplyBuild(name){
       try{
         var v = String(name || HACC_CACHE);
@@ -120,26 +120,32 @@
 
 <!-- Modal licence supprimé -->
 
-<!-- PHOTO MODAL -->
+<!-- PHOTO / ANALYSE ÉTIQUETTE MODAL -->
 <div id="ocr-ov" onclick="if(event.target===this)closeOcrModal()">
   <div id="ocr-box">
     <div class="ocr-hdr">
-      <span class="ocr-hdr-title">📷 Photo étiquette</span>
-      <button class="ocr-close" onclick="closeOcrModal()">✕</button>
+      <span class="ocr-hdr-title" id="ocr-hdr-title">📷 Photo étiquette</span>
+      <button class="ocr-close" onclick="closeOcrModal()" type="button">✕</button>
     </div>
     <div class="ocr-body" id="ocr-body">
+      <div id="ocr-status" class="ocr-status" style="display:none"></div>
       <div class="ocr-preview-wrap" id="ocr-preview-wrap">
-        <div class="ocr-placeholder" id="ocr-placeholder">📷 Appuyez sur "Prendre une photo"</div>
-        <img id="ocr-img" style="display:none;width:100%;height:100%;object-fit:contain">
+        <div class="ocr-placeholder" id="ocr-placeholder">📷 Appuyez sur Caméra ou Galerie</div>
+        <img id="ocr-img" style="display:none;width:100%;height:100%;object-fit:contain" alt="Aperçu photo">
       </div>
+      <div id="ocr-validate-panel" style="display:none"></div>
+      <div id="ocr-bl-lines" style="display:none"></div>
+      <div id="ocr-conflict-panel" style="display:none"></div>
       <input type="file" id="ocr-file-input" accept="image/*" capture="environment" style="display:none" onchange="photoHandleFile(this)">
+      <input type="file" id="ocr-gallery-input" accept="image/*" style="display:none" onchange="photoHandleFile(this)">
     </div>
     <div id="ocr-save-info" style="padding:6px 16px;font-size:.68rem;color:#1565c0;background:#e3f2fd;text-align:center;display:none;border-top:1px solid #bbdefb">
       📁 Sauvegardée dans <strong>Téléchargements</strong> · miniature stockée dans l'app
     </div>
-    <div class="ocr-actions">
-      <button class="ocr-btn-retry" onclick="ocrTriggerCamera()">📷 Ouvrir la caméra</button>
-      <button class="ocr-btn-apply" id="ocr-apply-btn" onclick="photoSave()" style="opacity:.4;pointer-events:none">💾 Enregistrer</button>
+    <div class="ocr-actions" id="ocr-actions">
+      <button type="button" class="ocr-btn-retry" id="ocr-cam-btn" onclick="ocrTriggerCamera()">📷 Caméra</button>
+      <button type="button" class="ocr-btn-retry" id="ocr-gal-btn" onclick="ocrTriggerGallery()">🖼️ Galerie</button>
+      <button type="button" class="ocr-btn-apply" id="ocr-apply-btn" onclick="photoSave()" style="opacity:.4;pointer-events:none">💾 Enregistrer</button>
     </div>
   </div>
 </div>
@@ -951,9 +957,9 @@
   <!-- Application Cuisine (ordre important: service avant app) -->
   <script src="js/supabaseservice.js?v=436"></script>
   <script src="js/printservice.js"></script>
-  <script src="js/app-cuisine.js?v=455"></script>
+  <script src="js/app-cuisine.js?v=482"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
-  <script src="js/app-menu-cuisine.js?v=481"></script>
+  <script src="js/app-menu-cuisine.js?v=482"></script>
   <!-- Guide « Premiers pas » sur l'accueil (après inscription) -->
   <script src="js/tuto-premiers-pas.js?v=453"></script>
   <!-- Tracabilité HACCP bidirectionnelle + IA recettes -->

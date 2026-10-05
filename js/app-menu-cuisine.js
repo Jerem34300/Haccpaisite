@@ -2752,11 +2752,17 @@ function _menuPhotoShowLoading(msg){
   _menuPhotoCloseOv();
   const ov = document.createElement('div');
   ov.id = 'mn-photo-ov';
-  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9200;display:flex;align-items:center;justify-content:center;padding:16px';
-  ov.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:360px;width:100%;padding:22px 18px;text-align:center">
-    <div style="font-size:1.6rem;margin-bottom:8px">⏳</div>
-    <div style="font-size:.92rem;font-weight:900;color:#5C1E5A">${escH(msg||'Analyse de la photo…')}</div>
-    <div style="font-size:.75rem;color:#7A6579;margin-top:8px">OCR menu — rien n’est enregistré pour l’instant</div>
+  ov.className = 'hacc-wait-ov';
+  const title = msg || 'Préparation du menu…';
+  ov.innerHTML = `<div class="hacc-wait-card" role="status" aria-live="polite">
+    <div class="hacc-wait-top">
+      <div class="hacc-wait-icon-wrap">
+        <div class="hacc-wait-spin" aria-hidden="true"></div>
+        <div class="hacc-wait-icon">🍽️</div>
+      </div>
+      <div class="hacc-wait-title">${escH(title)}</div>
+    </div>
+    <div class="hacc-wait-sub">Rien n’est enregistré pour l’instant</div>
   </div>`;
   document.body.appendChild(ov);
 }
@@ -2784,7 +2790,7 @@ window._menuPhotoOnFile = function(input){
       if(typeof toast==='function') toast('Photo trop lourde — essayez une image plus légère','warning');
       return;
     }
-    _menuPhotoShowLoading('Lecture de la photo…');
+    _menuPhotoShowLoading('Préparation du menu…');
     const reader = new FileReader();
     reader.onerror = function(){
       _menuPhotoCloseOv();
@@ -2807,7 +2813,7 @@ window._menuPhotoOnFile = function(input){
 };
 
 async function _menuPhotoRunOcr(dataUrl){
-  _menuPhotoShowLoading('OCR en cours…');
+  _menuPhotoShowLoading('Préparation du menu…');
   try {
     const resp = await fetch('/.netlify/functions/menu-ocr', {
       method: 'POST',
@@ -2818,9 +2824,9 @@ async function _menuPhotoRunOcr(dataUrl){
     try { data = await resp.json(); } catch(e){ data = null; }
     if(!resp.ok){
       _menuPhotoCloseOv();
-      const err = (data && data.error) || ('Erreur OCR ('+resp.status+')');
+      const err = (data && data.error) || ('Analyse impossible ('+resp.status+')');
       const hint = data && data.hint ? '\n'+data.hint : '';
-      if(typeof toast==='function') toast(err, 'danger');
+      if(typeof toast==='function') toast(String(err).replace(/OCR/gi,'Analyse'), 'danger');
       console.warn('[menu-ocr]', err, hint, data);
       // Écran d’aide si stub (clé manquante)
       if(data && data.stub){
@@ -2851,7 +2857,7 @@ async function _menuPhotoRunOcr(dataUrl){
   } catch(e){
     console.warn('[menu-ocr fetch]', e);
     _menuPhotoCloseOv();
-    if(typeof toast==='function') toast('Réseau OCR indisponible','danger');
+    if(typeof toast==='function') toast('Analyse photo indisponible (réseau)','danger');
   }
 }
 
@@ -2861,10 +2867,10 @@ function _menuPhotoShowStubHelp(data){
   ov.id = 'mn-photo-ov';
   ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9200;display:flex;align-items:flex-end;justify-content:center';
   ov.innerHTML = `<div style="background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:16px 14px 22px">
-    <div style="font-size:.95rem;font-weight:900;color:#5C1E5A;margin-bottom:6px">OCR non configuré</div>
+    <div style="font-size:.95rem;font-weight:900;color:#5C1E5A;margin-bottom:6px">Analyse photo non configurée</div>
     <div style="font-size:.8rem;color:#3b1e3b;line-height:1.45;margin-bottom:12px">
-      La fonction <code>menu-ocr</code> répond, mais la variable d’environnement
-      <b>OPENAI_API_KEY</b> (ou <b>MENU_OCR_API_KEY</b>) n’est pas définie sur Netlify.
+      L’analyse de photo n’est pas encore activée sur ce serveur.
+      Contactez le responsable technique Hacc.Pro (clé API manquante).
       Aucun secret n’est stocké dans le dépôt.
     </div>
     <button type="button" id="mn-photo-stub-ok" style="width:100%;padding:12px;background:#5C1E5A;color:#fff;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer">Compris</button>
