@@ -298,6 +298,56 @@ function _compressImageDataUrl(rawDataUrl, maxW=1280, maxH=960, quality=.78){
   });
 }
 
+// ── Compression du payload d'analyse photo (label-ocr / menu-ocr) ──
+// Serveur : refus au-delà de 2,5 M caractères (« max ~2 Mo encodés »).
+// Cible client ≤ 1,7 M caractères → marge. Capteurs téléphone 12–200 Mpx → côté max ~1600 px,
+// qualité JPEG dégressive puis réduction de taille jusqu'à passer. Ne rejette jamais : renvoie
+// au pire la meilleure version obtenue (ou l'original si le décodage échoue).
+const OCR_UPLOAD_MAX_CHARS = 1700000;
+function _ocrCompressForUpload(rawDataUrl, opts){
+  opts = opts || {};
+  const limit = opts.maxChars || OCR_UPLOAD_MAX_CHARS;
+  const maxSide = opts.maxSide || 1600;
+  return new Promise(function(resolve){
+    const raw = String(rawDataUrl||'');
+    try {
+      if(!raw.startsWith('data:image/')){ resolve(raw); return; }
+      const img = new Image();
+      img.onload = function(){
+        try {
+          const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+          if(!W || !H){ resolve(raw); return; }
+          // Déjà léger et pas surdimensionné → inchangé
+          if(raw.length <= limit && Math.max(W,H) <= maxSide && /^data:image\/(jpeg|jpg|png|webp)/i.test(raw)){ resolve(raw); return; }
+          let best = '';
+          let side = Math.min(maxSide, Math.max(W,H));
+          const qs = [0.82, 0.72, 0.62, 0.52];
+          for(let pass=0; pass<6; pass++){
+            const sc = side / Math.max(W,H);
+            const w = Math.max(1, Math.round(W*sc)), h = Math.max(1, Math.round(H*sc));
+            const c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            const g = c.getContext('2d');
+            g.fillStyle = '#fff'; g.fillRect(0,0,w,h); // PNG transparent → fond blanc
+            g.drawImage(img, 0, 0, w, h);
+            for(let i=0;i<qs.length;i++){
+              const out = c.toDataURL('image/jpeg', qs[i]);
+              if(!best || out.length < best.length) best = out;
+              if(out.length <= limit){ try{ c.width = c.height = 0; }catch(_e){} resolve(out); return; }
+            }
+            try{ c.width = c.height = 0; }catch(_e){}
+            side = Math.round(side * 0.8);
+            if(side < 480) break;
+          }
+          resolve(best || raw);
+        } catch(e){ try{ console.warn('[_ocrCompressForUpload]', e); }catch(_e){} resolve(raw); }
+      };
+      img.onerror = function(){ try{ console.warn('[_ocrCompressForUpload] décodage impossible'); }catch(_e){} resolve(raw); };
+      img.src = raw;
+    } catch(e){ try{ console.warn('[_ocrCompressForUpload]', e); }catch(_e){} resolve(raw); }
+  });
+}
+
 function onPhotoRequestFileSelected(input){
   const file = input?.files?.[0];
   const preview = document.getElementById('photo-req-preview');
@@ -8607,6 +8657,7 @@ function closeOcrModal() {
 }
 function ocrTriggerCamera() {
   try {
+    try { if(_labelOcrCtx) _labelOcrCtx.awaitFace2 = false; } catch(_e){}
     const inp = document.getElementById('ocr-file-input');
     if(!inp) return;
     inp.value = ''; inp.click();
@@ -8614,17 +8665,52 @@ function ocrTriggerCamera() {
 }
 function ocrTriggerGallery() {
   try {
+    try { if(_labelOcrCtx) _labelOcrCtx.awaitFace2 = false; } catch(_e){}
     const inp = document.getElementById('ocr-gallery-input') || document.getElementById('ocr-file-input');
     if(!inp) return;
+    // Analyse étiquette face 1 : galerie multiple (2 photos max → face 1 + autre face)
+    try { inp.multiple = !!(_labelOcrCtx && _labelOcrCtx.mode && _labelOcrCtx.face !== 2); } catch(_e){}
     inp.value = ''; inp.click();
   } catch(e){}
 }
 
+/** FileReader → dataURL (Promise). */
+function _photoReadFile(file){
+  return new Promise(function(resolve, reject){
+    try {
+      const r = new FileReader();
+      r.onerror = function(){ reject(new Error('Lecture photo impossible')); };
+      r.onload = function(e){ resolve(String((e && e.target && e.target.result) || '')); };
+      r.readAsDataURL(file);
+    } catch(e){ reject(e); }
+  });
+}
+
 function photoHandleFile(input) {
   try {
-    const file = input && input.files && input.files[0];
+    const files = (input && input.files) ? Array.prototype.slice.call(input.files) : [];
+    const file = files[0];
     if (!file) return;
     if (file.size > 20*1024*1024) { toast('⚠️ Photo trop lourde (max 20 Mo)','warning'); input.value=''; return; }
+    const _ctxF = _labelOcrCtx;
+    // « Ajouter l'autre face » depuis le panneau d'analyse (caméra ou galerie) → face 2 seulement
+    if(_ctxF && _ctxF.mode && _ctxF.awaitFace2){
+      _ctxF.awaitFace2 = false;
+      _photoReadFile(file).then(function(d2){
+        if(_labelOcrCtx === _ctxF) labelOcrSetFace2(d2);
+      }).catch(function(err){
+        try{ console.warn('[photoHandleFile face2]', err); }catch(_e){}
+        toast('⚠️ Lecture photo impossible','warning');
+      });
+      return;
+    }
+    // Galerie multiple (analyse face 1) : 2 photos max → face 1 + autre face
+    let file2 = null;
+    if(_ctxF && _ctxF.mode && _ctxF.face !== 2 && files.length > 1){
+      file2 = files[1];
+      if(files.length > 2) toast('ℹ️ 2 photos max — les 2 premières sont gardées','warning');
+      if(file2 && file2.size > 20*1024*1024){ toast('⚠️ 2e photo trop lourde (max 20 Mo) — ignorée','warning'); file2 = null; }
+    }
     const reader = new FileReader();
     reader.onerror = function(){ toast('⚠️ Lecture photo impossible','warning'); };
     reader.onload = e => {
@@ -8642,6 +8728,19 @@ function photoHandleFile(input) {
         if(info) info.style.display='';
         // Mode analyse (réception / traça) → lancer analyse SANS écrire la fiche
         if(_labelOcrCtx && _labelOcrCtx.mode){
+          if(file2){
+            const c2 = _labelOcrCtx, d1 = _photoB64;
+            _photoReadFile(file2).then(function(d2){
+              if(_labelOcrCtx !== c2) return;
+              c2.face2Raw = d2; c2.face2Proposed = null;
+              labelOcrRunAnalysis(d1);
+            }).catch(function(err){
+              try{ console.warn('[photoHandleFile file2]', err); }catch(_e){}
+              toast('⚠️ 2e photo illisible — 1 seule photo gardée','warning');
+              if(_labelOcrCtx === c2) labelOcrRunAnalysis(d1);
+            });
+            return;
+          }
           labelOcrRunAnalysis(_photoB64);
           return;
         }
@@ -8664,6 +8763,15 @@ function photoSave() {
   if (!_photoB64) { toast('⚠️ Appuyez d\'abord sur "Ouvrir la caméra"','warning'); return; }
   const pfx = _photoPfx;
   const img = document.getElementById('ocr-img');
+  // 2 faces d'un coup (galerie multiple / « Ajouter l'autre face ») : face 2 stockée après la face 1
+  let _face2 = null;
+  try {
+    const c = _labelOcrCtx;
+    if(c && c.mode && c.face !== 2 && c.face2Raw){
+      const p2 = _labelOcrFace2Pfx(pfx);
+      if(p2) _face2 = { pfx: p2, raw: c.face2Raw };
+    }
+  } catch(e){ _face2 = null; }
 
   // ── 1. Garder la photo pleine résolution en mémoire (téléchargement différé) ──
   try {
@@ -8694,29 +8802,89 @@ function photoSave() {
   // ── 3. Stocker la miniature dans le draft (pas la pleine résolution) ────────
   try {
     const photoRef = JSON.stringify({ thumb: thumbData, file: '', date: today() });
-    if (pfx === 'enr31') {
-      sd('photo', photoRef, 'enr31');
-    } else if (pfx === 'enr31_2') {
-      sd('photo2', photoRef, 'enr31');
-    } else if (pfx === 'enr31_3') {
-      sd('photo3', photoRef, 'enr31');
-    } else if (pfx === 'p1_2') {
-      r23s('p1_photo2', photoRef);
-    } else if (pfx === 'p2_2') {
-      r23s('p2_photo2', photoRef);
-    } else if (pfx === 'nc30') {
-      // Photo de non-conformité ENR30
-      nc30('photo_nc', photoRef);
-    } else {
-      r23s(pfx+'_photo', photoRef);
-    }
+    _photoWriteSlot(pfx, photoRef);
     _photoB64 = null;
     closeOcrModal();
     renderMain();
-    toast('📷 Photo prête — sera nommée à l\'enregistrement ✓', 'success');
+    if(_face2){
+      _photoStoreFromDataUrl(_face2.pfx, _face2.raw).then(function(ok){
+        try { renderMain(); } catch(_e){}
+        if(ok) toast('📷 2 photos prêtes (2 faces) — nommées à l\'enregistrement ✓', 'success');
+        else toast('⚠️ Autre face non enregistrée — reprenez-la avec « Autre face »','warning');
+      });
+    } else {
+      toast('📷 Photo prête — sera nommée à l\'enregistrement ✓', 'success');
+    }
   } catch(e) {
     toast('⚠️ Stockage plein — supprimez d\'anciennes fiches','warning');
   }
+}
+
+/** Écrit la référence photo (miniature JSON) dans le bon champ selon le slot. */
+function _photoWriteSlot(pfx, photoRef){
+  if (pfx === 'enr31') {
+    sd('photo', photoRef, 'enr31');
+  } else if (pfx === 'enr31_2') {
+    sd('photo2', photoRef, 'enr31');
+  } else if (pfx === 'enr31_3') {
+    sd('photo3', photoRef, 'enr31');
+  } else if (pfx === 'p1_2') {
+    r23s('p1_photo2', photoRef);
+  } else if (pfx === 'p2_2') {
+    r23s('p2_photo2', photoRef);
+  } else if (pfx === 'nc30') {
+    // Photo de non-conformité ENR30
+    nc30('photo_nc', photoRef);
+  } else {
+    r23s(pfx+'_photo', photoRef);
+  }
+}
+
+/** Slot face 2 correspondant à un slot face 1 (ENR31 → enr31_2 ; ENR23 p1/p2 → p1_2/p2_2). */
+function _labelOcrFace2Pfx(pfx){
+  if(pfx === 'enr31') return 'enr31_2';
+  if(pfx === 'p1') return 'p1_2';
+  if(pfx === 'p2') return 'p2_2';
+  return '';
+}
+
+/**
+ * Même stockage que photoSave() (pleine résolution en attente + miniature 640 px dans le draft),
+ * mais à partir d'un dataURL — utilisé pour la face 2 d'un envoi « 2 faces ».
+ */
+function _photoStoreFromDataUrl(pfx, dataUrl){
+  return new Promise(function(resolve){
+    try {
+      const im = new Image();
+      im.onload = function(){
+        try {
+          const W = im.naturalWidth || im.width || 1200, H = im.naturalHeight || im.height || 900;
+          try {
+            let w=W, h=H; const maxW=2000, maxH=1500;
+            if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+            if(h>maxH){w=Math.round(w*maxH/h);h=maxH;}
+            const c = document.createElement('canvas');
+            c.width=w; c.height=h;
+            c.getContext('2d').drawImage(im,0,0,w,h);
+            _pendingPhotos[pfx] = c.toDataURL('image/jpeg', 0.88);
+          } catch(e){ _pendingPhotos[pfx] = dataUrl; }
+          let thumbData = '';
+          try {
+            let w=W, h=H; const maxW=640;
+            if(w>maxW){h=Math.round(h*maxW/w);w=maxW;}
+            const c = document.createElement('canvas');
+            c.width=w; c.height=h;
+            c.getContext('2d').drawImage(im,0,0,w,h);
+            thumbData = c.toDataURL('image/jpeg', 0.72);
+          } catch(e){ thumbData = ''; }
+          _photoWriteSlot(pfx, JSON.stringify({ thumb: thumbData, file: '', date: today() }));
+          resolve(true);
+        } catch(e){ try{ console.warn('[_photoStoreFromDataUrl]', e); }catch(_e){} resolve(false); }
+      };
+      im.onerror = function(){ resolve(false); };
+      im.src = dataUrl;
+    } catch(e){ try{ console.warn('[_photoStoreFromDataUrl]', e); }catch(_e){} resolve(false); }
+  });
 }
 
 
@@ -8754,7 +8922,7 @@ function haccHideWait(){
 
 function _ocrResetPanels(){
   try {
-    ['ocr-validate-panel','ocr-bl-lines','ocr-conflict-panel','ocr-status'].forEach(function(id){
+    ['ocr-validate-panel','ocr-bl-lines','ocr-conflict-panel','ocr-face2-wrap','ocr-status'].forEach(function(id){
       const el = document.getElementById(id);
       if(!el) return;
       el.style.display = 'none';
@@ -8844,55 +9012,172 @@ function openLabelOcr(mode, target, source, face){
   }
 }
 
-async function labelOcrRunAnalysis(dataUrl){
-  const ctx = _labelOcrCtx;
-  if(!ctx) return;
-  const mode = 'label';
-  haccShowWait({ icon: '📷', title: 'Analyse de l\'étiquette…', sub: 'Rien n’est enregistré pour l’instant' });
+/**
+ * POST label-ocr avec image compressée (≤ ~1,7 M caractères).
+ * Retour : { proposed: {...}|null, err: '' | message, stub: bool }. Lève seulement sur erreur réseau.
+ */
+async function _labelOcrPost(dataUrl){
+  let payload = dataUrl;
+  try { payload = await _ocrCompressForUpload(dataUrl, { maxSide: 1600 }); } catch(e){ payload = dataUrl; }
+  if(String(payload||'').length > 2400000){
+    return { proposed: null, err: 'Image trop volumineuse même compressée — reprenez la photo plus près de l\'étiquette', stub: false };
+  }
+  const resp = await fetch('/.netlify/functions/label-ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: payload, mode: 'label' }),
+  });
+  let data = null;
+  try { data = await resp.json(); } catch(e){ data = null; }
+  if(!resp.ok){
+    const raw = (data && data.error) || ('Analyse impossible ('+resp.status+')');
+    const msg = String(raw).replace(/\bOCR\b/gi,'Analyse').replace('OPENAI_API_KEY manquante','Analyse photo non configurée');
+    return { proposed: null, err: msg, stub: !!(data && data.stub) };
+  }
+  const proposed = {
+    produit: String((data && data.produit) || '').trim(),
+    lot: String((data && data.lot) || '').trim(),
+    dlc: String((data && data.dlc) || '').trim(),
+    estampille: String((data && data.estampille) || '').trim(),
+  };
+  if(!proposed.produit && !proposed.lot && !proposed.dlc && !proposed.estampille){
+    return { proposed: null, err: '', stub: false };
+  }
+  return { proposed: proposed, err: '', stub: false };
+}
+
+/** Fusion 2 faces : la valeur de a prime, b ne remplit que les cases vides. null si tout est vide. */
+function _labelOcrMerge(a, b){
+  const out = { produit:'', lot:'', dlc:'', estampille:'' };
+  let any = false;
+  Object.keys(out).forEach(function(k){
+    const va = String((a && a[k]) || '').trim();
+    const vb = String((b && b[k]) || '').trim();
+    out[k] = va || vb;
+    if(out[k]) any = true;
+  });
+  return any ? out : null;
+}
+
+function _labelOcrEnablePhotoOnlySave(){
   try {
-    const resp = await fetch('/.netlify/functions/label-ocr', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: dataUrl, mode: mode }),
-    });
-    let data = null;
-    try { data = await resp.json(); } catch(e){ data = null; }
-    haccHideWait();
-    if(!resp.ok){
-      const raw = (data && data.error) || ('Analyse impossible ('+resp.status+')');
-      const msg = String(raw).replace(/\bOCR\b/gi,'Analyse').replace('OPENAI_API_KEY manquante','Analyse photo non configurée');
-      toast('⚠️ '+msg+' — saisie manuelle','warning');
-      if(data && data.stub){
-        toast('ℹ️ Analyse photo non activée sur le serveur','warning');
-      }
-      // Garder la photo : permettre Enregistrer sans préremplissage
-      _ocrSetActionsPhotoOnly();
-      const btn = document.getElementById('ocr-apply-btn');
-      if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
-      return;
-    }
-    const proposed = {
-      produit: String((data && data.produit) || '').trim(),
-      lot: String((data && data.lot) || '').trim(),
-      dlc: String((data && data.dlc) || '').trim(),
-      estampille: String((data && data.estampille) || '').trim(),
-    };
-    if(!proposed.produit && !proposed.lot && !proposed.dlc && !proposed.estampille){
-      toast('⚠️ Étiquette illisible — saisie manuelle','warning');
-      _ocrSetActionsPhotoOnly();
-      const btn = document.getElementById('ocr-apply-btn');
-      if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
-      return;
-    }
-    ctx.proposed = proposed;
-    labelOcrShowValidation(proposed);
-  } catch(e){
-    haccHideWait();
-    try{ console.warn('[labelOcrRunAnalysis]', e); }catch(_e){}
-    toast('⚠️ Analyse photo indisponible (réseau) — saisie manuelle','warning');
     _ocrSetActionsPhotoOnly();
     const btn = document.getElementById('ocr-apply-btn');
     if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
+    _labelOcrRenderFace2();
+  } catch(e){ try{ console.warn('[_labelOcrEnablePhotoOnlySave]', e); }catch(_e){} }
+}
+
+async function labelOcrRunAnalysis(dataUrl){
+  const ctx = _labelOcrCtx;
+  if(!ctx) return;
+  const two = !!(ctx.face2Raw && !ctx.face2Proposed);
+  haccShowWait({ icon: '📷', title: two ? 'Analyse des 2 faces…' : 'Analyse de l\'étiquette…', sub: 'Rien n’est enregistré pour l’instant' });
+  let r1 = null, netErr = false;
+  try { r1 = await _labelOcrPost(dataUrl); }
+  catch(e){ netErr = true; try{ console.warn('[labelOcrRunAnalysis]', e); }catch(_e){} }
+  // Face 2 (galerie 2 photos) : analysée à la suite, ne complète que les cases vides
+  if(_labelOcrCtx === ctx && ctx.face2Raw && !ctx.face2Proposed){
+    try {
+      const r2 = await _labelOcrPost(ctx.face2Raw);
+      if(r2 && r2.proposed) ctx.face2Proposed = r2.proposed;
+    } catch(e){ try{ console.warn('[labelOcrRunAnalysis face2]', e); }catch(_e){} }
+  }
+  haccHideWait();
+  if(_labelOcrCtx !== ctx) return; // modal fermé pendant l'analyse
+  try {
+    const merged = _labelOcrMerge(r1 && r1.proposed, ctx.face2Proposed);
+    if(!merged){
+      if(netErr){
+        toast('⚠️ Analyse photo indisponible (réseau) — saisie manuelle','warning');
+      } else if(r1 && r1.err){
+        toast('⚠️ '+r1.err+' — saisie manuelle','warning');
+        if(r1.stub) toast('ℹ️ Analyse photo non activée sur le serveur','warning');
+      } else {
+        toast('⚠️ Étiquette illisible — saisie manuelle','warning');
+      }
+      // Garder la photo : permettre Enregistrer sans préremplissage
+      _labelOcrEnablePhotoOnlySave();
+      return;
+    }
+    ctx.proposed = merged;
+    labelOcrShowValidation(merged);
+  } catch(e){
+    try{ console.warn('[labelOcrRunAnalysis]', e); }catch(_e){}
+    _labelOcrEnablePhotoOnlySave();
+  }
+}
+
+/**
+ * Bloc « Autre face » dans le modal d'analyse (face 1 uniquement) : 2 photos max.
+ * Caméra : la 1re photo est analysée, puis « Ajouter l'autre face » sans quitter le flux.
+ */
+function _labelOcrRenderFace2(){
+  try {
+    const wrap = document.getElementById('ocr-face2-wrap');
+    if(!wrap) return;
+    const ctx = _labelOcrCtx;
+    if(!ctx || !ctx.mode || ctx.face === 2 || !_photoB64){ wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+    const has = !!ctx.face2Raw;
+    wrap.innerHTML = '<div class="ocr-face2-bar">'
+      + (has ? '<img id="ocr-face2-thumb" class="ocr-face2-thumb" alt="Autre face">' : '')
+      + '<div class="ocr-face2-txt">' + (has ? '✓ Autre face jointe' : 'Recto / verso ?') + '<span>2 photos max</span></div>'
+      + '<button type="button" class="ocr-face2-btn" onclick="labelOcrAddFace2(\'camera\')">' + (has ? '↺ Autre face' : '📷 Ajouter l’autre face') + '</button>'
+      + '<button type="button" class="ocr-face2-btn gal" onclick="labelOcrAddFace2(\'gallery\')" aria-label="Autre face depuis la galerie">🖼️</button>'
+      + '</div>';
+    wrap.style.display = 'block';
+    if(has){
+      const t = document.getElementById('ocr-face2-thumb');
+      if(t) t.src = ctx.face2Raw;
+    }
+  } catch(e){ try{ console.warn('[_labelOcrRenderFace2]', e); }catch(_e){} }
+}
+
+/** Ouvre caméra / galerie pour la face 2 (remplace une face 2 déjà jointe — jamais plus de 2). */
+function labelOcrAddFace2(source){
+  try {
+    const ctx = _labelOcrCtx;
+    if(!ctx || !ctx.mode || ctx.face === 2) return;
+    // Conserver les corrections déjà tapées dans le panneau de vérification
+    try {
+      const vp = document.getElementById('ocr-validate-panel');
+      if(vp && vp.style.display !== 'none' && vp.innerHTML) ctx.proposed = labelOcrReadProposedFromForm();
+    } catch(_e){}
+    const inp = document.getElementById(source === 'gallery' ? 'ocr-gallery-input' : 'ocr-file-input');
+    if(!inp) return;
+    ctx.awaitFace2 = true;
+    try { inp.multiple = false; } catch(_e){}
+    inp.value = ''; inp.click();
+  } catch(e){ try{ console.warn('[labelOcrAddFace2]', e); }catch(_e){} }
+}
+
+/** Face 2 reçue (caméra ou galerie) : analyse puis complète uniquement les cases vides. */
+async function labelOcrSetFace2(dataUrl){
+  const ctx = _labelOcrCtx;
+  if(!ctx || !dataUrl) return;
+  ctx.face2Raw = dataUrl;
+  ctx.face2Proposed = null;
+  _labelOcrRenderFace2();
+  haccShowWait({ icon: '📷', title: 'Analyse de l\'autre face…', sub: 'Rien n’est enregistré pour l’instant' });
+  let r2 = null;
+  try { r2 = await _labelOcrPost(dataUrl); }
+  catch(e){ try{ console.warn('[labelOcrSetFace2]', e); }catch(_e){} }
+  haccHideWait();
+  if(_labelOcrCtx !== ctx) return;
+  try {
+    if(r2 && r2.proposed) ctx.face2Proposed = r2.proposed;
+    const merged = _labelOcrMerge(ctx.proposed, ctx.face2Proposed);
+    if(merged){
+      ctx.proposed = merged;
+      labelOcrShowValidation(merged);
+      toast(ctx.face2Proposed ? '✓ Autre face analysée — cases vides complétées' : 'ℹ️ Autre face jointe — rien de plus lu', ctx.face2Proposed ? 'success' : 'warning');
+    } else {
+      toast('ℹ️ Autre face jointe' + (r2 && r2.err ? ' ('+r2.err+')' : '') + ' — saisie manuelle','warning');
+      _labelOcrEnablePhotoOnlySave();
+    }
+  } catch(e){
+    try{ console.warn('[labelOcrSetFace2]', e); }catch(_e){}
+    _labelOcrEnablePhotoOnlySave();
   }
 }
 
@@ -8925,10 +9210,11 @@ function labelOcrShowValidation(proposed){
         + '</div></div>';
     });
     html += '</div>';
-    html += '<div style="font-size:.7rem;color:#7A6579;font-weight:600;margin-top:4px">La photo reste jointe à la fiche (comme aujourd\'hui).</div>';
+    html += '<div style="font-size:.7rem;color:#7A6579;font-weight:600;margin-top:4px">'+(ctx.face2Raw && ctx.face !== 2 ? 'Les 2 photos restent jointes à la fiche.' : 'La photo reste jointe à la fiche (comme aujourd\'hui).')+'</div>';
     wrap.innerHTML = html;
     wrap.style.display = 'block';
     _ocrSetActionsValidate();
+    _labelOcrRenderFace2();
   } catch(e){ try{ console.warn('[labelOcrShowValidation]', e); }catch(_e){} }
 }
 
@@ -9004,6 +9290,7 @@ function labelOcrShowConflicts(conflicts){
     const val = document.getElementById('ocr-validate-panel');
     if(val) val.style.display = 'none';
     if(!wrap) return;
+    try { const f2 = document.getElementById('ocr-face2-wrap'); if(f2) f2.style.display = 'none'; } catch(_e){}
     const labels = { produit:'Produit', lot:'N° de lot', dlc:'DLC / DLUO', estampille:'Estampille' };
     let html = '<div style="font-size:.8rem;font-weight:900;color:#5C1E5A;margin-bottom:8px">Champ déjà rempli — gardez ou remplacez</div>';
     conflicts.forEach(function(c, i){
@@ -9109,7 +9396,8 @@ function labelOcrToolbarHtml(target){
     return '<div class="label-ocr-bar">'
       + '<button type="button" class="cam" onclick="openLabelOcr(\'label\',\''+t+'\',\'camera\')">📷 Caméra</button>'
       + '<button type="button" onclick="openLabelOcr(\'label\',\''+t+'\',\'gallery\')">🖼️ Galerie</button>'
-      + '</div>';
+      + '</div>'
+      + '<div class="label-ocr-hint">Galerie : 1 ou 2 photos (recto + verso) — 2 photos max</div>';
   } catch(e){ return ''; }
 }
 
@@ -9678,7 +9966,7 @@ function r23ProdBlock(pfx, num){
           onclick="openLabelOcr('label','enr23','',2)">${d[pfx+'_photo2']?'📷 Autre face ✓':'📷 Autre face'}</button>`:''}
       </span>
     </div>
-    ${d[pfx+'_photo']?photoThumb(d[pfx+'_photo'],'📷 Photo étiquette'):''}
+    ${d[pfx+'_photo']?photoThumb(d[pfx+'_photo'],'📷 Photo étiquette'):'<div class="label-ocr-hint">Galerie : 1 ou 2 photos (recto + verso) — 2 photos max</div>'}
     ${d[pfx+'_photo2']?photoThumb(d[pfx+'_photo2'],'📷 Autre face'):''}
     <div class="surge-toggle${surge?' on':''}" onclick="r23ToggleSurge('${pfx}',this)">
       <span style="font-size:1rem">${surge?'❄️':'🌡️'}</span>
