@@ -90,7 +90,6 @@ function mixeProfil(plat){
 }
 
 const CATS = [
-  { id:'potages',    label:'🍲 Potages',    short:'Potage' },
   { id:'entrees',    label:'🥗 Entrées',    short:'Entrée' },
   { id:'plats',      label:'🍽️ Plats',     short:'Plat' },
   { id:'garnitures', label:'🥦 Garnitures', short:'Garniture' },
@@ -121,6 +120,7 @@ function setMenu(date, service, menu){
 let _menuState = {
   date:    today(),
   service: 'midi',
+  openServices: { midi: true },
 };
 
 function addDays(dateStr, n){
@@ -134,48 +134,97 @@ function fmtDateFr(dateStr){
   catch(e){ return dateStr; }
 }
 
+function _menuEnsureService(svcId){
+  try { if(svcId) _menuState.service = svcId; } catch(e){}
+}
+function countPlatsInMenu(menu){
+  let n = 0;
+  try {
+    CATS.forEach(c => { n += (menu && menu.categories && menu.categories[c.id] || []).length; });
+  } catch(e){}
+  return n;
+}
+/** Migre les anciens plats « potages » vers Entrées (catégorie retirée de l’UI). */
+function migratePotagesToEntrees(menu){
+  try {
+    if(!menu || !menu.categories) return false;
+    const pots = menu.categories.potages;
+    if(!Array.isArray(pots) || !pots.length) return false;
+    if(!Array.isArray(menu.categories.entrees)) menu.categories.entrees = [];
+    menu.categories.entrees = menu.categories.entrees.concat(pots);
+    menu.categories.potages = [];
+    return true;
+  } catch(e){ console.warn('[menu] migrate potages', e); return false; }
+}
+function ensureMenuFor(date, service){
+  let menu = getMenu(date, service);
+  if(!menu){
+    menu = { categories: emptyCategories(), menu_id:newUUID() };
+    setMenu(date, service, menu);
+  }
+  if(!menu.menu_id) menu.menu_id = newUUID();
+  if(!menu.categories) menu.categories = emptyCategories();
+  CATS.forEach(c => { if(!Array.isArray(menu.categories[c.id])) menu.categories[c.id] = []; });
+  if(migratePotagesToEntrees(menu)){
+    try { setMenu(date, service, menu); } catch(e){}
+  }
+  return menu;
+}
+function computeDayCoverage(date){
+  let total=0, tracked=0;
+  try {
+    SERVICES.forEach(s => {
+      const menu = getMenu(date, s.id);
+      if(!menu) return;
+      try { migratePotagesToEntrees(menu); } catch(e){}
+      const cov = computeMenuCoverage(menu);
+      total += cov.total;
+      tracked += cov.tracked;
+    });
+  } catch(e){ console.warn('[menu] day coverage', e); }
+  return { total, expected: total, tracked };
+}
+
+
 // ════════════════════════════════════════════════════
 // RENDU PRINCIPAL
 // ════════════════════════════════════════════════════
 function renderMenuJour(){
   const d = _menuState.date;
-  const sv = _menuState.service;
-  let menu = getMenu(d, sv);
-  if(!menu){
-    menu = { categories: emptyCategories(), menu_id:newUUID() };
-    setMenu(d, sv, menu);
-  }
-  if(!menu.menu_id) menu.menu_id = newUUID();
-  if(!menu.categories) menu.categories = emptyCategories();
-  CATS.forEach(c => { if(!Array.isArray(menu.categories[c.id])) menu.categories[c.id] = []; });
+  try {
+    if(!_menuState.openServices) _menuState.openServices = { midi: true };
+  } catch(e){ _menuState.openServices = { midi: true }; }
 
   const dFr = new Date(d+'T12:00').toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
-  const cov = computeMenuCoverage(menu);
+  const cov = computeDayCoverage(d);
   const today_ = today();
   const isToday = d === today_;
   const isPast = d < today_;
-  const dPrev = addDays(d, -1);
-  const dNext = addDays(d, +1);
 
-  let totalPlats = 0;
-  CATS.forEach(c => totalPlats += (menu.categories[c.id]||[]).length);
+  let dayTotal = 0;
+  try {
+    SERVICES.forEach(s => {
+      const m = getMenu(d, s.id);
+      if(m){ try { migratePotagesToEntrees(m); } catch(e){} dayTotal += countPlatsInMenu(m); }
+    });
+  } catch(e){}
 
   return `
   <style>
-    .mn-hd{background:linear-gradient(135deg,#5C1E5A,#C93A78);color:#fff;border-radius:16px;padding:14px 16px;margin-bottom:12px}
-    .mn-hd-title-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-    .mn-hd h2{margin:0;font-size:1rem;font-weight:900;flex:1;line-height:1.2}
-    .mn-nav-btn{background:rgba(255,255,255,.18);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:1rem;cursor:pointer;font-family:inherit;font-weight:900;flex-shrink:0}
-    .mn-nav-btn:active{background:rgba(255,255,255,.35)}
-    .mn-date-input{background:rgba(255,255,255,.95);color:#5C1E5A;border:none;border-radius:9px;padding:5px 10px;font-size:.78rem;font-weight:800;font-family:inherit}
-    .mn-hd-sub{font-size:.74rem;opacity:.95;margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-    .mn-when-pill{background:rgba(255,255,255,.22);padding:1px 8px;border-radius:8px;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
-    .mn-hd-row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-    .mn-hd-pill{background:rgba(255,255,255,.18);border:none;color:#fff;padding:7px 12px;border-radius:18px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:inherit}
-    .mn-hd-pill.on{background:#fff;color:#5C1E5A}
-    .mn-toolbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
-    .mn-tb{flex:1;min-width:48%;padding:9px 10px;border:1.5px solid var(--brd,#e0d0e0);background:var(--fond,#fff);border-radius:10px;font-size:.78rem;font-weight:800;cursor:pointer;font-family:inherit;color:var(--plum,#5C1E5A)}
-    .mn-tb:active{opacity:.8}
+    .mn-hd{background:#fff;color:#3b1e3b;border:1.5px solid var(--brd,#e0d0e0);border-radius:16px;padding:12px 14px;margin-bottom:12px}
+    .mn-hd-title-row{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+    .mn-hd h2{margin:0;font-size:.95rem;font-weight:900;flex:1;line-height:1.2;color:var(--plum,#5C1E5A)}
+    .mn-date-input{background:#f7f2f7;color:#5C1E5A;border:1.5px solid #d8b4d8;border-radius:9px;padding:7px 10px;font-size:.82rem;font-weight:800;font-family:inherit;width:100%;max-width:220px;box-sizing:border-box}
+    .mn-hd-sub{font-size:.74rem;margin-top:6px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .mn-when-pill{background:#f3e8f3;color:#5C1E5A;padding:2px 8px;border-radius:8px;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.4px}
+    .mn-svc{background:#fff;border:1.5px solid var(--brd,#e0d0e0);border-radius:14px;margin-bottom:10px;overflow:hidden}
+    .mn-svc-hd{display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;background:#faf6fa}
+    .mn-svc-hd:active{opacity:.85}
+    .mn-svc-hd.open{background:#f3e8f3;border-bottom:1.5px solid #ede0ed}
+    .mn-svc-tit{flex:1;font-size:.92rem;font-weight:900;color:var(--plum,#5C1E5A)}
+    .mn-svc-cnt{font-size:.7rem;font-weight:700;color:#b89ab6;background:#fff;padding:2px 9px;border-radius:10px;border:1px solid #ede0ed}
+    .mn-svc-chev{font-size:.85rem;color:#7A6579;font-weight:900;width:18px;text-align:center}
+    .mn-svc-body{padding:10px 12px 12px}
     .mn-cat{background:#fff;border:1.5px solid var(--brd,#e0d0e0);border-radius:14px;padding:11px 12px;margin-bottom:9px}
     .mn-cat-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
     .mn-cat-tit{font-size:.88rem;font-weight:900;color:var(--plum,#5C1E5A);flex:1}
@@ -213,8 +262,8 @@ function renderMenuJour(){
     .mn-cov-fill{height:100%;background:#fff;border-radius:6px;transition:.3s}
     .mn-cov-sub{font-size:.7rem;opacity:.92;margin-top:5px;line-height:1.4}
     .mn-empty{font-size:.78rem;color:#b89ab6;font-style:italic;text-align:center;padding:8px}
-    .mn-action-grid{display:flex;flex-direction:column;gap:8px;margin-top:14px}
-    .mn-act{width:100%;padding:15px 16px;border:none;border-radius:14px;font-weight:800;font-family:inherit;cursor:pointer;font-size:.9rem;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;line-height:1.2;letter-spacing:.2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+    .mn-action-grid{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+    .mn-act{width:100%;padding:13px 16px;border:none;border-radius:14px;font-weight:800;font-family:inherit;cursor:pointer;font-size:.86rem;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;text-align:center;line-height:1.2;letter-spacing:.2px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
     .mn-act:active{transform:scale(.97);opacity:.9}
     .mn-act.save{background:linear-gradient(135deg,#5C1E5A,#C93A78);box-shadow:0 3px 10px rgba(92,30,90,.35)}
     .mn-act.clear{background:#fff;color:#dc2626;border:1.5px solid #fca5a5}
@@ -231,42 +280,55 @@ function renderMenuJour(){
 
   <div class="mn-hd">
     <div class="mn-hd-title-row">
-      <button class="mn-nav-btn" onclick="window._menuSwitchDate('${dPrev}')" title="Jour précédent">‹</button>
-      <h2>🍽️ Menu — ${dFr}</h2>
-      <button class="mn-nav-btn" onclick="window._menuSwitchDate('${dNext}')" title="Jour suivant">›</button>
+      <h2>🍽️ Menu du jour</h2>
     </div>
     <div class="mn-hd-sub">
-      <input type="date" class="mn-date-input" value="${d}" onchange="window._menuSwitchDate(this.value)">
+      <input type="date" class="mn-date-input" value="${d}" onchange="window._menuSwitchDate(this.value)" aria-label="Date du menu">
       ${isToday ? '<span class="mn-when-pill">Aujourd\'hui</span>' : (isPast ? '<span class="mn-when-pill">Passé</span>' : '<span class="mn-when-pill">À venir</span>')}
-      <span class="mn-when-pill" style="background:rgba(255,255,255,.35)">${totalPlats} plat${totalPlats>1?'s':''}</span>
-    </div>
-    <div class="mn-hd-row">
-      ${SERVICES.map(s=>`<button class="mn-hd-pill ${sv===s.id?'on':''}" onclick="window._menuSwitchService('${s.id}')">${s.label}</button>`).join('')}
+      <span class="mn-when-pill">${dFr}</span>
+      <span class="mn-when-pill">${dayTotal} plat${dayTotal>1?'s':''}</span>
     </div>
   </div>
 
   ${renderCoverageCard(cov)}
 
-  <div class="mn-toolbar">
-    <button class="mn-tb" onclick="window._menuRecopierHier()">🔁 Recopier menu d'hier</button>
-    <button class="mn-tb" onclick="window._menuValiderSorties()">⚡ Valider tout préparé minute</button>
-  </div>
-  <div class="mn-toolbar">
-    <button class="mn-tb" onclick="window._menuFullDictee()" style="border-color:#5C1E5A;background:linear-gradient(135deg,#fdf4fd,#f7e0f7)">🎤 Dicter tout le menu</button>
-    <button class="mn-tb" onclick="window._menuQuickJump()">📅 Aller à une date…</button>
-  </div>
-
   ${renderProductsDatalist()}
 
-  ${CATS.map(cat => renderCatBlock(menu, cat)).join('')}
-
-  <div class="mn-action-grid">
-    <button class="mn-act save" onclick="window._menuSave()">💾 Enregistrer le menu</button>
-    <button class="mn-act clear" onclick="window._menuClear()">🗑️ Vider ${SERVICES.find(s=>s.id===sv)?.label||'ce service'}</button>
-  </div>
+  ${SERVICES.map(s => renderServiceAccordion(d, s)).join('')}
 
   ${renderMenuHistory()}
   `;
+}
+
+function renderServiceAccordion(date, svc){
+  const open = !!( _menuState.openServices && _menuState.openServices[svc.id] );
+  let menu = null;
+  try {
+    menu = getMenu(date, svc.id);
+    if(menu) migratePotagesToEntrees(menu);
+    // Ne matérialiser le menu en storage que si le service est ouvert (évite 4 menus vides)
+    if(open) menu = ensureMenuFor(date, svc.id);
+  } catch(e){
+    console.warn('[menu] ensure', e);
+    menu = open ? { categories: emptyCategories(), menu_id:'' } : null;
+  }
+  const n = countPlatsInMenu(menu || { categories: {} });
+  const chev = open ? '▾' : '▸';
+  return `
+  <div class="mn-svc" data-svc="${svc.id}">
+    <div class="mn-svc-hd ${open?'open':''}" onclick="window._menuToggleAccordion('${svc.id}')" role="button" aria-expanded="${open?'true':'false'}">
+      <span class="mn-svc-chev">${chev}</span>
+      <div class="mn-svc-tit">${svc.label}</div>
+      <div class="mn-svc-cnt">${n} plat${n>1?'s':''}</div>
+    </div>
+    ${open ? `<div class="mn-svc-body">
+      ${CATS.map(cat => renderCatBlock(menu, cat, svc.id)).join('')}
+      <div class="mn-action-grid">
+        <button class="mn-act save" onclick="window._menuSave('${svc.id}')">💾 Enregistrer — ${svc.label}</button>
+        <button class="mn-act clear" onclick="window._menuClear('${svc.id}')">🗑️ Vider ${svc.label}</button>
+      </div>
+    </div>` : ''}
+  </div>`;
 }
 
 function renderProductsDatalist(){
@@ -275,8 +337,11 @@ function renderProductsDatalist(){
   return `<datalist id="mn-prods-list">${prods.map(p=>`<option value="${escH(p)}">`).join('')}</datalist>`;
 }
 
-function renderCatBlock(menu, cat){
+function renderCatBlock(menu, cat, svcId){
   const items = menu.categories[cat.id] || [];
+  const sid = svcId || _menuState.service;
+  const inpId = 'mn-inp-'+sid+'-'+cat.id;
+  const micId = 'mn-mic-'+sid+'-'+cat.id;
   return `
   <div class="mn-cat">
     <div class="mn-cat-hd">
@@ -284,12 +349,12 @@ function renderCatBlock(menu, cat){
       <div class="mn-cat-cnt">${items.length}</div>
     </div>
     <div class="mn-add-row">
-      <input id="mn-inp-${cat.id}" class="mn-add-inp" type="text" placeholder="Ajouter ${cat.short.toLowerCase()}…" list="mn-prods-list"
-        onkeydown="if(event.key==='Enter'){event.preventDefault();window._menuAdd('${cat.id}');}" autocomplete="off">
-      <button class="mn-mic-btn" id="mn-mic-${cat.id}" onclick="window._menuMicToggle('${cat.id}')" title="Dicter">🎤</button>
-      <button class="mn-add-btn" onclick="window._menuAdd('${cat.id}')">+</button>
+      <input id="${inpId}" class="mn-add-inp" type="text" placeholder="Ajouter ${cat.short.toLowerCase()}…" list="mn-prods-list"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();window._menuAdd('${cat.id}','${sid}');}" autocomplete="off">
+      <button class="mn-mic-btn" id="${micId}" onclick="window._menuMicToggle('${cat.id}','${sid}')" title="Dicter">🎤</button>
+      <button class="mn-add-btn" onclick="window._menuAdd('${cat.id}','${sid}')">+</button>
     </div>
-    ${items.length === 0 ? `<div class="mn-empty">Aucun ${cat.short.toLowerCase()} pour ce service</div>` : items.map((p,i)=>renderPlatRow(cat.id, p, i)).join('')}
+    ${items.length === 0 ? `<div class="mn-empty">Aucun ${cat.short.toLowerCase()} pour ce service</div>` : items.map((p,i)=>renderPlatRow(cat.id, p, i, sid)).join('')}
   </div>`;
 }
 
@@ -432,8 +497,9 @@ function _menuAddMpToPlats(nom, lot, refs){
     if(typeof toast==='function') toast('✅ '+name+' lié au plat','success');
   } catch(e){ console.warn('[menu] add mp', e); }
 }
-window._menuOpenTraces = function(catId, idx){
+window._menuOpenTraces = function(catId, idx, svcId){
   try {
+    _menuEnsureService(svcId);
     const menu = getMenu(_menuState.date, _menuState.service);
     const plat = menu && menu.categories && menu.categories[catId] && menu.categories[catId][idx];
     if(!plat) return;
@@ -494,17 +560,18 @@ window._menuOpenTraces = function(catId, idx){
   } catch(e){ console.warn('[menu] open traces', e); }
 };
 
-function renderPlatRow(catId, plat, idx){
+function renderPlatRow(catId, plat, idx, svcId){
+  const sid = svcId || _menuState.service;
   const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
   const stat = computePlatStatus(plat);
   const variants = plat.variants || {};
   const mxp = PROFILS[variants.mixe_profil || mixeProfil(plat)];
   const mxBadge = variants.mixe
-    ? ` <button onclick="event.preventDefault();event.stopPropagation();window._menuToggleMixeProfil('${catId}',${idx})" style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 7px;border-radius:5px;font-weight:800;vertical-align:middle;border:none;cursor:pointer;font-family:inherit;touch-action:manipulation">${mxp.label} ⇄</button>`
+    ? ` <button onclick="event.preventDefault();event.stopPropagation();window._menuToggleMixeProfil('${catId}',${idx},'${sid}')" style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 7px;border-radius:5px;font-weight:800;vertical-align:middle;border:none;cursor:pointer;font-family:inherit;touch-action:manipulation">${mxp.label} ⇄</button>`
     : '';
   const showProf = plat.profil_haccp !== 'BF_CUIT' && plat.profil_haccp !== 'BF_CRU';
   const profBtn = showProf
-    ? `<button class="mn-plat-prof" style="background:${prof.color}" onclick="window._menuChangeProfil('${catId}',${idx})" title="Changer le profil HACCP">${prof.ico} ${prof.label}</button>`
+    ? `<button class="mn-plat-prof" style="background:${prof.color}" onclick="window._menuChangeProfil('${catId}',${idx},'${sid}')" title="Changer le profil HACCP">${prof.ico} ${prof.label}</button>`
     : '';
   let chips = '';
   try {
@@ -516,23 +583,23 @@ function renderPlatRow(catId, plat, idx){
     <div class="mn-plat-row1">
       <div class="mn-plat-name">${escH(plat.nom)}</div>
       ${profBtn}
-      <button class="mn-plat-del" onclick="window._menuRemove('${catId}',${idx})">✕</button>
+      <button class="mn-plat-del" onclick="window._menuRemove('${catId}',${idx},'${sid}')">✕</button>
     </div>
     <div class="mn-plat-row2">
-      <button type="button" class="mn-plat-st ${stat.cls}" onclick="window._menuOpenTraces('${catId}',${idx})" title="Lier les lots et les ingrédients">${stat.label}</button>
+      <button type="button" class="mn-plat-st ${stat.cls}" onclick="window._menuOpenTraces('${catId}',${idx},'${sid}')" title="Lier les lots et les ingrédients">${stat.label}</button>
       ${chips}
     </div>
     <div class="mn-plat-row3">
       <label class="mn-plat-chk">
-        <input type="checkbox" ${variants.mixe?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'mixe',this.checked)">
+        <input type="checkbox" ${variants.mixe?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'mixe',this.checked,'${sid}')">
         🥄 Mixé${mxBadge}
       </label>
       <label class="mn-plat-chk">
-        <input type="checkbox" ${variants.sans_sel?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'sans_sel',this.checked)">
+        <input type="checkbox" ${variants.sans_sel?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'sans_sel',this.checked,'${sid}')">
         🚫 Sans sel
       </label>
       <label class="mn-plat-chk">
-        <input type="checkbox" ${variants.hp?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'hp',this.checked)">
+        <input type="checkbox" ${variants.hp?'checked':''} onchange="window._menuToggleVariant('${catId}',${idx},'hp',this.checked,'${sid}')">
         💪 HP
       </label>
     </div>
@@ -572,7 +639,7 @@ function renderCoverageCard(cov){
   const ico = pct >= 80 ? '✅' : (pct >= 40 ? '⚠️' : '❗');
   return `
   <div class="mn-cov ${cls}">
-    <div class="mn-cov-tit">${ico} Couverture HACCP du menu — ${pct}%</div>
+    <div class="mn-cov-tit">${ico} Couverture HACCP du jour — ${pct}%</div>
     <div class="mn-cov-bar"><div class="mn-cov-fill" style="width:${pct}%"></div></div>
     <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''} • ${cov.tracked} tracé${cov.tracked>1?'s':''} sur ${cov.total}</div>
   </div>`;
@@ -580,8 +647,14 @@ function renderCoverageCard(cov){
 
 function computeMenuCoverage(menu){
   let total=0, tracked=0;
-  CATS.forEach(c => {
-    (menu.categories[c.id]||[]).forEach(p => {
+  try { migratePotagesToEntrees(menu); } catch(e){}
+  const ids = CATS.map(c => c.id);
+  // Sécurité : compter aussi d'éventuels potages non migrés
+  if(menu && menu.categories && Array.isArray(menu.categories.potages) && menu.categories.potages.length){
+    if(ids.indexOf('potages') < 0) ids.push('potages');
+  }
+  ids.forEach(id => {
+    (menu && menu.categories && menu.categories[id] || []).forEach(p => {
       total++;
       if(p.statut_auto === 'preparé_minute' || countEnrLinkedToPlat(p.plat_id) > 0) tracked++;
     });
@@ -643,6 +716,15 @@ window._menuLoadFromHistory = function(idx){
       statut_auto: null,
     }));
   });
+  // Récupérer d'éventuels potages historiques → Entrées
+  try {
+    const pots = ((h.categories||{}).potages || []).map(p => ({
+      ...p,
+      plat_id: newUUID().slice(0,8),
+      statut_auto: null,
+    }));
+    if(pots.length) newMenu.categories.entrees = (newMenu.categories.entrees||[]).concat(pots);
+  } catch(e){}
   setMenu(_menuState.date, _menuState.service, newMenu);
   if(typeof renderMain === 'function') renderMain();
   if(typeof toast === 'function') toast('✅ Menu chargé depuis l\'historique','success');
@@ -652,7 +734,19 @@ window._menuLoadFromHistory = function(idx){
 // ACTIONS
 // ════════════════════════════════════════════════════
 window._menuSwitchService = function(s){
-  _menuState.service = s;
+  try {
+    _menuState.service = s;
+    if(!_menuState.openServices) _menuState.openServices = { midi: true };
+    _menuState.openServices[s] = true;
+  } catch(e){}
+  if(typeof renderMain === 'function') renderMain();
+};
+window._menuToggleAccordion = function(svcId){
+  try {
+    if(!_menuState.openServices) _menuState.openServices = { midi: true };
+    _menuState.openServices[svcId] = !_menuState.openServices[svcId];
+    _menuState.service = svcId;
+  } catch(e){ console.warn('[menu] accordion', e); }
   if(typeof renderMain === 'function') renderMain();
 };
 window._menuSwitchDate = function(d){
@@ -707,29 +801,37 @@ function _addPlat(catId, nom){
   }
   return plat;
 }
-window._menuAdd = function(catId){
-  const inp = document.getElementById('mn-inp-'+catId);
-  if(!inp) return;
-  const nom = (inp.value||'').trim();
-  if(!nom){ if(typeof toast==='function') toast('Entrez un nom de plat','warning'); return; }
-  // Garde-fou : pas de plat avec plus de 80 caractères (probablement bug dictée)
-  if(nom.length > 80){
-    if(typeof toast==='function') toast('Nom trop long ('+nom.length+' car) — utilisez la dictée par catégorie','warning');
-    return;
-  }
-  _addPlat(catId, nom);
-  inp.value = '';
-  if(typeof renderMain === 'function') renderMain();
-  setTimeout(()=>{ const x=document.getElementById('mn-inp-'+catId); if(x) x.focus(); },50);
+window._menuAdd = function(catId, svcId){
+  try {
+    _menuEnsureService(svcId);
+    const sid = svcId || _menuState.service;
+    const inp = document.getElementById('mn-inp-'+sid+'-'+catId) || document.getElementById('mn-inp-'+catId);
+    if(!inp) return;
+    const nom = (inp.value||'').trim();
+    if(!nom){ if(typeof toast==='function') toast('Entrez un nom de plat','warning'); return; }
+    // Garde-fou : pas de plat avec plus de 80 caractères (probablement bug dictée)
+    if(nom.length > 80){
+      if(typeof toast==='function') toast('Nom trop long ('+nom.length+' car) — utilisez la dictée par catégorie','warning');
+      return;
+    }
+    _addPlat(catId, nom);
+    inp.value = '';
+    if(typeof renderMain === 'function') renderMain();
+    setTimeout(()=>{ const x=document.getElementById('mn-inp-'+sid+'-'+catId) || document.getElementById('mn-inp-'+catId); if(x) x.focus(); },50);
+  } catch(e){ console.warn('[menu] add', e); }
 };
-window._menuRemove = function(catId, idx){
-  const menu = getMenu(_menuState.date, _menuState.service);
-  if(!menu) return;
-  menu.categories[catId].splice(idx,1);
-  setMenu(_menuState.date, _menuState.service, menu);
-  if(typeof renderMain === 'function') renderMain();
+window._menuRemove = function(catId, idx, svcId){
+  try {
+    _menuEnsureService(svcId);
+    const menu = getMenu(_menuState.date, _menuState.service);
+    if(!menu) return;
+    menu.categories[catId].splice(idx,1);
+    setMenu(_menuState.date, _menuState.service, menu);
+    if(typeof renderMain === 'function') renderMain();
+  } catch(e){ console.warn('[menu] remove', e); }
 };
-window._menuChangeProfil = function(catId, idx){
+window._menuChangeProfil = function(catId, idx, svcId){
+  _menuEnsureService(svcId);
   const menu = getMenu(_menuState.date, _menuState.service);
   if(!menu) return;
   const plat = menu.categories[catId][idx];
@@ -748,7 +850,8 @@ window._menuChangeProfil = function(catId, idx){
   setMenu(_menuState.date, _menuState.service, menu);
   if(typeof renderMain === 'function') renderMain();
 };
-window._menuToggleVariant = function(catId, idx, variant, checked){
+window._menuToggleVariant = function(catId, idx, variant, checked, svcId){
+  _menuEnsureService(svcId);
   const menu = getMenu(_menuState.date, _menuState.service);
   if(!menu) return;
   const plat = menu.categories[catId][idx];
@@ -765,7 +868,8 @@ window._menuToggleVariant = function(catId, idx, variant, checked){
   setMenu(_menuState.date, _menuState.service, menu);
   if(typeof renderMain === 'function') renderMain();
 };
-window._menuToggleMixeProfil = function(catId, idx){
+window._menuToggleMixeProfil = function(catId, idx, svcId){
+  _menuEnsureService(svcId);
   const menu = getMenu(_menuState.date, _menuState.service);
   if(!menu) return;
   const plat = menu.categories[catId]?.[idx];
@@ -812,14 +916,18 @@ window._menuValiderSorties = function(){
   if(typeof renderMain === 'function') renderMain();
   if(typeof toast === 'function') toast(n ? '✅ '+n+' plat(s) auto-validé(s)' : 'Aucun plat à auto-valider', n?'success':'info');
 };
-window._menuClear = function(){
-  const sv = SERVICES.find(s => s.id === _menuState.service)?.label || _menuState.service;
-  if(!confirm('Vider le menu de '+sv+' ?')) return;
-  const menu = { categories: emptyCategories(), menu_id: newUUID() };
-  setMenu(_menuState.date, _menuState.service, menu);
-  if(typeof renderMain === 'function') renderMain();
+window._menuClear = function(svcId){
+  try {
+    _menuEnsureService(svcId);
+    const sv = SERVICES.find(s => s.id === _menuState.service)?.label || _menuState.service;
+    if(!confirm('Vider le menu de '+sv+' ?')) return;
+    const menu = { categories: emptyCategories(), menu_id: newUUID() };
+    setMenu(_menuState.date, _menuState.service, menu);
+    if(typeof renderMain === 'function') renderMain();
+  } catch(e){ console.warn('[menu] clear', e); }
 };
-window._menuSave = function(){
+window._menuSave = function(svcId){
+  _menuEnsureService(svcId);
   const menu = getMenu(_menuState.date, _menuState.service);
   if(!menu){ if(typeof toast==='function') toast('Aucun menu','warning'); return; }
   let total = 0;
@@ -1175,59 +1283,71 @@ function getSpeechRecognition(){
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
 
-window._menuMicToggle = function(catId){
-  const SR = getSpeechRecognition();
-  if(!SR){
-    if(typeof toast==='function') toast('Dictée non supportée. Utilisez Chrome.','warning');
-    return;
-  }
-  if(_activeRecognition && _activeMicCatId === catId){
-    try { _activeRecognition.stop(); } catch(e){}
-    _activeRecognition = null;
-    _activeMicCatId = null;
-    const btn = document.getElementById('mn-mic-'+catId);
-    if(btn) btn.classList.remove('recording');
-    return;
-  }
-  if(_activeRecognition){
-    try { _activeRecognition.abort(); } catch(e){}
-    if(_activeMicCatId){ const old = document.getElementById('mn-mic-'+_activeMicCatId); if(old) old.classList.remove('recording'); }
-  }
-  const rec = new SR();
-  rec.lang = 'fr-FR';
-  rec.continuous = false;
-  rec.interimResults = false;
-  rec.maxAlternatives = 1;
-  _activeRecognition = rec;
-  _activeMicCatId = catId;
-  const btn = document.getElementById('mn-mic-'+catId);
-  if(btn) btn.classList.add('recording');
-  rec.onresult = function(ev){
-    const txt = ev.results[0][0].transcript.trim();
-    if(txt && txt.length <= 80) {
-      _addPlat(catId, capitalize(txt));
-      if(typeof toast==='function') toast('🎤 → '+txt, 'success');
-      if(typeof renderMain === 'function') renderMain();
-    } else if(txt.length > 80){
-      if(typeof toast==='function') toast('Texte trop long — dictez plat par plat','warning');
+window._menuMicToggle = function(catId, svcId){
+  try {
+    _menuEnsureService(svcId);
+    const sid = svcId || _menuState.service;
+    const micKey = sid + '::' + catId;
+    const micElId = 'mn-mic-'+sid+'-'+catId;
+    const SR = getSpeechRecognition();
+    if(!SR){
+      if(typeof toast==='function') toast('Dictée non supportée. Utilisez Chrome.','warning');
+      return;
     }
-  };
-  rec.onerror = function(ev){
-    console.warn('[menu mic]', ev.error);
-    if(ev.error === 'no-speech'){ if(typeof toast==='function') toast('Aucune voix détectée','warning'); }
-    else if(ev.error === 'not-allowed'){ if(typeof toast==='function') toast('Microphone refusé','danger'); }
-    else { if(typeof toast==='function') toast('Erreur dictée: '+ev.error,'warning'); }
-  };
-  rec.onend = function(){
-    if(btn) btn.classList.remove('recording');
-    if(_activeRecognition === rec){ _activeRecognition = null; _activeMicCatId = null; }
-  };
-  try { rec.start(); }
-  catch(e){
-    console.warn('[menu mic start]', e);
-    if(btn) btn.classList.remove('recording');
-    _activeRecognition = null; _activeMicCatId = null;
-  }
+    if(_activeRecognition && _activeMicCatId === micKey){
+      try { _activeRecognition.stop(); } catch(e){}
+      _activeRecognition = null;
+      _activeMicCatId = null;
+      const btn = document.getElementById(micElId) || document.getElementById('mn-mic-'+catId);
+      if(btn) btn.classList.remove('recording');
+      return;
+    }
+    if(_activeRecognition){
+      try { _activeRecognition.abort(); } catch(e){}
+      if(_activeMicCatId){
+        const parts = String(_activeMicCatId).split('::');
+        const oldId = parts.length === 2 ? ('mn-mic-'+parts[0]+'-'+parts[1]) : ('mn-mic-'+_activeMicCatId);
+        const old = document.getElementById(oldId);
+        if(old) old.classList.remove('recording');
+      }
+    }
+    const rec = new SR();
+    rec.lang = 'fr-FR';
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    _activeRecognition = rec;
+    _activeMicCatId = micKey;
+    const btn = document.getElementById(micElId) || document.getElementById('mn-mic-'+catId);
+    if(btn) btn.classList.add('recording');
+    rec.onresult = function(ev){
+      const txt = ev.results[0][0].transcript.trim();
+      if(txt && txt.length <= 80) {
+        _menuEnsureService(sid);
+        _addPlat(catId, capitalize(txt));
+        if(typeof toast==='function') toast('🎤 → '+txt, 'success');
+        if(typeof renderMain === 'function') renderMain();
+      } else if(txt.length > 80){
+        if(typeof toast==='function') toast('Texte trop long — dictez plat par plat','warning');
+      }
+    };
+    rec.onerror = function(ev){
+      console.warn('[menu mic]', ev.error);
+      if(ev.error === 'no-speech'){ if(typeof toast==='function') toast('Aucune voix détectée','warning'); }
+      else if(ev.error === 'not-allowed'){ if(typeof toast==='function') toast('Microphone refusé','danger'); }
+      else { if(typeof toast==='function') toast('Erreur dictée: '+ev.error,'warning'); }
+    };
+    rec.onend = function(){
+      if(btn) btn.classList.remove('recording');
+      if(_activeRecognition === rec){ _activeRecognition = null; _activeMicCatId = null; }
+    };
+    try { rec.start(); }
+    catch(e){
+      console.warn('[menu mic start]', e);
+      if(btn) btn.classList.remove('recording');
+      _activeRecognition = null; _activeMicCatId = null;
+    }
+  } catch(e){ console.warn('[menu] mic', e); }
 };
 
 window._menuFullDictee = function(){
@@ -1301,7 +1421,7 @@ window._menuFullDictee = function(){
 
 // Mapping mot-clé → catégorie
 const KW_TO_CAT_PAIRS = [
-  [/^(potages?|soupes?|veloutés?)$/i, 'potages'],
+  [/^(potages?|soupes?|veloutés?)$/i, 'entrees'],
   [/^(entrées?|crudités?)$/i, 'entrees'],
   [/^(plats?|viandes?|poissons?)$/i, 'plats'],
   [/^(garnitures?|accompagnements?|légumes?|legumes?)$/i, 'garnitures'],
