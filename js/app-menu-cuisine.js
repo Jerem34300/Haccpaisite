@@ -2785,9 +2785,9 @@ window._menuPhotoOnFile = function(input){
       if(typeof toast==='function') toast('Fichier image requis','warning');
       return;
     }
-    // Limite douce côté client (~4 Mo fichier)
-    if(file.size > 4.5e6){
-      if(typeof toast==='function') toast('Photo trop lourde — essayez une image plus légère','warning');
+    // Fichier brut accepté jusqu'à 20 Mo : compressé avant envoi (_menuPhotoRunOcr)
+    if(file.size > 20*1024*1024){
+      if(typeof toast==='function') toast('Photo trop lourde (max 20 Mo)','warning');
       return;
     }
     _menuPhotoShowLoading('Préparation du menu…');
@@ -2815,6 +2815,15 @@ window._menuPhotoOnFile = function(input){
 async function _menuPhotoRunOcr(dataUrl){
   _menuPhotoShowLoading('Préparation du menu…');
   try {
+    // Compression avant envoi (serveur : max ~2 Mo encodés) — côté max 2000 px (texte dense)
+    try {
+      if(typeof _ocrCompressForUpload === 'function') dataUrl = await _ocrCompressForUpload(dataUrl, { maxSide: 2000 });
+    } catch(e){ console.warn('[menu-ocr compress]', e); }
+    if(String(dataUrl||'').length > 2400000){
+      _menuPhotoCloseOv();
+      if(typeof toast==='function') toast('Image trop volumineuse même compressée — recadrez ou reprenez la photo','warning');
+      return;
+    }
     const resp = await fetch('/.netlify/functions/menu-ocr', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

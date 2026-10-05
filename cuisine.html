@@ -3,7 +3,7 @@
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>HACC.PRO — Cuisine v36.3 · haccpro-v483</title>
+  <title>HACC.PRO — Cuisine v36.3 · haccpro-v484</title>
   <meta name="application-name" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-title" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,7 +15,7 @@
   
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" id="pwa-manifest-link" href="/manifest.json">
-  <link rel="stylesheet" href="css/cuisine.css?v=483">
+  <link rel="stylesheet" href="css/cuisine.css?v=484">
   <!-- Bibliotheques externes -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
@@ -35,8 +35,8 @@
   <script src="js/utils.js?v=433"></script>
 
   <script>
-    // Libellé visible = CACHE_NAME du SW (haccpro-v483). Ne pas laisser un build figé (un ancien build).
-    var HACC_CACHE = 'haccpro-v483';
+    // Libellé visible = CACHE_NAME du SW (haccpro-v484). Ne pas laisser un build figé (un ancien build).
+    var HACC_CACHE = 'haccpro-v484';
     function haccApplyBuild(name){
       try{
         var v = String(name || HACC_CACHE);
@@ -136,6 +136,7 @@
       <div id="ocr-validate-panel" style="display:none"></div>
       <div id="ocr-bl-lines" style="display:none"></div>
       <div id="ocr-conflict-panel" style="display:none"></div>
+      <div id="ocr-face2-wrap" style="display:none"></div>
       <input type="file" id="ocr-file-input" accept="image/*" capture="environment" style="display:none" onchange="photoHandleFile(this)">
       <input type="file" id="ocr-gallery-input" accept="image/*" style="display:none" onchange="photoHandleFile(this)">
     </div>
@@ -957,9 +958,9 @@
   <!-- Application Cuisine (ordre important: service avant app) -->
   <script src="js/supabaseservice.js?v=436"></script>
   <script src="js/printservice.js"></script>
-  <script src="js/app-cuisine.js?v=483"></script>
+  <script src="js/app-cuisine.js?v=484"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
-  <script src="js/app-menu-cuisine.js?v=482"></script>
+  <script src="js/app-menu-cuisine.js?v=484"></script>
   <!-- Guide « Premiers pas » sur l'accueil (après inscription) -->
   <script src="js/tuto-premiers-pas.js?v=453"></script>
   <!-- Tracabilité HACCP bidirectionnelle + IA recettes -->
