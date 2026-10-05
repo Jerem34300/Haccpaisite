@@ -8560,56 +8560,92 @@ function expDistrib(){
 let _photoPfx = 'p1';   // 'p1', 'p2', ou 'enr31'
 let _photoB64 = null;   // base64 de la photo en cours
 
+let _labelOcrCtx = null; // null = photo seule ; {mode:'label'|'bl', target:'enr23'|'enr31', pfx}
+
 function openOcrModal(pfx) {
-  _photoPfx = pfx || 'p1';
-  _photoB64 = null;
-  // Reset UI
-  const img = document.getElementById('ocr-img');
-  img.onerror = null; // évite un faux toast "Image invalide" hérité d'une capture précédente (voir closeOcrModal)
-  img.style.display = 'none';
-  img.src = '';
-  document.getElementById('ocr-placeholder').style.display = 'block';
-  const btn = document.getElementById('ocr-apply-btn');
-  btn.style.opacity = '.4'; btn.style.pointerEvents = 'none';
-  document.getElementById('ocr-ov').classList.add('open');
-  // PAS d'ouverture auto caméra → évite le toast fantôme "Aucune photo"
-  // L'utilisateur appuie sur le bouton pour ouvrir la caméra
+  try {
+    _labelOcrCtx = null; // photo seule — pas d'analyse
+    _photoPfx = pfx || 'p1';
+    _photoB64 = null;
+    _ocrResetPanels();
+    const img = document.getElementById('ocr-img');
+    if(img){ img.onerror = null; img.style.display = 'none'; img.src = ''; }
+    const ph = document.getElementById('ocr-placeholder');
+    if(ph){ ph.style.display = 'block'; ph.textContent = '📷 Appuyez sur Caméra ou Galerie'; }
+    const hdr = document.getElementById('ocr-hdr-title');
+    if(hdr) hdr.textContent = '📷 Photo étiquette';
+    _ocrSetActionsPhotoOnly();
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){ btn.style.opacity = '.4'; btn.style.pointerEvents = 'none'; btn.textContent = '💾 Enregistrer'; btn.onclick = function(){ photoSave(); }; }
+    document.getElementById('ocr-ov').classList.add('open');
+  } catch(e){ try{ console.warn('[openOcrModal]', e); }catch(_e){} }
 }
 function closeOcrModal() {
-  document.getElementById('ocr-ov').classList.remove('open');
-  _photoB64 = null;
-  const inp = document.getElementById('ocr-file-input');
-  if(inp) inp.value = '';
-  const btn = document.getElementById('ocr-apply-btn');
-  if(btn){ btn.style.opacity='.4'; btn.style.pointerEvents='none'; }
-  const img = document.getElementById('ocr-img');
-  if(img){ img.onerror = null; img.style.display='none'; img.src=''; } // onerror=null : évite un faux toast "Image invalide" au prochain openOcrModal()
-  const ph = document.getElementById('ocr-placeholder');
-  if(ph) ph.textContent='📷 Appuyez sur "Ouvrir la caméra"';
+  try {
+    haccHideWait();
+    document.getElementById('ocr-ov').classList.remove('open');
+    _photoB64 = null;
+    _labelOcrCtx = null;
+    const inp = document.getElementById('ocr-file-input');
+    if(inp) inp.value = '';
+    const gin = document.getElementById('ocr-gallery-input');
+    if(gin) gin.value = '';
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){ btn.style.opacity='.4'; btn.style.pointerEvents='none'; }
+    const img = document.getElementById('ocr-img');
+    if(img){ img.onerror = null; img.style.display='none'; img.src=''; }
+    const ph = document.getElementById('ocr-placeholder');
+    if(ph) ph.textContent='📷 Appuyez sur Caméra ou Galerie';
+    _ocrResetPanels();
+  } catch(e){ try{ console.warn('[closeOcrModal]', e); }catch(_e){} }
 }
 function ocrTriggerCamera() {
-  const inp = document.getElementById('ocr-file-input');
-  inp.value = ''; inp.click();
+  try {
+    const inp = document.getElementById('ocr-file-input');
+    if(!inp) return;
+    inp.value = ''; inp.click();
+  } catch(e){}
+}
+function ocrTriggerGallery() {
+  try {
+    const inp = document.getElementById('ocr-gallery-input') || document.getElementById('ocr-file-input');
+    if(!inp) return;
+    inp.value = ''; inp.click();
+  } catch(e){}
 }
 
 function photoHandleFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  if (file.size > 20*1024*1024) { toast('⚠️ Photo trop lourde (max 20 Mo)','warning'); input.value=''; return; }
-  const reader = new FileReader();
-  reader.onload = e => {
-    _photoB64 = e.target.result; // data:image/jpeg;base64,…
-    const img = document.getElementById('ocr-img');
-    img.onerror = () => toast('⚠️ Image invalide','warning');
-    img.src = _photoB64;
-    img.style.display = 'block';
-    document.getElementById('ocr-placeholder').style.display = 'none';
-    const btn = document.getElementById('ocr-apply-btn');
-    btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
-    const info=document.getElementById('ocr-save-info');
-    if(info) info.style.display='';
-  };
-  reader.readAsDataURL(file);
+  try {
+    const file = input && input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 20*1024*1024) { toast('⚠️ Photo trop lourde (max 20 Mo)','warning'); input.value=''; return; }
+    const reader = new FileReader();
+    reader.onerror = function(){ toast('⚠️ Lecture photo impossible','warning'); };
+    reader.onload = e => {
+      try {
+        _photoB64 = e.target.result; // data:image/jpeg;base64,…
+        const img = document.getElementById('ocr-img');
+        if(img){
+          img.onerror = () => toast('⚠️ Image invalide','warning');
+          img.src = _photoB64;
+          img.style.display = 'block';
+        }
+        const ph = document.getElementById('ocr-placeholder');
+        if(ph) ph.style.display = 'none';
+        const info=document.getElementById('ocr-save-info');
+        if(info) info.style.display='';
+        // Mode analyse (réception / traça) → lancer analyse SANS écrire la fiche
+        if(_labelOcrCtx && _labelOcrCtx.mode){
+          labelOcrRunAnalysis(_photoB64);
+          return;
+        }
+        // Mode photo seule — comportement historique
+        const btn = document.getElementById('ocr-apply-btn');
+        if(btn){ btn.style.opacity = '1'; btn.style.pointerEvents = 'auto'; }
+      } catch(err){ try{ console.warn('[photoHandleFile onload]', err); }catch(_e){} }
+    };
+    reader.readAsDataURL(file);
+  } catch(e){ try{ console.warn('[photoHandleFile]', e); }catch(_e){} }
 }
 
 // ── Photos en attente (plein résolution, pas encore téléchargées) ──
@@ -8672,6 +8708,460 @@ function photoSave() {
     toast('⚠️ Stockage plein — supprimez d\'anciennes fiches','warning');
   }
 }
+
+
+// ════════════════════════════════════════════════════
+// ANALYSE PHOTO ÉTIQUETTE / BL (préremplissage champs)
+// Invariant: l'analyse ne remplace PAS la photo —
+// Valider → champs via r23s/sd + photoSave() inchangé.
+// ════════════════════════════════════════════════════
+
+function haccShowWait(opts){
+  try {
+    haccHideWait();
+    opts = opts || {};
+    const ov = document.createElement('div');
+    ov.id = 'hacc-wait-ov';
+    ov.className = 'hacc-wait-ov';
+    const icon = opts.icon || '📷';
+    const title = opts.title || 'Analyse en cours…';
+    const sub = opts.sub || 'Rien n’est enregistré pour l’instant';
+    ov.innerHTML = '<div class="hacc-wait-card" role="status" aria-live="polite">'
+      + '<div class="hacc-wait-top"><div class="hacc-wait-icon-wrap">'
+      + '<div class="hacc-wait-spin" aria-hidden="true"></div>'
+      + '<div class="hacc-wait-icon">'+icon+'</div></div>'
+      + '<div class="hacc-wait-title">'+escH(title)+'</div></div>'
+      + '<div class="hacc-wait-sub">'+escH(sub)+'</div></div>';
+    document.body.appendChild(ov);
+  } catch(e){ try{ console.warn('[haccShowWait]', e); }catch(_e){} }
+}
+function haccHideWait(){
+  try {
+    const ov = document.getElementById('hacc-wait-ov');
+    if(ov) ov.remove();
+  } catch(e){}
+}
+
+function _ocrResetPanels(){
+  try {
+    ['ocr-validate-panel','ocr-bl-lines','ocr-conflict-panel','ocr-status'].forEach(function(id){
+      const el = document.getElementById(id);
+      if(!el) return;
+      el.style.display = 'none';
+      if(id !== 'ocr-status') el.innerHTML = '';
+    });
+    const prev = document.getElementById('ocr-preview-wrap');
+    if(prev) prev.style.display = '';
+  } catch(e){}
+}
+function _ocrSetActionsPhotoOnly(){
+  try {
+    const cam = document.getElementById('ocr-cam-btn');
+    const gal = document.getElementById('ocr-gal-btn');
+    if(cam){ cam.style.display = ''; cam.textContent = '📷 Caméra'; }
+    if(gal){ gal.style.display = ''; }
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){
+      btn.style.display = '';
+      btn.textContent = '💾 Enregistrer';
+      btn.onclick = function(){ photoSave(); };
+    }
+  } catch(e){}
+}
+function _ocrSetActionsValidate(){
+  try {
+    const cam = document.getElementById('ocr-cam-btn');
+    const gal = document.getElementById('ocr-gal-btn');
+    if(cam){ cam.style.display = ''; cam.textContent = '↺ Reprendre'; }
+    if(gal) gal.style.display = 'none';
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){
+      btn.style.display = '';
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+      btn.textContent = '✅ Valider';
+      btn.onclick = function(){ labelOcrOnValidate(); };
+    }
+  } catch(e){}
+}
+
+/** Slot photo preuve pour ENR31 (1ère case vide, sinon photo 1). */
+function _labelOcrEnr31PhotoPfx(){
+  try {
+    const d = (S['enr31']||{}).draft||{};
+    if(!d.photo) return 'enr31';
+    if(!d.photo2) return 'enr31_2';
+    if(!d.photo3) return 'enr31_3';
+    return 'enr31';
+  } catch(e){ return 'enr31'; }
+}
+
+/**
+ * Ouvre le modal en mode analyse (étiquette ou BL).
+ * target: 'enr23' | 'enr31' — mode: 'label' | 'bl'
+ * La photo reste gérée comme aujourd'hui via _photoPfx + photoSave().
+ */
+function openLabelOcr(mode, target, source){
+  try {
+    mode = (mode === 'bl') ? 'bl' : 'label';
+    target = (target === 'enr31') ? 'enr31' : 'enr23';
+    let pfx;
+    if(target === 'enr31'){
+      pfx = _labelOcrEnr31PhotoPfx();
+    } else {
+      try {
+        pfx = (typeof r23GetProdFocus === 'function' && r23GetProdFocus() === '2') ? 'p2' : 'p1';
+      } catch(e){ pfx = 'p1'; }
+    }
+    _labelOcrCtx = { mode: mode, target: target, pfx: pfx, proposed: null, lines: null, conflicts: null };
+    _photoPfx = pfx;
+    _photoB64 = null;
+    _ocrResetPanels();
+    const img = document.getElementById('ocr-img');
+    if(img){ img.onerror = null; img.style.display = 'none'; img.src = ''; }
+    const ph = document.getElementById('ocr-placeholder');
+    if(ph){ ph.style.display = 'block'; ph.textContent = mode==='bl' ? '📄 Photo du bon de livraison' : '📷 Photo de l\'étiquette'; }
+    const hdr = document.getElementById('ocr-hdr-title');
+    if(hdr) hdr.textContent = mode==='bl' ? '📄 Bon de livraison' : '📷 Analyse étiquette';
+    _ocrSetActionsPhotoOnly();
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){ btn.style.opacity = '.4'; btn.style.pointerEvents = 'none'; btn.textContent = '✅ Valider'; }
+    document.getElementById('ocr-ov').classList.add('open');
+    // Ouverture directe caméra / galerie si demandé
+    if(source === 'gallery') setTimeout(ocrTriggerGallery, 60);
+    else if(source === 'camera') setTimeout(ocrTriggerCamera, 60);
+  } catch(e){
+    try{ console.warn('[openLabelOcr]', e); }catch(_e){}
+    toast('⚠️ Impossible d\'ouvrir la capture','warning');
+  }
+}
+
+async function labelOcrRunAnalysis(dataUrl){
+  const ctx = _labelOcrCtx;
+  if(!ctx) return;
+  const mode = ctx.mode === 'bl' ? 'bl' : 'label';
+  const waitTitle = mode === 'bl' ? 'Lecture du bon de livraison…' : 'Analyse de l\'étiquette…';
+  haccShowWait({ icon: '📷', title: waitTitle, sub: 'Rien n’est enregistré pour l’instant' });
+  try {
+    const resp = await fetch('/.netlify/functions/label-ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl, mode: mode }),
+    });
+    let data = null;
+    try { data = await resp.json(); } catch(e){ data = null; }
+    haccHideWait();
+    if(!resp.ok){
+      const raw = (data && data.error) || ('Analyse impossible ('+resp.status+')');
+      const msg = String(raw).replace(/\bOCR\b/gi,'Analyse').replace('OPENAI_API_KEY manquante','Analyse photo non configurée');
+      toast('⚠️ '+msg+' — saisie manuelle','warning');
+      if(data && data.stub){
+        toast('ℹ️ Analyse photo non activée sur le serveur','warning');
+      }
+      // Garder la photo : permettre Enregistrer sans préremplissage
+      _ocrSetActionsPhotoOnly();
+      const btn = document.getElementById('ocr-apply-btn');
+      if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
+      return;
+    }
+    if(mode === 'bl'){
+      const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
+      if(!lines.length){
+        toast('⚠️ Aucune ligne lue sur le BL — saisie manuelle','warning');
+        _ocrSetActionsPhotoOnly();
+        const btn = document.getElementById('ocr-apply-btn');
+        if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
+        return;
+      }
+      ctx.lines = lines;
+      labelOcrShowBlPicker(lines);
+      return;
+    }
+    const proposed = {
+      produit: String((data && data.produit) || '').trim(),
+      lot: String((data && data.lot) || '').trim(),
+      dlc: String((data && data.dlc) || '').trim(),
+      estampille: String((data && data.estampille) || '').trim(),
+    };
+    if(!proposed.produit && !proposed.lot && !proposed.dlc && !proposed.estampille){
+      toast('⚠️ Étiquette illisible — saisie manuelle','warning');
+      _ocrSetActionsPhotoOnly();
+      const btn = document.getElementById('ocr-apply-btn');
+      if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
+      return;
+    }
+    ctx.proposed = proposed;
+    labelOcrShowValidation(proposed);
+  } catch(e){
+    haccHideWait();
+    try{ console.warn('[labelOcrRunAnalysis]', e); }catch(_e){}
+    toast('⚠️ Analyse photo indisponible (réseau) — saisie manuelle','warning');
+    _ocrSetActionsPhotoOnly();
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
+  }
+}
+
+function labelOcrShowBlPicker(lines){
+  try {
+    const wrap = document.getElementById('ocr-bl-lines');
+    const prev = document.getElementById('ocr-preview-wrap');
+    const val = document.getElementById('ocr-validate-panel');
+    const conf = document.getElementById('ocr-conflict-panel');
+    if(val) val.style.display = 'none';
+    if(conf) conf.style.display = 'none';
+    if(prev) prev.style.display = 'none';
+    if(!wrap) return;
+    let html = '<div style="font-size:.78rem;font-weight:800;color:#5C1E5A;margin-bottom:8px">Choisissez <strong>une</strong> ligne à coller dans la fiche ouverte</div>';
+    lines.forEach(function(line, i){
+      const meta = [line.lot ? ('Lot '+line.lot) : '', line.dlc ? ('DLC '+line.dlc) : ''].filter(Boolean).join(' · ');
+      html += '<button type="button" class="ocr-bl-line" onclick="labelOcrPickBlLine('+i+')">'
+        + '<div class="ocr-bl-prod">'+escH(line.produit||'(sans nom)')+'</div>'
+        + (meta ? '<div class="ocr-bl-meta">'+escH(meta)+'</div>' : '')
+        + '</button>';
+    });
+    wrap.innerHTML = html;
+    wrap.style.display = 'block';
+    const cam = document.getElementById('ocr-cam-btn');
+    const gal = document.getElementById('ocr-gal-btn');
+    const btn = document.getElementById('ocr-apply-btn');
+    if(cam){ cam.style.display=''; cam.textContent='↺ Reprendre'; }
+    if(gal) gal.style.display='none';
+    if(btn){ btn.style.opacity='.4'; btn.style.pointerEvents='none'; btn.textContent='✅ Valider'; }
+  } catch(e){ try{ console.warn('[labelOcrShowBlPicker]', e); }catch(_e){} }
+}
+
+function labelOcrPickBlLine(i){
+  try {
+    const ctx = _labelOcrCtx;
+    if(!ctx || !ctx.lines || !ctx.lines[i]) return;
+    const line = ctx.lines[i];
+    ctx.proposed = {
+      produit: String(line.produit||'').trim(),
+      lot: String(line.lot||'').trim(),
+      dlc: String(line.dlc||'').trim(),
+      estampille: String(line.estampille||'').trim(),
+    };
+    labelOcrShowValidation(ctx.proposed);
+  } catch(e){ try{ console.warn('[labelOcrPickBlLine]', e); }catch(_e){} }
+}
+
+function labelOcrShowValidation(proposed){
+  try {
+    const wrap = document.getElementById('ocr-validate-panel');
+    const bl = document.getElementById('ocr-bl-lines');
+    const conf = document.getElementById('ocr-conflict-panel');
+    const prev = document.getElementById('ocr-preview-wrap');
+    if(bl) bl.style.display = 'none';
+    if(conf) conf.style.display = 'none';
+    if(prev) prev.style.display = 'none';
+    if(!wrap) return;
+    const ctx = _labelOcrCtx || {};
+    const showEst = ctx.target === 'enr31';
+    const fields = [
+      { key:'produit', label:'Produit', val: proposed.produit||'' },
+      { key:'lot', label:'N° de lot', val: proposed.lot||'' },
+      { key:'dlc', label:'DLC / DLUO', val: proposed.dlc||'', type:'date' },
+    ];
+    if(showEst) fields.push({ key:'estampille', label:'Estampille', val: proposed.estampille||'' });
+    let html = '<div style="font-size:.78rem;font-weight:800;color:#5C1E5A;margin-bottom:8px">Vérifiez avant de valider — cases vides = non lues</div>';
+    html += '<div class="ocr-fields">';
+    fields.forEach(function(f){
+      const empty = !String(f.val||'').trim();
+      html += '<div class="ocr-field-row selected">'
+        + '<div class="ocr-field-info" style="width:100%">'
+        + '<div class="ocr-field-label">'+escH(f.label)+(empty?' · non lu':'')+'</div>'
+        + '<input class="ocr-field-edit" id="ocr-val-'+f.key+'" type="'+(f.type==='date'?'date':'text')+'" value="'+escAttr(f.val||'')+'" placeholder="'+(empty?'(vide)':'')+'">'
+        + '</div></div>';
+    });
+    html += '</div>';
+    html += '<div style="font-size:.7rem;color:#7A6579;font-weight:600;margin-top:4px">La photo reste jointe à la fiche (comme aujourd\'hui).</div>';
+    wrap.innerHTML = html;
+    wrap.style.display = 'block';
+    _ocrSetActionsValidate();
+  } catch(e){ try{ console.warn('[labelOcrShowValidation]', e); }catch(_e){} }
+}
+
+function labelOcrReadProposedFromForm(){
+  const out = { produit:'', lot:'', dlc:'', estampille:'' };
+  try {
+    ['produit','lot','dlc','estampille'].forEach(function(k){
+      const el = document.getElementById('ocr-val-'+k);
+      if(el) out[k] = String(el.value||'').trim();
+    });
+  } catch(e){}
+  return out;
+}
+
+function labelOcrCurrentDraftFields(){
+  const ctx = _labelOcrCtx || {};
+  const empty = { produit:'', lot:'', dlc:'', estampille:'' };
+  try {
+    if(ctx.target === 'enr31'){
+      return {
+        produit: String(gd('produit','enr31')||'').trim(),
+        lot: String(gd('lot','enr31')||'').trim(),
+        dlc: String(gd('dlc','enr31')||'').trim(),
+        estampille: String(gd('estampille','enr31')||'').trim(),
+      };
+    }
+    const pfx = ctx.pfx || 'p1';
+    return {
+      produit: String(r23d(pfx+'_produit')||'').trim(),
+      lot: String(r23d(pfx+'_lot')||'').trim(),
+      dlc: String(r23d(pfx+'_dlc')||'').trim(),
+      estampille: '', // pas d'estampille ENR23
+    };
+  } catch(e){ return empty; }
+}
+
+function labelOcrOnValidate(){
+  try {
+    const ctx = _labelOcrCtx;
+    if(!ctx){ photoSave(); return; }
+    const proposed = labelOcrReadProposedFromForm();
+    ctx.proposed = proposed;
+    const current = labelOcrCurrentDraftFields();
+    const keys = ctx.target === 'enr31'
+      ? ['produit','lot','dlc','estampille']
+      : ['produit','lot','dlc'];
+    const conflicts = [];
+    keys.forEach(function(k){
+      const neu = String(proposed[k]||'').trim();
+      const cur = String(current[k]||'').trim();
+      if(neu && cur && neu !== cur) conflicts.push({ key:k, current:cur, proposed:neu });
+    });
+    if(conflicts.length){
+      ctx.conflicts = conflicts;
+      labelOcrShowConflicts(conflicts);
+      return;
+    }
+    labelOcrApplyAndSavePhoto({});
+  } catch(e){
+    try{ console.warn('[labelOcrOnValidate]', e); }catch(_e){}
+    toast('⚠️ Validation impossible','warning');
+  }
+}
+
+function labelOcrShowConflicts(conflicts){
+  try {
+    const wrap = document.getElementById('ocr-conflict-panel');
+    const val = document.getElementById('ocr-validate-panel');
+    if(val) val.style.display = 'none';
+    if(!wrap) return;
+    const labels = { produit:'Produit', lot:'N° de lot', dlc:'DLC / DLUO', estampille:'Estampille' };
+    let html = '<div style="font-size:.8rem;font-weight:900;color:#5C1E5A;margin-bottom:8px">Champ déjà rempli — gardez ou remplacez</div>';
+    conflicts.forEach(function(c, i){
+      html += '<div class="ocr-conflict-row" data-ckey="'+escAttr(c.key)+'">'
+        + '<div class="ocr-field-label">'+escH(labels[c.key]||c.key)+'</div>'
+        + '<div style="font-size:.75rem;color:#7A6579;font-weight:700">Actuel : <span style="color:#333">'+escH(c.current)+'</span></div>'
+        + '<div style="font-size:.75rem;color:#7A6579;font-weight:700">Photo : <span style="color:#333">'+escH(c.proposed)+'</span></div>'
+        + '<div class="ocr-conflict-btns">'
+        + '<button type="button" class="on" data-choice="keep" onclick="labelOcrConflictChoice(this)">Garder</button>'
+        + '<button type="button" data-choice="replace" onclick="labelOcrConflictChoice(this)">Remplacer</button>'
+        + '</div></div>';
+    });
+    wrap.innerHTML = html;
+    wrap.style.display = 'block';
+    const btn = document.getElementById('ocr-apply-btn');
+    if(btn){
+      btn.textContent = '✅ Appliquer';
+      btn.style.opacity = '1';
+      btn.style.pointerEvents = 'auto';
+      btn.onclick = function(){ labelOcrApplyConflictsAndSave(); };
+    }
+  } catch(e){ try{ console.warn('[labelOcrShowConflicts]', e); }catch(_e){} }
+}
+
+function labelOcrConflictChoice(btn){
+  try {
+    const row = btn && btn.closest ? btn.closest('.ocr-conflict-row') : null;
+    if(!row) return;
+    row.querySelectorAll('button').forEach(function(b){ b.classList.remove('on'); });
+    btn.classList.add('on');
+  } catch(e){}
+}
+
+function labelOcrApplyConflictsAndSave(){
+  try {
+    const decisions = {};
+    const wrap = document.getElementById('ocr-conflict-panel');
+    if(wrap){
+      wrap.querySelectorAll('.ocr-conflict-row').forEach(function(row){
+        const k = row.getAttribute('data-ckey');
+        const on = row.querySelector('button.on');
+        decisions[k] = (on && on.getAttribute('data-choice') === 'replace') ? 'replace' : 'keep';
+      });
+    }
+    labelOcrApplyAndSavePhoto(decisions);
+  } catch(e){
+    try{ console.warn('[labelOcrApplyConflictsAndSave]', e); }catch(_e){}
+    toast('⚠️ Application impossible','warning');
+  }
+}
+
+/**
+ * Remplit uniquement les champs encore vides (sauf décisions replace).
+ * Puis photoSave() — stocke la photo comme aujourd'hui (r23s / sd).
+ */
+function labelOcrApplyAndSavePhoto(decisions){
+  try {
+    const ctx = _labelOcrCtx;
+    if(!ctx){ photoSave(); return; }
+    decisions = decisions || {};
+    const proposed = ctx.proposed || labelOcrReadProposedFromForm();
+    const current = labelOcrCurrentDraftFields();
+    const keys = ctx.target === 'enr31'
+      ? ['produit','lot','dlc','estampille']
+      : ['produit','lot','dlc'];
+
+    keys.forEach(function(k){
+      const neu = String(proposed[k]||'').trim();
+      if(!neu) return; // OCR a loupé → ne rien inventer
+      const cur = String(current[k]||'').trim();
+      if(cur){
+        if(decisions[k] !== 'replace') return; // garder
+      }
+      // appliquer
+      if(ctx.target === 'enr31'){
+        sd(k, neu, 'enr31');
+      } else {
+        const pfx = ctx.pfx || 'p1';
+        r23s(pfx+'_'+k, neu);
+      }
+    });
+
+    // Photo : chemin historique inchangé (pending + miniature draft)
+    if(!_photoB64){
+      toast('⚠️ Champs mis à jour — photo manquante','warning');
+      try { renderMain(); } catch(e){}
+      closeOcrModal();
+      return;
+    }
+    // photoSave utilise _photoPfx / _photoB64 et ferme le modal
+    _photoPfx = ctx.pfx || _photoPfx;
+    // photoSave() inchangé : miniature + pending + r23s/sd photo + toast historique
+    photoSave();
+  } catch(e){
+    try{ console.warn('[labelOcrApplyAndSavePhoto]', e); }catch(_e){}
+    toast('⚠️ Erreur application','warning');
+  }
+}
+
+function labelOcrToolbarHtml(target){
+  try {
+    const t = target === 'enr31' ? 'enr31' : 'enr23';
+    let html = '<div class="label-ocr-bar">'
+      + '<button type="button" class="cam" onclick="openLabelOcr(\'label\',\''+t+'\',\'camera\')">📷 Caméra</button>'
+      + '<button type="button" onclick="openLabelOcr(\'label\',\''+t+'\',\'gallery\')">🖼️ Galerie</button>';
+    if(t === 'enr23'){
+      html += '<button type="button" class="bl" onclick="openLabelOcr(\'bl\',\''+t+'\',\'camera\')">📄 BL</button>';
+    }
+    html += '</div>';
+    return html;
+  } catch(e){ return ''; }
+}
+
 
 // ── Télécharger une photo en attente avec le bon nom ─────────────────────────
 function _downloadPendingPhoto(pfx, produit, fournisseur, dateStr){
@@ -9549,6 +10039,7 @@ function renderENR23(){
   return `<div class="card">
     <div class="card-title">📦 Contrôle à réception <span class="tag prpo">PrPo</span></div>
     <div class="regle">Réception en <strong>3 étapes</strong> : en-tête (BL / fournisseur) → produits → visa. T°C ≤ +3°C (tol. +6°C). NC → fiche Non-conformité.</div>
+    ${labelOcrToolbarHtml('enr23')}
     <div class="fg-label">Nouvelle réception</div>
     ${r23StepBar(step)}
     ${body}
@@ -12512,6 +13003,7 @@ function renderENR31() {
     <div class="card">
       <div class="card-title">${def.title}</div>
       <div class="regle">${def.regle} Le bandeau « Menu du jour » relie ce lot à un ou plusieurs plats.</div>
+      ${labelOcrToolbarHtml('enr31')}
 
       <div style="margin-bottom:12px">
         <div style="font-size:.7rem;font-weight:800;color:var(--plum);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📷 Photos étiquettes (max 3) <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--gris2)">(recommandé)</span></div>
