@@ -778,7 +778,7 @@ const SupaEngine = (() => {
     const fullPhotos = {};
     const pendingRef = (typeof _pendingPhotos !== 'undefined') ? _pendingPhotos : {};
     // Map des préfixes _pendingPhotos vers les clés de champ du draft
-    const pfxToField = { p1: 'p1_photo', p2: 'p2_photo', enr31: 'photo', enr31_2: 'photo2', enr31_3: 'photo3' };
+    const pfxToField = { p1: 'p1_photo', p1_2: 'p1_photo2', p2: 'p2_photo', p2_2: 'p2_photo2', enr31: 'photo', enr31_2: 'photo2', enr31_3: 'photo3' };
     for (const [pfx, field] of Object.entries(pfxToField)) {
       if (pendingRef[pfx] && data[field]) {
         fullPhotos[field] = pendingRef[pfx]; // pleine résolution

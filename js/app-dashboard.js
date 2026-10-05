@@ -5527,13 +5527,15 @@ const CONF_FIELDS_ALL = ['conf_r','conf_rt','conforme','conf_fin','conf_deb','co
   'conf1','conf2','conf_f','conf_c','conf_cuisson','conf_glac','conf_prod',
   'conf_prem','conf_dern','conf_premier','conf_pre','conf_test',
   'midi_froid_conf','midi_chaud_conf','soir_froid_conf','soir_chaud_conf'];
-const PHOTO_FIELDS = ['photo','p1_photo','p2_photo','photo_nc','photo2','photo3'];
+const PHOTO_FIELDS = ['photo','p1_photo','p1_photo2','p2_photo','p2_photo2','photo_nc','photo2','photo3'];
 const PHOTO_LABELS = {
   photo:    '📷 Photo principale',
   p1_photo: '📷 Produit 1',
+  p1_photo2: '📷 Autre face P1',
   p2_photo: '📷 Produit 2',
+  p2_photo2: '📷 Autre face P2',
   photo_nc: '📷 Photo NC',
-  photo2:   '📷 Étiquette 2',
+  photo2:   '📷 Autre face',
   photo3:   '📷 Étiquette 3',
 };
 
@@ -7584,7 +7586,7 @@ const PAGE_ENR_CFG = {
       {key:'conforme',    label:'Conforme'},
       {key:'cuisinier',   label:'Agent'},
     ],
-    photoFields:['p1_photo','p2_photo'],
+    photoFields:['p1_photo','p1_photo2','p2_photo','p2_photo2'],
     confFields:['conforme'],
     cardTitle: r => r.data?.fournisseur || '—',
     cardSub:   r => {
