@@ -373,12 +373,24 @@ function renderMenuJour(){
     .mn-hist-svc{background:#5C1E5A;color:#fff;font-size:.62rem;font-weight:800;padding:2px 7px;border-radius:8px}
     .mn-hist-cnt{font-size:.66rem;color:#7A6579;background:#fff;padding:1px 7px;border-radius:8px;border:1px solid #ede0ed}
     .mn-hist-row2{font-size:.7rem;color:#7A6579;margin-top:3px;line-height:1.4}
+    .mn-photo-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .mn-photo-btn{flex:1;min-width:120px;padding:11px 12px;border-radius:12px;border:1.5px solid #d8b4d8;background:#fff;color:#5C1E5A;font-weight:800;font-family:inherit;font-size:.8rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+    .mn-photo-btn:active{opacity:.85;transform:scale(.98)}
+    .mn-photo-btn.cam{background:linear-gradient(135deg,#5C1E5A,#C93A78);color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(92,30,90,.28)}
+    .mn-photo-hint{font-size:.68rem;color:#7A6579;margin-top:6px;line-height:1.35}
   </style>
 
   <div class="mn-hd">
     <div class="mn-hd-title-row">
       <h2>🍽️ Menu du jour</h2>
     </div>
+    <div class="mn-photo-row">
+      <button type="button" class="mn-photo-btn cam" onclick="window._menuPhotoPick('camera')" aria-label="Prendre une photo du menu">📷 Caméra</button>
+      <button type="button" class="mn-photo-btn" onclick="window._menuPhotoPick('gallery')" aria-label="Choisir une photo dans la galerie">🖼️ Galerie</button>
+    </div>
+    <div class="mn-photo-hint">Photo = menu du jour ou trame semaine. Rien n’est enregistré avant Valider.</div>
+    <input type="file" id="mn-photo-cam" accept="image/*" capture="environment" style="display:none" onchange="window._menuPhotoOnFile(this)">
+    <input type="file" id="mn-photo-gal" accept="image/*" style="display:none" onchange="window._menuPhotoOnFile(this)">
     <div class="mn-hd-sub">
       <input type="date" class="mn-date-input" value="${d}" onchange="window._menuSwitchDate(this.value)" aria-label="Date du menu">
       ${isToday ? '<span class="mn-when-pill">Aujourd\'hui</span>' : (isPast ? '<span class="mn-when-pill">Passé</span>' : '<span class="mn-when-pill">À venir</span>')}
@@ -2695,6 +2707,345 @@ function patchAllWidgetSystem(){
     }
   } catch(e){ console.warn('[menu wg persist]', e); }
 }
+
+
+// ════════════════════════════════════════════════════
+// IMPORT PHOTO MENU (caméra / galerie → OCR → validation)
+// ════════════════════════════════════════════════════
+let _menuPhotoDraft = null; // { type, days:[{date, services:{midi:[],gouter:[],soir:[]}}] } après corrections UI
+
+/** Heuristique catégorie pour Midi/Soir (sans Pains). */
+function guessMenuCat(nom){
+  const s = String(nom||'').toLowerCase();
+  if(/\b(potage|soupe|velouté|veloute|consommé|consomme|bouillon)\b/.test(s)) return 'entrees';
+  if(/\b(vinaigrette|crudité|crudite|salade|râpé|rape|mimosa|terrine|mousse de|oeuf|œuf|céleri|celeri|carotte|betterave|endive|concombre|macédoine|macedoine|piémontaise|piemontaise)\b/.test(s)) return 'entrees';
+  if(/\b(fromage|laitage|produit laitier|plateaux? de produit)\b/.test(s)) return 'fromages';
+  if(/\b(dessert|yaourt|compote|fruit|farandole|éclair|eclair|entremets|liégeois|liegeois|cake|riz au lait|semoule au lait|spécialité|specialite|salade de fruits)\b/.test(s)) return 'desserts';
+  if(/\b(riz|pâtes?|pates?|frites|semoule|légume|legume|haricot|chou|carotte|pomme de terre|garniture|purée|puree|polenta|boulgour|quinoa|courgette|brocoli|épinard|epinard|romanesco)\b/.test(s)
+     && !/\b(rôti|roti|escalope|filet|steak|poulet|porc|veau|agneau|poisson|saumon|colin|jambon|curry|bourguignon|blanquette|kefta|tourte|poêlée|poelee|sauté|saute)\b/.test(s)){
+    return 'garnitures';
+  }
+  return 'plats';
+}
+
+function _menuPhotoMakePlat(nom){
+  const n = String(nom||'').replace(/\s+/g,' ').trim();
+  if(!n) return null;
+  const profil = detectProfil(n);
+  return {
+    plat_id: newUUID().slice(0,8),
+    nom: n,
+    profil_haccp: profil,
+    composants: detectComposants(n),
+    allergenes: [],
+    statut_auto: null,
+    variants: {},
+  };
+}
+
+function _menuPhotoCloseOv(){
+  const ov = document.getElementById('mn-photo-ov');
+  if(ov) ov.remove();
+}
+
+function _menuPhotoShowLoading(msg){
+  _menuPhotoCloseOv();
+  const ov = document.createElement('div');
+  ov.id = 'mn-photo-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9200;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:360px;width:100%;padding:22px 18px;text-align:center">
+    <div style="font-size:1.6rem;margin-bottom:8px">⏳</div>
+    <div style="font-size:.92rem;font-weight:900;color:#5C1E5A">${escH(msg||'Analyse de la photo…')}</div>
+    <div style="font-size:.75rem;color:#7A6579;margin-top:8px">OCR menu — rien n’est enregistré pour l’instant</div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+
+window._menuPhotoPick = function(mode){
+  try {
+    const id = mode === 'camera' ? 'mn-photo-cam' : 'mn-photo-gal';
+    const el = document.getElementById(id);
+    if(!el){ if(typeof toast==='function') toast('Sélecteur photo indisponible','warning'); return; }
+    el.value = '';
+    el.click();
+  } catch(e){ console.warn('[menu photo pick]', e); }
+};
+
+window._menuPhotoOnFile = function(input){
+  try {
+    const file = input && input.files && input.files[0];
+    if(!file) return;
+    if(!/^image\//.test(file.type||'')){
+      if(typeof toast==='function') toast('Fichier image requis','warning');
+      return;
+    }
+    // Limite douce côté client (~4 Mo fichier)
+    if(file.size > 4.5e6){
+      if(typeof toast==='function') toast('Photo trop lourde — essayez une image plus légère','warning');
+      return;
+    }
+    _menuPhotoShowLoading('Lecture de la photo…');
+    const reader = new FileReader();
+    reader.onerror = function(){
+      _menuPhotoCloseOv();
+      if(typeof toast==='function') toast('Lecture photo impossible','danger');
+    };
+    reader.onload = function(){
+      const dataUrl = String(reader.result||'');
+      if(!dataUrl.startsWith('data:image/')){
+        _menuPhotoCloseOv();
+        if(typeof toast==='function') toast('Image invalide','danger');
+        return;
+      }
+      _menuPhotoRunOcr(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  } catch(e){
+    console.warn('[menu photo file]', e);
+    _menuPhotoCloseOv();
+  }
+};
+
+async function _menuPhotoRunOcr(dataUrl){
+  _menuPhotoShowLoading('OCR en cours…');
+  try {
+    const resp = await fetch('/.netlify/functions/menu-ocr', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    let data = null;
+    try { data = await resp.json(); } catch(e){ data = null; }
+    if(!resp.ok){
+      _menuPhotoCloseOv();
+      const err = (data && data.error) || ('Erreur OCR ('+resp.status+')');
+      const hint = data && data.hint ? '\n'+data.hint : '';
+      if(typeof toast==='function') toast(err, 'danger');
+      console.warn('[menu-ocr]', err, hint, data);
+      // Écran d’aide si stub (clé manquante)
+      if(data && data.stub){
+        _menuPhotoShowStubHelp(data);
+      }
+      return;
+    }
+    if(!data || !Array.isArray(data.days) || !data.days.length){
+      _menuPhotoCloseOv();
+      if(typeof toast==='function') toast('Aucun plat détecté sur la photo','warning');
+      return;
+    }
+    _menuPhotoDraft = {
+      type: data.type === 'semaine' ? 'semaine' : 'jour',
+      days: data.days.map(function(d){
+        const svc = (d && d.services) || {};
+        return {
+          date: String(d.date||'').slice(0,10),
+          services: {
+            midi: (svc.midi||[]).slice(),
+            gouter: (svc.gouter||[]).slice(),
+            soir: (svc.soir||[]).slice(),
+          },
+        };
+      }),
+    };
+    _menuPhotoShowValidation();
+  } catch(e){
+    console.warn('[menu-ocr fetch]', e);
+    _menuPhotoCloseOv();
+    if(typeof toast==='function') toast('Réseau OCR indisponible','danger');
+  }
+}
+
+function _menuPhotoShowStubHelp(data){
+  _menuPhotoCloseOv();
+  const ov = document.createElement('div');
+  ov.id = 'mn-photo-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9200;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML = `<div style="background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:16px 14px 22px">
+    <div style="font-size:.95rem;font-weight:900;color:#5C1E5A;margin-bottom:6px">OCR non configuré</div>
+    <div style="font-size:.8rem;color:#3b1e3b;line-height:1.45;margin-bottom:12px">
+      La fonction <code>menu-ocr</code> répond, mais la variable d’environnement
+      <b>OPENAI_API_KEY</b> (ou <b>MENU_OCR_API_KEY</b>) n’est pas définie sur Netlify.
+      Aucun secret n’est stocké dans le dépôt.
+    </div>
+    <button type="button" id="mn-photo-stub-ok" style="width:100%;padding:12px;background:#5C1E5A;color:#fff;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer">Compris</button>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target===ov) ov.remove(); });
+  document.getElementById('mn-photo-stub-ok').onclick = function(){ ov.remove(); };
+}
+
+function _menuPhotoSvcLabel(id){
+  if(id==='midi') return '🌞 Midi';
+  if(id==='soir') return '🌙 Soir';
+  if(id==='gouter') return '🍪 Goûter';
+  return id;
+}
+
+function _menuPhotoRenderDraftHtml(){
+  const draft = _menuPhotoDraft;
+  if(!draft) return '<div class="mn-empty">Aucune détection</div>';
+  const typeLab = draft.type === 'semaine' ? 'Trame semaine' : 'Menu du jour';
+  let html = `<div style="font-size:.72rem;font-weight:800;color:#7A6579;margin-bottom:10px;text-transform:uppercase;letter-spacing:.3px">${escH(typeLab)} — corrigez avant Valider</div>`;
+  draft.days.forEach(function(day, di){
+    html += `<div style="background:#f7f2f7;border:1.5px solid #ede0ed;border-radius:12px;padding:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <span style="font-size:.85rem;font-weight:900;color:#5C1E5A">📅</span>
+        <input type="date" value="${escH(day.date||'')}" onchange="window._menuPhotoSetDate(${di},this.value)"
+          style="border:1.5px solid #d8b4d8;border-radius:9px;padding:6px 8px;font-family:inherit;font-weight:800;color:#5C1E5A;background:#fff">
+      </div>`;
+    ['midi','gouter','soir'].forEach(function(svc){
+      const items = (day.services && day.services[svc]) || [];
+      html += `<div style="margin-top:8px">
+        <div style="font-size:.78rem;font-weight:900;color:#5C1E5A;margin-bottom:4px">${_menuPhotoSvcLabel(svc)}
+          <span style="font-size:.65rem;font-weight:700;color:#b89ab6;margin-left:6px">${items.length}</span>
+        </div>`;
+      if(!items.length){
+        html += `<div style="font-size:.72rem;color:#b89ab6;font-style:italic;margin-bottom:4px">Aucun plat</div>`;
+      }
+      items.forEach(function(nom, pi){
+        const catHint = svc === 'gouter' ? 'libre' : guessMenuCat(nom);
+        html += `<div style="display:flex;gap:5px;align-items:center;margin-bottom:4px">
+          <input type="text" value="${escH(nom)}" onchange="window._menuPhotoEditPlat(${di},'${svc}',${pi},this.value)"
+            style="flex:1;min-width:0;border:1.5px solid #ddd0dd;border-radius:8px;padding:7px 8px;font-size:.8rem;font-family:inherit;background:#fff">
+          ${svc==='gouter' ? '<span style="font-size:.62rem;color:#7A6579;font-weight:800">liste</span>'
+            : `<span style="font-size:.58rem;color:#7A6579;font-weight:700;max-width:70px;overflow:hidden;text-overflow:ellipsis" title="${escH(catHint)}">${escH(catHint)}</span>`}
+          <button type="button" onclick="window._menuPhotoRemovePlat(${di},'${svc}',${pi})"
+            style="background:#fee2e2;color:#dc2626;border:1.5px solid #fca5a5;border-radius:8px;padding:5px 7px;font-size:.7rem;font-weight:800;cursor:pointer;font-family:inherit">✕</button>
+        </div>`;
+      });
+      html += `<button type="button" onclick="window._menuPhotoAddPlat(${di},'${svc}')"
+        style="margin-top:2px;background:#fff;border:1.5px dashed #d8b4d8;color:#5C1E5A;border-radius:8px;padding:6px 8px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit;width:100%">+ Ajouter</button>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  return html;
+}
+
+function _menuPhotoShowValidation(){
+  _menuPhotoCloseOv();
+  const ov = document.createElement('div');
+  ov.id = 'mn-photo-ov';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9200;display:flex;align-items:flex-end;justify-content:center';
+  ov.innerHTML = `<div style="background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column">
+    <div style="padding:14px 14px 8px;border-bottom:1px solid #f1e6f1;flex-shrink:0">
+      <div style="font-size:.95rem;font-weight:900;color:#5C1E5A">📸 Validation import photo</div>
+      <div style="font-size:.72rem;color:#7A6579;margin-top:3px">Coches / ratures ignorées. Aucune fiche traça auto à la validation.</div>
+    </div>
+    <div id="mn-photo-draft-body" style="padding:10px 14px;overflow:auto;flex:1;-webkit-overflow-scrolling:touch">${_menuPhotoRenderDraftHtml()}</div>
+    <div style="padding:10px 14px 18px;display:flex;gap:8px;flex-shrink:0;border-top:1px solid #f1e6f1">
+      <button type="button" id="mn-photo-cancel" style="flex:1;padding:13px;background:#f3e8f3;color:#5C1E5A;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer">Annuler</button>
+      <button type="button" id="mn-photo-validate" style="flex:2;padding:13px;background:linear-gradient(135deg,#5C1E5A,#C93A78);color:#fff;border:none;border-radius:12px;font-weight:800;font-family:inherit;cursor:pointer;box-shadow:0 3px 10px rgba(92,30,90,.3)">✅ Valider</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener('click', function(e){ if(e.target===ov){ ov.remove(); _menuPhotoDraft=null; } });
+  document.getElementById('mn-photo-cancel').onclick = function(){ ov.remove(); _menuPhotoDraft=null; };
+  document.getElementById('mn-photo-validate').onclick = function(){ window._menuPhotoValidate(); };
+}
+
+function _menuPhotoRefreshValidationBody(){
+  const body = document.getElementById('mn-photo-draft-body');
+  if(body) body.innerHTML = _menuPhotoRenderDraftHtml();
+}
+
+window._menuPhotoSetDate = function(di, val){
+  try {
+    if(!_menuPhotoDraft || !_menuPhotoDraft.days[di]) return;
+    _menuPhotoDraft.days[di].date = String(val||'').slice(0,10);
+  } catch(e){}
+};
+
+window._menuPhotoEditPlat = function(di, svc, pi, val){
+  try {
+    const day = _menuPhotoDraft && _menuPhotoDraft.days[di];
+    if(!day || !day.services[svc]) return;
+    day.services[svc][pi] = String(val||'').trim();
+  } catch(e){}
+};
+
+window._menuPhotoRemovePlat = function(di, svc, pi){
+  try {
+    const day = _menuPhotoDraft && _menuPhotoDraft.days[di];
+    if(!day || !day.services[svc]) return;
+    day.services[svc].splice(pi, 1);
+    _menuPhotoRefreshValidationBody();
+  } catch(e){}
+};
+
+window._menuPhotoAddPlat = function(di, svc){
+  try {
+    const day = _menuPhotoDraft && _menuPhotoDraft.days[di];
+    if(!day) return;
+    if(!day.services[svc]) day.services[svc] = [];
+    day.services[svc].push('Nouveau plat');
+    _menuPhotoRefreshValidationBody();
+  } catch(e){}
+};
+
+/** Valider : écrit dans le store menu existant. AUCUNE fiche traça auto. */
+window._menuPhotoValidate = function(){
+  try {
+    const draft = _menuPhotoDraft;
+    if(!draft || !draft.days || !draft.days.length){
+      if(typeof toast==='function') toast('Rien à enregistrer','warning');
+      return;
+    }
+    let written = 0;
+    let firstDate = '';
+    draft.days.forEach(function(day){
+      const date = String(day.date||'').slice(0,10);
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      if(!firstDate) firstDate = date;
+      ['midi','gouter','soir'].forEach(function(svc){
+        const names = ((day.services && day.services[svc]) || [])
+          .map(function(n){ return String(n||'').replace(/\s+/g,' ').trim(); })
+          .filter(Boolean);
+        if(!names.length) return;
+        const menu = ensureMenuFor(date, svc);
+        const cats = emptyCategories();
+        if(svc === 'gouter'){
+          names.forEach(function(nom){
+            const p = _menuPhotoMakePlat(nom);
+            if(p) cats.libre.push(p);
+          });
+        } else {
+          names.forEach(function(nom){
+            const p = _menuPhotoMakePlat(nom);
+            if(!p) return;
+            const cat = guessMenuCat(nom);
+            if(!cats[cat]) cats[cat] = [];
+            cats[cat].push(p);
+          });
+        }
+        menu.categories = cats;
+        if(!menu.menu_id) menu.menu_id = newUUID();
+        // Copie éditable dans le store — PAS d'appel _menuSave / _menuAutoOnSave
+        setMenu(date, svc, menu);
+        written++;
+      });
+    });
+    _menuPhotoDraft = null;
+    _menuPhotoCloseOv();
+    if(firstDate){
+      _menuState.date = firstDate;
+      try {
+        const d0 = new Date(firstDate+'T12:00');
+        _menuState.calY = d0.getFullYear();
+        _menuState.calM = d0.getMonth();
+      } catch(e){}
+      _menuState.openServices = { midi: true, soir: true, gouter: true };
+    }
+    if(typeof renderMain === 'function') renderMain();
+    if(typeof renderNav === 'function') renderNav();
+    if(typeof toast==='function'){
+      toast(written ? ('✅ '+written+' service(s) importé(s) — pastilles à jour') : 'Aucun service rempli', written ? 'success' : 'warning');
+    }
+  } catch(e){
+    console.warn('[menu photo validate]', e);
+    if(typeof toast==='function') toast('Erreur enregistrement import','danger');
+  }
+};
 
 // ════════════════════════════════════════════════════
 // ENREGISTREMENT
