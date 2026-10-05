@@ -95,18 +95,24 @@ const CATS = [
   { id:'garnitures', label:'🥦 Garnitures', short:'Garniture' },
   { id:'fromages',   label:'🧀 Fromages',   short:'Fromage' },
   { id:'desserts',   label:'🍰 Desserts',   short:'Dessert' },
-  { id:'pains',      label:'🥖 Pains',      short:'Pain' },
 ];
+/** Liste unique P-déj / Goûter (clé data: categories.libre). */
+const FREE_CAT = { id:'libre', label:'🍽️ Liste', short:'élément' };
 const SERVICES = [
-  { id:'petitdej', label:'☕ P-déj' },
+  { id:'petitdej', label:'☕ Petit-déjeuner' },
   { id:'midi',     label:'🌞 Midi' },
   { id:'gouter',   label:'🍪 Goûter' },
   { id:'soir',     label:'🌙 Soir' },
 ];
+function isFreeListService(svcId){ return svcId === 'petitdej' || svcId === 'gouter'; }
+function catsForService(svcId){ return isFreeListService(svcId) ? [FREE_CAT] : CATS; }
+/** Catégories UI + clé libre (après migrations potages/pains). */
+function allDisplayCats(){ return CATS.concat([FREE_CAT]); }
 
 function emptyCategories(){
   const o = {};
   CATS.forEach(c => { o[c.id] = []; });
+  o.libre = [];
   return o;
 }
 function getMenus(){ if(!S.menus) S.menus = {}; return S.menus; }
@@ -140,7 +146,7 @@ function _menuEnsureService(svcId){
 function countPlatsInMenu(menu){
   let n = 0;
   try {
-    CATS.forEach(c => { n += (menu && menu.categories && menu.categories[c.id] || []).length; });
+    allDisplayCats().forEach(c => { n += (menu && menu.categories && menu.categories[c.id] || []).length; });
   } catch(e){}
   return n;
 }
@@ -156,6 +162,61 @@ function migratePotagesToEntrees(menu){
     return true;
   } catch(e){ console.warn('[menu] migrate potages', e); return false; }
 }
+/** Migre les anciens « pains » vers Entrées (catégorie retirée de l’UI). */
+function migratePainsToEntrees(menu){
+  try {
+    if(!menu || !menu.categories) return false;
+    const pains = menu.categories.pains;
+    if(!Array.isArray(pains) || !pains.length) return false;
+    if(!Array.isArray(menu.categories.entrees)) menu.categories.entrees = [];
+    menu.categories.entrees = menu.categories.entrees.concat(pains);
+    menu.categories.pains = [];
+    return true;
+  } catch(e){ console.warn('[menu] migrate pains', e); return false; }
+}
+/** P-déj / Goûter : aplatit les anciennes grilles vers categories.libre. */
+function migrateToLibreList(menu){
+  try {
+    if(!menu || !menu.categories) return false;
+    if(!Array.isArray(menu.categories.libre)) menu.categories.libre = [];
+    let changed = false;
+    const sources = ['entrees','plats','garnitures','fromages','desserts','pains','potages'];
+    sources.forEach(id => {
+      const arr = menu.categories[id];
+      if(Array.isArray(arr) && arr.length){
+        menu.categories.libre = menu.categories.libre.concat(arr);
+        menu.categories[id] = [];
+        changed = true;
+      }
+    });
+    return changed;
+  } catch(e){ console.warn('[menu] migrate libre', e); return false; }
+}
+/** Midi/Soir : éventuelle liste libre historique → Entrées. */
+function migrateLibreToEntrees(menu){
+  try {
+    if(!menu || !menu.categories) return false;
+    const lib = menu.categories.libre;
+    if(!Array.isArray(lib) || !lib.length) return false;
+    if(!Array.isArray(menu.categories.entrees)) menu.categories.entrees = [];
+    menu.categories.entrees = menu.categories.entrees.concat(lib);
+    menu.categories.libre = [];
+    return true;
+  } catch(e){ console.warn('[menu] migrate libre→entrees', e); return false; }
+}
+function applyMenuMigrations(menu, service){
+  let changed = false;
+  try {
+    if(migratePotagesToEntrees(menu)) changed = true;
+    if(migratePainsToEntrees(menu)) changed = true;
+    if(isFreeListService(service)){
+      if(migrateToLibreList(menu)) changed = true;
+    } else if(service){
+      if(migrateLibreToEntrees(menu)) changed = true;
+    }
+  } catch(e){ console.warn('[menu] migrations', e); }
+  return changed;
+}
 function ensureMenuFor(date, service){
   let menu = getMenu(date, service);
   if(!menu){
@@ -165,7 +226,8 @@ function ensureMenuFor(date, service){
   if(!menu.menu_id) menu.menu_id = newUUID();
   if(!menu.categories) menu.categories = emptyCategories();
   CATS.forEach(c => { if(!Array.isArray(menu.categories[c.id])) menu.categories[c.id] = []; });
-  if(migratePotagesToEntrees(menu)){
+  if(!Array.isArray(menu.categories.libre)) menu.categories.libre = [];
+  if(applyMenuMigrations(menu, service)){
     try { setMenu(date, service, menu); } catch(e){}
   }
   return menu;
@@ -176,7 +238,7 @@ function computeDayCoverage(date){
     SERVICES.forEach(s => {
       const menu = getMenu(date, s.id);
       if(!menu) return;
-      try { migratePotagesToEntrees(menu); } catch(e){}
+      try { applyMenuMigrations(menu, s.id); } catch(e){}
       const cov = computeMenuCoverage(menu, date);
       total += cov.total;
       tracked += cov.tracked;
@@ -218,7 +280,7 @@ function renderMenuJour(){
   try {
     SERVICES.forEach(s => {
       const m = getMenu(d, s.id);
-      if(m){ try { migratePotagesToEntrees(m); } catch(e){} dayTotal += countPlatsInMenu(m); }
+      if(m){ try { applyMenuMigrations(m, s.id); } catch(e){} dayTotal += countPlatsInMenu(m); }
     });
   } catch(e){}
 
@@ -403,7 +465,7 @@ function renderServiceAccordion(date, svc){
   let menu = null;
   try {
     menu = getMenu(date, svc.id);
-    if(menu) migratePotagesToEntrees(menu);
+    if(menu) applyMenuMigrations(menu, svc.id);
     // Ne matérialiser le menu en storage que si le service est ouvert (évite 4 menus vides)
     if(open) menu = ensureMenuFor(date, svc.id);
   } catch(e){
@@ -412,6 +474,7 @@ function renderServiceAccordion(date, svc){
   }
   const n = countPlatsInMenu(menu || { categories: {} });
   const chev = open ? '▾' : '▸';
+  const cats = catsForService(svc.id);
   return `
   <div class="mn-svc" data-svc="${svc.id}">
     <div class="mn-svc-hd ${open?'open':''}" onclick="window._menuToggleAccordion('${svc.id}')" role="button" aria-expanded="${open?'true':'false'}">
@@ -420,7 +483,7 @@ function renderServiceAccordion(date, svc){
       <div class="mn-svc-cnt">${n} plat${n>1?'s':''}</div>
     </div>
     ${open ? `<div class="mn-svc-body">
-      ${CATS.map(cat => renderCatBlock(menu, cat, svc.id)).join('')}
+      ${cats.map(cat => renderCatBlock(menu, cat, svc.id)).join('')}
       <div class="mn-action-grid">
         <button class="mn-act save" onclick="window._menuSave('${svc.id}')">💾 Enregistrer — ${svc.label}</button>
         <button class="mn-act clear" onclick="window._menuClear('${svc.id}')">🗑️ Vider ${svc.label}</button>
@@ -782,11 +845,14 @@ function renderCoverageCard(cov){
 
 function computeMenuCoverage(menu, dateOpt){
   let total=0, tracked=0;
-  try { migratePotagesToEntrees(menu); } catch(e){}
-  const ids = CATS.map(c => c.id);
-  // Sécurité : compter aussi d'éventuels potages non migrés
+  try { migratePotagesToEntrees(menu); migratePainsToEntrees(menu); } catch(e){}
+  const ids = allDisplayCats().map(c => c.id);
+  // Sécurité : compter aussi d'éventuels potages/pains non migrés
   if(menu && menu.categories && Array.isArray(menu.categories.potages) && menu.categories.potages.length){
     if(ids.indexOf('potages') < 0) ids.push('potages');
+  }
+  if(menu && menu.categories && Array.isArray(menu.categories.pains) && menu.categories.pains.length){
+    if(ids.indexOf('pains') < 0) ids.push('pains');
   }
   ids.forEach(id => {
     (menu && menu.categories && menu.categories[id] || []).forEach(p => {
@@ -817,10 +883,10 @@ function renderMenuHistory(){
       let nbPlats = 0;
       const cats = h.categories || {};
       const catSummary = [];
-      CATS.forEach(c => {
+      allDisplayCats().forEach(c => {
         const arr = cats[c.id] || [];
         nbPlats += arr.length;
-        if(arr.length) catSummary.push(c.short + ' ('+arr.length+')');
+        if(arr.length) catSummary.push((c.short || c.label) + ' ('+arr.length+')');
       });
       return `<div class="mn-hist-item" onclick="window._menuLoadFromHistory(${i})">
         <div class="mn-hist-row1">
@@ -844,14 +910,14 @@ window._menuLoadFromHistory = function(idx){
     menu_id: newUUID(),
     categories: {},
   };
-  CATS.forEach(c => {
+  allDisplayCats().forEach(c => {
     newMenu.categories[c.id] = ((h.categories||{})[c.id] || []).map(p => ({
       ...p,
       plat_id: newUUID().slice(0,8),
       statut_auto: null,
     }));
   });
-  // Récupérer d'éventuels potages historiques → Entrées
+  // Récupérer d'éventuels potages/pains historiques → Entrées
   try {
     const pots = ((h.categories||{}).potages || []).map(p => ({
       ...p,
@@ -859,7 +925,14 @@ window._menuLoadFromHistory = function(idx){
       statut_auto: null,
     }));
     if(pots.length) newMenu.categories.entrees = (newMenu.categories.entrees||[]).concat(pots);
+    const pains = ((h.categories||{}).pains || []).map(p => ({
+      ...p,
+      plat_id: newUUID().slice(0,8),
+      statut_auto: null,
+    }));
+    if(pains.length) newMenu.categories.entrees = (newMenu.categories.entrees||[]).concat(pains);
   } catch(e){}
+  try { applyMenuMigrations(newMenu, _menuState.service); } catch(e){}
   setMenu(_menuState.date, _menuState.service, newMenu);
   if(typeof renderMain === 'function') renderMain();
   if(typeof toast === 'function') toast('✅ Menu chargé depuis l\'historique','success');
@@ -1047,11 +1120,12 @@ window._menuRecopierHier = function(){
     menu_id:    newUUID(),
     categories: {},
   };
-  CATS.forEach(c => {
+  allDisplayCats().forEach(c => {
     menu.categories[c.id] = (hier.categories[c.id]||[]).map(p => ({
       ...p, plat_id: newUUID().slice(0,8), statut_auto:null,
     }));
   });
+  try { applyMenuMigrations(menu, _menuState.service); } catch(e){}
   setMenu(_menuState.date, _menuState.service, menu);
   if(typeof renderMain === 'function') renderMain();
   if(typeof toast === 'function') toast('✅ Menu de la veille recopié','success');
@@ -1060,7 +1134,7 @@ window._menuValiderSorties = function(){
   const menu = getMenu(_menuState.date, _menuState.service);
   if(!menu){ if(typeof toast==='function') toast('Aucun menu','warning'); return; }
   let n = 0;
-  CATS.forEach(c => {
+  allDisplayCats().forEach(c => {
     (menu.categories[c.id]||[]).forEach(p => {
       if(p.profil_haccp === 'SORTIE_DIRECTE' || p.profil_haccp === 'PREP_MINUTE'){
         p.statut_auto = 'preparé_minute';
@@ -1087,7 +1161,7 @@ window._menuSave = function(svcId){
   const menu = getMenu(_menuState.date, _menuState.service);
   if(!menu){ if(typeof toast==='function') toast('Aucun menu','warning'); return; }
   let total = 0;
-  CATS.forEach(c => total += (menu.categories[c.id]||[]).length);
+  allDisplayCats().forEach(c => total += (menu.categories[c.id]||[]).length);
   if(total === 0){ if(typeof toast==='function') toast('Menu vide — ajoutez au moins un plat','warning'); return; }
   const rec = stampEntry({
     menu_date: _menuState.date,
@@ -1142,7 +1216,7 @@ function _menuAutoOnSave(menu){
         } catch (e) { return false; }
       });
     };
-    CATS.forEach(c => {
+    allDisplayCats().forEach(c => {
       (menu.categories[c.id]||[]).forEach(plat => {
         try {
           if (!plat) return;
@@ -1174,7 +1248,7 @@ function _menuAutoOnSave(menu){
 
   // Ajouter les plats témoins au lot d'impression ENR33 (_e33batch)
   let count34 = 0;
-  CATS.forEach(c => {
+  allDisplayCats().forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
       const mxProfil = plat.variants?.mixe ? (plat.variants.mixe_profil || mixeProfil(plat)) : null;
       const variants = [
@@ -1240,7 +1314,7 @@ window._menuGenerateTemoins = function(){
   }
 
   let count = 0;
-  CATS.forEach(c => {
+  allDisplayCats().forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
       addPlatTemoin(plat.nom, plat, chef, datePrelev, heure, dateDestruct, serviceTxt, menu.menu_id, '');
       count++;
@@ -1321,7 +1395,7 @@ window._menuPrintEtiquettes = function(){
   // Collecter les étiquettes par plat et aligner sur grille 2 colonnes
   // Chaque plat = [normal, mixé?, sans_sel?, hp?] → si nombre impair on ajoute un espaceur null
   const etiqs = [];
-  CATS.forEach(c => {
+  allDisplayCats().forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
       const group = [{ nom: plat.nom, variant: '' }];
       if(plat.variants?.mixe)     group.push({ nom: plat.nom, variant: 'MIXÉ' });
@@ -1425,7 +1499,7 @@ body{font-family:Arial,sans-serif;background:#f5f5f5;padding:12px}
     if(typeof toast==='function') toast('🖨️ '+realCount+' étiquettes prêtes à imprimer','success');
     // Les témoins du menu ne sont validés qu'après confirmation de l'impression
     const imprimes = [];
-    CATS.forEach(c => {
+    allDisplayCats().forEach(c => {
       (menu.categories[c.id]||[]).forEach(plat => {
         imprimes.push({ _plat_id: plat.plat_id, _variant: '' });
         if(plat.variants?.mixe)     imprimes.push({ _plat_id: plat.plat_id, _variant: 'mixé' });
@@ -1601,7 +1675,7 @@ const KW_TO_CAT_PAIRS = [
   [/^(garnitures?|accompagnements?|légumes?|legumes?)$/i, 'garnitures'],
   [/^(fromages?)$/i, 'fromages'],
   [/^(desserts?|laitages?|fruits?|pâtisseries?|patisseries?)$/i, 'desserts'],
-  [/^(pains?|baguettes?)$/i, 'pains'],
+  [/^(pains?|baguettes?)$/i, 'entrees'],
 ];
 function kwToCat(kw){
   for(const [re,c] of KW_TO_CAT_PAIRS){ if(re.test(kw)) return c; }
@@ -1672,7 +1746,7 @@ window._menuPickPlat = function(callback, opts){
   });
   const flat = [];
   allMenus.forEach(({svc, svcId, menu}) => {
-    CATS.forEach(c => {
+    allDisplayCats().forEach(c => {
       (menu.categories[c.id]||[]).forEach(p => {
         if(opts && opts.profilFilter && p.profil_haccp !== opts.profilFilter) return;
         flat.push({ cat:c.label, svc, svcId, ...p, _menu_id:menu.menu_id });
@@ -1863,7 +1937,7 @@ function todayMenuPlats(){
     SERVICES.forEach(s => {
       const m = getMenu(t, s.id);
       if(!m) return;
-      CATS.forEach(c => (m.categories?.[c.id]||[]).forEach(p => out.push({ p, svc:s, menu_id: p.menu_id || m.menu_id })));
+      allDisplayCats().forEach(c => (m.categories?.[c.id]||[]).forEach(p => out.push({ p, svc:s, menu_id: p.menu_id || m.menu_id })));
     });
   } catch(e){ console.warn('[menu] todayMenuPlats:', e); }
   return out;
@@ -2030,7 +2104,7 @@ function collectBannerGroups(enrId){
     const m = getMenu(today(), svc.id);
     if(!m) return;
     const plats = [];
-    CATS.forEach(c => {
+    allDisplayCats().forEach(c => {
       (m.categories?.[c.id]||[]).forEach(p => {
         anyDish = true;
         if(!platShowsOnEnr(p, enrId)) return;
@@ -2429,7 +2503,7 @@ function renderMenuHomeWidget(){
   const totalPlats = services.reduce((acc, s) => {
     const m = getMenu(t, s.id);
     if(!m) return acc;
-    return acc + CATS.reduce((a,c) => a + (m.categories?.[c.id]?.length||0), 0);
+    return acc + allDisplayCats().reduce((a,c) => a + (m.categories?.[c.id]?.length||0), 0);
   }, 0);
 
   if(services.length === 0){
@@ -2448,7 +2522,7 @@ function renderMenuHomeWidget(){
   const blocks = services.map(s => {
     const m = getMenu(t, s.id);
     if(!m) return '';
-    const cats = CATS.map(c => {
+    const cats = catsForService(s.id).map(c => {
       const plats = (m.categories?.[c.id]||[]);
       if(!plats.length) return '';
       const items = plats.map((p, idx) => {
