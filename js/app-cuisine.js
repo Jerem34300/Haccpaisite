@@ -40,7 +40,7 @@ function save(){
     if(e.name==='QuotaExceededError'||e.code===22){
       try {
         const s2=JSON.parse(JSON.stringify(S));
-        const _photoKeys=['p1_photo','p2_photo','photo'];
+        const _photoKeys=['p1_photo','p2_photo','p1_photo2','p2_photo2','photo','photo2'];
         const _tasks=[];
         ['enr23','enr31'].forEach(sec=>{
           const d=(s2[sec]||{}).draft||{};
@@ -2728,7 +2728,7 @@ const FLAB={
   corrective_action_custom:'Action personnalisée',
   action_custom:'Action personnalisée',
 };
-const SKIP=['_ts','_sec','photo','p1_photo','p2_photo','signature','_key','_auto','_auto_ligne_idx','_auto_idx','_pending_idx','_ligne_ts','_enr01_ref','_enr02_ref','_enr01_idx','_enr01_ts','_orig','_statut','_src','_auto_key','corrective_action_ids','corrective_action_trace',
+const SKIP=['_ts','_sec','photo','photo2','photo3','p1_photo','p1_photo2','p2_photo','p2_photo2','signature','_key','_auto','_auto_ligne_idx','_auto_idx','_pending_idx','_ligne_ts','_enr01_ref','_enr02_ref','_enr01_idx','_enr01_ts','_orig','_statut','_src','_auto_key','corrective_action_ids','corrective_action_trace',
   '_lienBF','_lienBF_ts','_enr01_link']; // champs de lien traçabilité → affichés en badge, pas bruts
 const IS_NC_RAISON=k=>k.startsWith('nc_raison__');
 const IS_TEMP_FID=k=>k.startsWith('t_')||k==='tc'||/^t[1-4]$/.test(k)||k==='ecart';
@@ -3226,11 +3226,17 @@ function saveRow(id){
 
   const draftFinal=draft;
   // ENR31: download photos APRÈS avoir mis dans S[] (pour Supabase enqueue ci-dessous)
-  if(id==='enr31' && _pendingPhotos['enr31']){
+  if(id==='enr31'){
     const produit31 = draftFinal.produit||draftFinal.fournisseur||'Tracabilite';
     const date31 = draftFinal.date||today();
-    const fname31 = _downloadPendingPhoto('enr31', produit31, '', date31);
-    if(fname31) S[id].lignes[0].photo = _photoUpdateFilename(S[id].lignes[0].photo, fname31);
+    if(_pendingPhotos['enr31']){
+      const fname31 = _downloadPendingPhoto('enr31', produit31, '', date31);
+      if(fname31) S[id].lignes[0].photo = _photoUpdateFilename(S[id].lignes[0].photo, fname31);
+    }
+    if(_pendingPhotos['enr31_2']){
+      const fname312 = _downloadPendingPhoto('enr31_2', produit31, '', date31);
+      if(fname312) S[id].lignes[0].photo2 = _photoUpdateFilename(S[id].lignes[0].photo2, fname312);
+    }
   }
 
   // ── Lien ENR01 → ENR02 ou ENR03 ──────────────────────────
@@ -7070,7 +7076,7 @@ async function exportPhotosZip(){
   const photoSections = ['enr23','enr31'];
   photoSections.forEach(sec=>{
     (S[sec]?.lignes||[]).filter(r=>(r.date||'').startsWith(mois)).forEach(r=>{
-      ['photo','p1_photo','p2_photo'].forEach(field=>{
+      ['photo','photo2','p1_photo','p1_photo2','p2_photo','p2_photo2'].forEach(field=>{
         if(!r[field]) return;
         try {
           const obj = r[field].startsWith('{') ? JSON.parse(r[field]) : null;
@@ -8560,7 +8566,7 @@ function expDistrib(){
 let _photoPfx = 'p1';   // 'p1', 'p2', ou 'enr31'
 let _photoB64 = null;   // base64 de la photo en cours
 
-let _labelOcrCtx = null; // null = photo seule ; {mode:'label'|'bl', target:'enr23'|'enr31', pfx}
+let _labelOcrCtx = null; // null = photo seule ; {mode:'label', target:'enr23'|'enr31', pfx}
 
 function openOcrModal(pfx) {
   try {
@@ -8694,6 +8700,10 @@ function photoSave() {
       sd('photo2', photoRef, 'enr31');
     } else if (pfx === 'enr31_3') {
       sd('photo3', photoRef, 'enr31');
+    } else if (pfx === 'p1_2') {
+      r23s('p1_photo2', photoRef);
+    } else if (pfx === 'p2_2') {
+      r23s('p2_photo2', photoRef);
     } else if (pfx === 'nc30') {
       // Photo de non-conformité ENR30
       nc30('photo_nc', photoRef);
@@ -8711,7 +8721,7 @@ function photoSave() {
 
 
 // ════════════════════════════════════════════════════
-// ANALYSE PHOTO ÉTIQUETTE / BL (préremplissage champs)
+// ANALYSE PHOTO ÉTIQUETTE (préremplissage champs)
 // Invariant: l'analyse ne remplace PAS la photo —
 // Valider → champs via r23s/sd + photoSave() inchangé.
 // ════════════════════════════════════════════════════
@@ -8785,44 +8795,42 @@ function _ocrSetActionsValidate(){
   } catch(e){}
 }
 
-/** Slot photo preuve pour ENR31 (1ère case vide, sinon photo 1). */
-function _labelOcrEnr31PhotoPfx(){
-  try {
-    const d = (S['enr31']||{}).draft||{};
-    if(!d.photo) return 'enr31';
-    if(!d.photo2) return 'enr31_2';
-    if(!d.photo3) return 'enr31_3';
-    return 'enr31';
-  } catch(e){ return 'enr31'; }
+/** Slot photo preuve ENR31 — face 1 (photo) ou face 2 (photo2). */
+function _labelOcrEnr31PhotoPfx(face){
+  return (face === 2) ? 'enr31_2' : 'enr31';
 }
 
 /**
- * Ouvre le modal en mode analyse (étiquette ou BL).
- * target: 'enr23' | 'enr31' — mode: 'label' | 'bl'
+ * Ouvre le modal en mode analyse étiquette.
+ * target: 'enr23' | 'enr31'
+ * face: 1 (défaut) | 2 = « Autre face » → photo2 / p*_photo2 (ne touche pas photo1)
  * La photo reste gérée comme aujourd'hui via _photoPfx + photoSave().
  */
-function openLabelOcr(mode, target, source){
+function openLabelOcr(mode, target, source, face){
   try {
-    mode = (mode === 'bl') ? 'bl' : 'label';
+    mode = 'label'; // BL retiré UX (fournisseur / n° BL restent saisie manuelle)
     target = (target === 'enr31') ? 'enr31' : 'enr23';
+    face = (face === 2 || face === '2') ? 2 : 1;
     let pfx;
     if(target === 'enr31'){
-      pfx = _labelOcrEnr31PhotoPfx();
+      pfx = _labelOcrEnr31PhotoPfx(face);
     } else {
+      let base = 'p1';
       try {
-        pfx = (typeof r23GetProdFocus === 'function' && r23GetProdFocus() === '2') ? 'p2' : 'p1';
-      } catch(e){ pfx = 'p1'; }
+        base = (typeof r23GetProdFocus === 'function' && r23GetProdFocus() === '2') ? 'p2' : 'p1';
+      } catch(e){ base = 'p1'; }
+      pfx = (face === 2) ? (base + '_2') : base;
     }
-    _labelOcrCtx = { mode: mode, target: target, pfx: pfx, proposed: null, lines: null, conflicts: null };
+    _labelOcrCtx = { mode: mode, target: target, pfx: pfx, face: face, proposed: null, lines: null, conflicts: null };
     _photoPfx = pfx;
     _photoB64 = null;
     _ocrResetPanels();
     const img = document.getElementById('ocr-img');
     if(img){ img.onerror = null; img.style.display = 'none'; img.src = ''; }
     const ph = document.getElementById('ocr-placeholder');
-    if(ph){ ph.style.display = 'block'; ph.textContent = mode==='bl' ? '📄 Photo du bon de livraison' : '📷 Photo de l\'étiquette'; }
+    if(ph){ ph.style.display = 'block'; ph.textContent = face === 2 ? '📷 Autre face de l\'étiquette' : '📷 Photo de l\'étiquette'; }
     const hdr = document.getElementById('ocr-hdr-title');
-    if(hdr) hdr.textContent = mode==='bl' ? '📄 Bon de livraison' : '📷 Analyse étiquette';
+    if(hdr) hdr.textContent = face === 2 ? '📷 Autre face' : '📷 Analyse étiquette';
     _ocrSetActionsPhotoOnly();
     const btn = document.getElementById('ocr-apply-btn');
     if(btn){ btn.style.opacity = '.4'; btn.style.pointerEvents = 'none'; btn.textContent = '✅ Valider'; }
@@ -8839,9 +8847,8 @@ function openLabelOcr(mode, target, source){
 async function labelOcrRunAnalysis(dataUrl){
   const ctx = _labelOcrCtx;
   if(!ctx) return;
-  const mode = ctx.mode === 'bl' ? 'bl' : 'label';
-  const waitTitle = mode === 'bl' ? 'Lecture du bon de livraison…' : 'Analyse de l\'étiquette…';
-  haccShowWait({ icon: '📷', title: waitTitle, sub: 'Rien n’est enregistré pour l’instant' });
+  const mode = 'label';
+  haccShowWait({ icon: '📷', title: 'Analyse de l\'étiquette…', sub: 'Rien n’est enregistré pour l’instant' });
   try {
     const resp = await fetch('/.netlify/functions/label-ocr', {
       method: 'POST',
@@ -8862,19 +8869,6 @@ async function labelOcrRunAnalysis(dataUrl){
       _ocrSetActionsPhotoOnly();
       const btn = document.getElementById('ocr-apply-btn');
       if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
-      return;
-    }
-    if(mode === 'bl'){
-      const lines = (data && Array.isArray(data.lines)) ? data.lines : [];
-      if(!lines.length){
-        toast('⚠️ Aucune ligne lue sur le BL — saisie manuelle','warning');
-        _ocrSetActionsPhotoOnly();
-        const btn = document.getElementById('ocr-apply-btn');
-        if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
-        return;
-      }
-      ctx.lines = lines;
-      labelOcrShowBlPicker(lines);
       return;
     }
     const proposed = {
@@ -8900,50 +8894,6 @@ async function labelOcrRunAnalysis(dataUrl){
     const btn = document.getElementById('ocr-apply-btn');
     if(btn){ btn.style.opacity='1'; btn.style.pointerEvents='auto'; }
   }
-}
-
-function labelOcrShowBlPicker(lines){
-  try {
-    const wrap = document.getElementById('ocr-bl-lines');
-    const prev = document.getElementById('ocr-preview-wrap');
-    const val = document.getElementById('ocr-validate-panel');
-    const conf = document.getElementById('ocr-conflict-panel');
-    if(val) val.style.display = 'none';
-    if(conf) conf.style.display = 'none';
-    if(prev) prev.style.display = 'none';
-    if(!wrap) return;
-    let html = '<div style="font-size:.78rem;font-weight:800;color:#5C1E5A;margin-bottom:8px">Choisissez <strong>une</strong> ligne à coller dans la fiche ouverte</div>';
-    lines.forEach(function(line, i){
-      const meta = [line.lot ? ('Lot '+line.lot) : '', line.dlc ? ('DLC '+line.dlc) : ''].filter(Boolean).join(' · ');
-      html += '<button type="button" class="ocr-bl-line" onclick="labelOcrPickBlLine('+i+')">'
-        + '<div class="ocr-bl-prod">'+escH(line.produit||'(sans nom)')+'</div>'
-        + (meta ? '<div class="ocr-bl-meta">'+escH(meta)+'</div>' : '')
-        + '</button>';
-    });
-    wrap.innerHTML = html;
-    wrap.style.display = 'block';
-    const cam = document.getElementById('ocr-cam-btn');
-    const gal = document.getElementById('ocr-gal-btn');
-    const btn = document.getElementById('ocr-apply-btn');
-    if(cam){ cam.style.display=''; cam.textContent='↺ Reprendre'; }
-    if(gal) gal.style.display='none';
-    if(btn){ btn.style.opacity='.4'; btn.style.pointerEvents='none'; btn.textContent='✅ Valider'; }
-  } catch(e){ try{ console.warn('[labelOcrShowBlPicker]', e); }catch(_e){} }
-}
-
-function labelOcrPickBlLine(i){
-  try {
-    const ctx = _labelOcrCtx;
-    if(!ctx || !ctx.lines || !ctx.lines[i]) return;
-    const line = ctx.lines[i];
-    ctx.proposed = {
-      produit: String(line.produit||'').trim(),
-      lot: String(line.lot||'').trim(),
-      dlc: String(line.dlc||'').trim(),
-      estampille: String(line.estampille||'').trim(),
-    };
-    labelOcrShowValidation(ctx.proposed);
-  } catch(e){ try{ console.warn('[labelOcrPickBlLine]', e); }catch(_e){} }
 }
 
 function labelOcrShowValidation(proposed){
@@ -9025,6 +8975,11 @@ function labelOcrOnValidate(){
     const keys = ctx.target === 'enr31'
       ? ['produit','lot','dlc','estampille']
       : ['produit','lot','dlc'];
+    // Face 2 (« Autre face ») : ne remplit que les champs vides — pas d'écrasement photo1/champs
+    if(ctx.face === 2){
+      labelOcrApplyAndSavePhoto({});
+      return;
+    }
     const conflicts = [];
     keys.forEach(function(k){
       const neu = String(proposed[k]||'').trim();
@@ -9151,14 +9106,10 @@ function labelOcrApplyAndSavePhoto(decisions){
 function labelOcrToolbarHtml(target){
   try {
     const t = target === 'enr31' ? 'enr31' : 'enr23';
-    let html = '<div class="label-ocr-bar">'
+    return '<div class="label-ocr-bar">'
       + '<button type="button" class="cam" onclick="openLabelOcr(\'label\',\''+t+'\',\'camera\')">📷 Caméra</button>'
-      + '<button type="button" onclick="openLabelOcr(\'label\',\''+t+'\',\'gallery\')">🖼️ Galerie</button>';
-    if(t === 'enr23'){
-      html += '<button type="button" class="bl" onclick="openLabelOcr(\'bl\',\''+t+'\',\'camera\')">📄 BL</button>';
-    }
-    html += '</div>';
-    return html;
+      + '<button type="button" onclick="openLabelOcr(\'label\',\''+t+'\',\'gallery\')">🖼️ Galerie</button>'
+      + '</div>';
   } catch(e){ return ''; }
 }
 
@@ -9171,12 +9122,14 @@ function _downloadPendingPhoto(pfx, produit, fournisseur, dateStr){
   const df = d.slice(8,10)+'-'+d.slice(5,7)+'-'+d.slice(0,4);
   const clean = s => (s||'').replace(/[^a-zA-Z0-9À-ž]/g,'_').slice(0,22);
   let fname;
-  if(pfx==='enr31'){
-    fname = 'HACCP_Tracabilite_'+df+'_'+clean(produit)+'.jpg';
+  if(pfx==='enr31' || pfx==='enr31_2' || pfx==='enr31_3'){
+    const face = pfx==='enr31_2' ? '_face2' : (pfx==='enr31_3' ? '_face3' : '');
+    fname = 'HACCP_Tracabilite_'+df+'_'+clean(produit)+face+'.jpg';
   } else {
-    const num = pfx==='p1'?'P1':'P2';
+    const base = (pfx==='p1_2'||pfx==='p1')?'P1':((pfx==='p2_2'||pfx==='p2')?'P2':'P1');
+    const face = (pfx==='p1_2'||pfx==='p2_2') ? '_face2' : '';
     const prod = produit ? '_'+clean(produit) : '';
-    fname = 'HACCP_Reception_'+df+'_'+clean(fournisseur)+prod+'_'+num+'.jpg';
+    fname = 'HACCP_Reception_'+df+'_'+clean(fournisseur)+prod+'_'+base+face+'.jpg';
   }
   try {
     const a = document.createElement('a');
@@ -9254,8 +9207,9 @@ function _photoGetFile(stored){
   }catch(e){ return ''; }
 }
 const _HISTO_PHOTO_LABELS={
-  photo:'📷 Photo', photo_nc:'📷 Photo NC', photo2:'📷 Photo 2', photo3:'📷 Photo 3',
-  thumb:'📷 Photo', p1_photo:'📷 Étiquette produit 1', p2_photo:'📷 Étiquette produit 2'
+  photo:'📷 Photo', photo_nc:'📷 Photo NC', photo2:'📷 Autre face', photo3:'📷 Photo 3',
+  thumb:'📷 Photo', p1_photo:'📷 Étiquette produit 1', p2_photo:'📷 Étiquette produit 2',
+  p1_photo2:'📷 Autre face produit 1', p2_photo2:'📷 Autre face produit 2'
 };
 function _histoPhotoEntries(r){
   const out=[];
@@ -9715,12 +9669,17 @@ function r23ProdBlock(pfx, num){
       <span style="font-size:.78rem;font-weight:900;color:var(--plum);flex:1">
         📦 Produit ${num}${required?'':' <span style="font-size:.65rem;font-weight:600;color:#b89ab6">(optionnel)</span>'}
       </span>
-      <button class="photo-btn" style="width:auto;padding:7px 13px;margin:0;font-size:.75rem"
-        onclick="openOcrModal('${pfx}')">
-        ${d[pfx+'_photo']?'📷 Changer photo':'📷 Photo étiquette'}
-      </button>
+      <span class="label-ocr-bar" style="margin:0;flex:0 0 auto;gap:4px">
+        <button type="button" class="cam" style="min-width:0;padding:7px 10px;font-size:.72rem;flex:0 0 auto"
+          onclick="openLabelOcr('label','enr23','camera')">${d[pfx+'_photo']?'📷 Reprendre':'📷 Caméra'}</button>
+        <button type="button" style="min-width:0;padding:7px 10px;font-size:.72rem;flex:0 0 auto"
+          onclick="openLabelOcr('label','enr23','gallery')">🖼️ Galerie</button>
+        ${d[pfx+'_photo']?`<button type="button" style="min-width:0;padding:7px 10px;font-size:.72rem;flex:0 0 auto"
+          onclick="openLabelOcr('label','enr23','',2)">${d[pfx+'_photo2']?'📷 Autre face ✓':'📷 Autre face'}</button>`:''}
+      </span>
     </div>
-    ${d[pfx+'_photo']?photoThumb(d[pfx+'_photo'],'📷 Étiquette produit '+num):''}
+    ${d[pfx+'_photo']?photoThumb(d[pfx+'_photo'],'📷 Photo étiquette'):''}
+    ${d[pfx+'_photo2']?photoThumb(d[pfx+'_photo2'],'📷 Autre face'):''}
     <div class="surge-toggle${surge?' on':''}" onclick="r23ToggleSurge('${pfx}',this)">
       <span style="font-size:1rem">${surge?'❄️':'🌡️'}</span>
       <span class="surge-toggle-lbl">${surge?'Surgelé — consigne ≤ -18°C':'Frais/réfrigéré — consigne ≤ +3°C'}</span>
@@ -9788,12 +9747,14 @@ function r23Save(){
     p1_emballage:d.p1_emballage||'',
     p1_etiquetage:d.p1_etiquetage||'', p1_qualite:d.p1_qualite||'',
     p1_photo:d.p1_photo||'',
+    p1_photo2:d.p1_photo2||'',
     // Produit 2
     p2_produit:d.p2_produit||'', p2_lot:d.p2_lot||'', p2_dlc:d.p2_dlc||'',
     p2_tc:d.p2_tc||'', p2_surge:d.p2_surge||'0',
     p2_emballage:d.p2_emballage||'',
     p2_etiquetage:d.p2_etiquetage||'', p2_qualite:d.p2_qualite||'',
     p2_photo:d.p2_photo||'',
+    p2_photo2:d.p2_photo2||'',
     conforme:confGlobal?'OUI':'NON',
     cuisinier:d.cuisinier||getActiveSession()||'',
   };
@@ -9810,9 +9771,17 @@ function r23Save(){
     const fname = _downloadPendingPhoto('p1', row.p1_produit, row.fournisseur, dateRec);
     if(fname) S[ENR23_SEC].lignes[0].p1_photo = _photoUpdateFilename(S[ENR23_SEC].lignes[0].p1_photo||row.p1_photo, fname);
   }
+  if(_pendingPhotos['p1_2']){
+    const fname = _downloadPendingPhoto('p1_2', row.p1_produit, row.fournisseur, dateRec);
+    if(fname) S[ENR23_SEC].lignes[0].p1_photo2 = _photoUpdateFilename(S[ENR23_SEC].lignes[0].p1_photo2||row.p1_photo2, fname);
+  }
   if(_pendingPhotos['p2']){
     const fname = _downloadPendingPhoto('p2', row.p2_produit, row.fournisseur, dateRec);
     if(fname) S[ENR23_SEC].lignes[0].p2_photo = _photoUpdateFilename(S[ENR23_SEC].lignes[0].p2_photo||row.p2_photo, fname);
+  }
+  if(_pendingPhotos['p2_2']){
+    const fname = _downloadPendingPhoto('p2_2', row.p2_produit, row.fournisseur, dateRec);
+    if(fname) S[ENR23_SEC].lignes[0].p2_photo2 = _photoUpdateFilename(S[ENR23_SEC].lignes[0].p2_photo2||row.p2_photo2, fname);
   }
   if(!confGlobal){
     toast('⚠️ Réception NON CONFORME — Vérifiez les produits','warning');
@@ -9870,12 +9839,14 @@ function r23HistoCard(){
           <div class="hdi"><div class="hdi-label">DLC prod. 1</div><div class="hdi-val">${r.p1_dlc||'—'}</div></div>
           <div class="hdi"><div class="hdi-label">Lot prod. 1</div><div class="hdi-val">${r.p1_lot||'—'}</div></div>
           ${r.p1_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p1_photo,'📷 Étiquette produit 1')}</div>`:''}
+          ${r.p1_photo2?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p1_photo2,'📷 Autre face produit 1')}</div>`:''}
           ${r.p2_produit?`
           <div class="hdi"><div class="hdi-label">Produit 2</div><div class="hdi-val">${escH(r.p2_produit)}</div></div>
           <div class="hdi"><div class="hdi-label">T°C prod. 2</div><div class="hdi-val ${r.p2_tc&&parseFloat(r.p2_tc)<=6?'conf-oui':'conf-non'}">${p2T}</div></div>
           <div class="hdi"><div class="hdi-label">DLC prod. 2</div><div class="hdi-val">${r.p2_dlc||'—'}</div></div>
           <div class="hdi"><div class="hdi-label">Lot prod. 2</div><div class="hdi-val">${r.p2_lot||'—'}</div></div>
-          ${r.p2_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p2_photo,'📷 Étiquette produit 2')}</div>`:''}`:''}
+          ${r.p2_photo?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p2_photo,'📷 Étiquette produit 2')}</div>`:''}
+          ${r.p2_photo2?`<div class="hdi" style="grid-column:1/-1">${photoThumb(r.p2_photo2,'📷 Autre face produit 2')}</div>`:''}`:''}
           <div class="hdi"><div class="hdi-label">Propreté véhicule</div><div class="hdi-val ${r.vehicule==='OUI'?'conf-oui':r.vehicule==='NON'?'conf-non':''}">${r.vehicule||'—'}</div></div>
         </div>
       </div>
@@ -10039,7 +10010,6 @@ function renderENR23(){
   return `<div class="card">
     <div class="card-title">📦 Contrôle à réception <span class="tag prpo">PrPo</span></div>
     <div class="regle">Réception en <strong>3 étapes</strong> : en-tête (BL / fournisseur) → produits → visa. T°C ≤ +3°C (tol. +6°C). NC → fiche Non-conformité.</div>
-    ${labelOcrToolbarHtml('enr23')}
     <div class="fg-label">Nouvelle réception</div>
     ${r23StepBar(step)}
     ${body}
@@ -13004,30 +12974,10 @@ function renderENR31() {
       <div class="card-title">${def.title}</div>
       <div class="regle">${def.regle} Le bandeau « Menu du jour » relie ce lot à un ou plusieurs plats.</div>
       ${labelOcrToolbarHtml('enr31')}
-
-      <div style="margin-bottom:12px">
-        <div style="font-size:.7rem;font-weight:800;color:var(--plum);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px">📷 Photos étiquettes (max 3) <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--gris2)">(recommandé)</span></div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
-          <div>
-            <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31')">
-              ${(S['enr31']?.draft?.photo)?'✓ Photo 1':'📷 Photo 1'}
-            </button>
-            ${(S['enr31']?.draft?.photo)?photoThumb(S['enr31'].draft.photo,'Photo 1'):''}
-          </div>
-          <div>
-            <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31_2')">
-              ${(S['enr31']?.draft?.photo2)?'✓ Photo 2':'📷 Photo 2'}
-            </button>
-            ${(S['enr31']?.draft?.photo2)?photoThumb(S['enr31'].draft.photo2,'Photo 2'):''}
-          </div>
-          <div>
-            <button class="photo-btn" style="width:100%;padding:8px 4px;font-size:.72rem;margin:0 0 4px" onclick="openOcrModal('enr31_3')">
-              ${(S['enr31']?.draft?.photo3)?'✓ Photo 3':'📷 Photo 3'}
-            </button>
-            ${(S['enr31']?.draft?.photo3)?photoThumb(S['enr31'].draft.photo3,'Photo 3'):''}
-          </div>
-        </div>
-      </div>
+      ${(draft.photo)?('<div style="margin:0 0 12px">'+photoThumb(draft.photo,'📷 Photo étiquette')+'</div>'):''}
+      ${(draft.photo2)?('<div style="margin:0 0 12px">'+photoThumb(draft.photo2,'📷 Autre face')+'</div>'):''}
+      ${(draft.photo && !draft.photo2)?('<div class="label-ocr-bar"><button type="button" onclick="openLabelOcr(\'label\',\'enr31\',\'\',2)">📷 Autre face</button></div>'):''}
+      ${(draft.photo && draft.photo2)?('<div class="label-ocr-bar"><button type="button" onclick="openLabelOcr(\'label\',\'enr31\',\'\',2)">📷 Reprendre autre face</button></div>'):''}
 
       <div class="fg-label">Nouvelle saisie</div>
       ${renderFields(fields31, 'enr31')}
@@ -18084,7 +18034,7 @@ function purgeGetVieuxMiniatures() {
   // Chercher les miniatures dans les lignes ENR23, ENR31
   ['enr23','enr31'].forEach(sec => {
     (S[sec]?.lignes||[]).forEach((r,i) => {
-      ['photo','p1_photo','p2_photo'].forEach(k => {
+      ['photo','photo2','p1_photo','p1_photo2','p2_photo','p2_photo2'].forEach(k => {
         if (r[k] && r[k].thumb) {
           const ts = r._ts ? new Date(r._ts).getTime() : 0;
           if (ts < cutoff && ts > 0) result.push({sec, i, key:k, ts: r._ts||''});
@@ -18155,7 +18105,7 @@ function purgeExportJSON() {
     if (r) {
       // Exclure les photos base64 de l'export JSON
       const clean = {...r};
-      ['photo','p1_photo','p2_photo','signature'].forEach(k => { if(clean[k]) delete clean[k]; });
+      ['photo','photo2','p1_photo','p1_photo2','p2_photo','p2_photo2','signature'].forEach(k => { if(clean[k]) delete clean[k]; });
       exportData.sections[sec].push(clean);
     }
   });

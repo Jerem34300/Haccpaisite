@@ -1160,4 +1160,3 @@ body.nav-right main { margin-right:82px; padding-top:56px; }
 .label-ocr-bar{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
 .label-ocr-bar button{flex:1;min-width:96px;padding:10px 8px;border-radius:12px;border:1.5px solid #d8b4d8;background:#fff;color:#5C1E5A;font-weight:800;font-size:.78rem;font-family:inherit;cursor:pointer;touch-action:manipulation}
 .label-ocr-bar button.cam{background:linear-gradient(135deg,#5C1E5A,#C93A78);color:#fff;border-color:transparent;box-shadow:0 2px 8px rgba(92,30,90,.25)}
-.label-ocr-bar button.bl{background:#E8F0FC;color:#0F2240;border-color:#c5d8f5}
