@@ -177,12 +177,25 @@ function computeDayCoverage(date){
       const menu = getMenu(date, s.id);
       if(!menu) return;
       try { migratePotagesToEntrees(menu); } catch(e){}
-      const cov = computeMenuCoverage(menu);
+      const cov = computeMenuCoverage(menu, date);
       total += cov.total;
       tracked += cov.tracked;
     });
   } catch(e){ console.warn('[menu] day coverage', e); }
   return { total, expected: total, tracked };
+}
+
+/** Pastille calendrier : null = aucun plat ; todo=orange ; late=rouge ; done=vert */
+function menuDayDotStatus(date){
+  try {
+    const cov = computeDayCoverage(date);
+    if(!cov || !cov.total) return null;
+    const pct = cov.expected === 0 ? 0 : (cov.tracked / cov.expected) * 100;
+    if(pct >= 100) return 'done';
+    const today_ = today();
+    if(date < today_) return 'late';
+    return 'todo'; // aujourd'hui ou futur, couverture < 100 %
+  } catch(e){ return null; }
 }
 
 
@@ -267,6 +280,28 @@ function renderMenuJour(){
     .mn-act:active{transform:scale(.97);opacity:.9}
     .mn-act.save{background:linear-gradient(135deg,#5C1E5A,#C93A78);box-shadow:0 3px 10px rgba(92,30,90,.35)}
     .mn-act.clear{background:#fff;color:#dc2626;border:1.5px solid #fca5a5}
+    .mn-cal{background:#fff;border:1.5px solid var(--brd,#e0d0e0);border-radius:14px;padding:11px 12px;margin-bottom:12px}
+    .mn-cal-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .mn-cal-tit{flex:1;text-align:center;font-size:.88rem;font-weight:900;color:var(--plum,#5C1E5A);text-transform:capitalize}
+    .mn-cal-nav{background:#f7f2f7;border:1.5px solid #ede0ed;color:#5C1E5A;width:32px;height:32px;border-radius:10px;font-size:1rem;font-weight:900;cursor:pointer;font-family:inherit;line-height:1}
+    .mn-cal-nav:active{opacity:.8}
+    .mn-cal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:4px}
+    .mn-cal-dow span{text-align:center;font-size:.62rem;font-weight:800;color:#b89ab6;text-transform:uppercase;padding:2px 0}
+    .mn-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+    .mn-cal-day{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:42px;border:none;background:transparent;border-radius:10px;cursor:pointer;font-family:inherit;padding:4px 2px 6px;-webkit-tap-highlight-color:transparent}
+    .mn-cal-day:active{opacity:.85}
+    .mn-cal-day.out{opacity:.35;cursor:default}
+    .mn-cal-day.sel{background:#f3e8f3;box-shadow:inset 0 0 0 1.5px #d8b4d8}
+    .mn-cal-day.today:not(.sel){box-shadow:inset 0 0 0 1.5px #5C1E5A}
+    .mn-cal-num{font-size:.78rem;font-weight:800;color:#3b1e3b;line-height:1.1}
+    .mn-cal-day.sel .mn-cal-num{color:#5C1E5A}
+    .mn-cal-dot{width:7px;height:7px;border-radius:50%;margin-top:3px;flex-shrink:0}
+    .mn-cal-dot.todo{background:#F59E0B}
+    .mn-cal-dot.late{background:#DC2626}
+    .mn-cal-dot.done{background:#16A34A}
+    .mn-cal-dot.empty{visibility:hidden}
+    .mn-cal-leg{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:9px;font-size:.68rem;font-weight:700;color:#7A6579}
+    .mn-cal-leg span{display:inline-flex;align-items:center;gap:4px}
     .mn-hist{background:#fff;border:1.5px solid var(--brd,#e0d0e0);border-radius:14px;padding:11px 12px;margin-top:14px;margin-bottom:30px}
     .mn-hist-tit{font-size:.88rem;font-weight:900;color:var(--plum,#5C1E5A);margin-bottom:8px;display:flex;align-items:center;gap:7px}
     .mn-hist-item{background:#f7f2f7;border-radius:10px;padding:9px 10px;margin-bottom:5px;border:1.5px solid #ede0ed;cursor:pointer}
@@ -290,6 +325,8 @@ function renderMenuJour(){
     </div>
   </div>
 
+  ${renderMenuCalendar()}
+
   ${renderCoverageCard(cov)}
 
   ${renderProductsDatalist()}
@@ -298,6 +335,67 @@ function renderMenuJour(){
 
   ${renderMenuHistory()}
   `;
+}
+
+function renderMenuCalendar(){
+  const today_ = today();
+  const sel = _menuState.date || today_;
+  try {
+    if(_menuState.calY == null || _menuState.calM == null){
+      const d0 = new Date(sel+'T12:00');
+      _menuState.calY = d0.getFullYear();
+      _menuState.calM = d0.getMonth();
+    }
+  } catch(e){
+    const d0 = new Date(today_+'T12:00');
+    _menuState.calY = d0.getFullYear();
+    _menuState.calM = d0.getMonth();
+  }
+  const y = _menuState.calY;
+  const m = _menuState.calM;
+  const moisNoms = (typeof MOIS_FR !== 'undefined' && MOIS_FR)
+    ? MOIS_FR
+    : ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const titre = (moisNoms[m] || '') + ' ' + y;
+  const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // Lun=0
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const cells = [];
+  for(let i = 0; i < firstDow; i++) cells.push({ out:true });
+  for(let day = 1; day <= daysInMonth; day++){
+    const ymd = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    cells.push({
+      out: false,
+      day,
+      ymd,
+      sel: ymd === sel,
+      today: ymd === today_,
+      status: menuDayDotStatus(ymd),
+    });
+  }
+  while(cells.length % 7) cells.push({ out:true });
+  return `
+  <div class="mn-cal" aria-label="Calendrier des menus">
+    <div class="mn-cal-hd">
+      <button type="button" class="mn-cal-nav" onclick="window._menuCalMove(-1)" aria-label="Mois précédent">‹</button>
+      <div class="mn-cal-tit">${titre}</div>
+      <button type="button" class="mn-cal-nav" onclick="window._menuCalMove(1)" aria-label="Mois suivant">›</button>
+    </div>
+    <div class="mn-cal-dow">${['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'].map(j=>`<span>${j}</span>`).join('')}</div>
+    <div class="mn-cal-grid">
+      ${cells.map(c => {
+        if(c.out) return `<div class="mn-cal-day out" aria-hidden="true"></div>`;
+        const cls = ['mn-cal-day'];
+        if(c.sel) cls.push('sel');
+        if(c.today) cls.push('today');
+        const dotCls = c.status ? ('mn-cal-dot ' + c.status) : 'mn-cal-dot empty';
+        return `<button type="button" class="${cls.join(' ')}" onclick="window._menuPickCalDay('${c.ymd}')" aria-label="${c.ymd}${c.status ? ' · ' + c.status : ''}">
+          <span class="mn-cal-num">${c.day}</span>
+          <span class="${dotCls}"></span>
+        </button>`;
+      }).join('')}
+    </div>
+    <div class="mn-cal-leg" aria-label="Légende">🟠 À finir · 🔴 En retard · 🟢 Terminé</div>
+  </div>`;
 }
 
 function renderServiceAccordion(date, svc){
@@ -651,10 +749,10 @@ function computePlatStatus(plat){
   return { cls:'todo', label:'À tracer' };
 }
 
-function countEnrLinkedToPlat(platId){
+function countEnrLinkedToPlat(platId, dateOpt){
   if(!platId) return 0;
   let n = 0;
-  const d = _menuState.date;
+  const d = dateOpt || _menuState.date;
   const SECT = ['enr01','enr02','enr03','enr04','enr07','enr08','enr09','enr10','enr11','enr12',
                 'enr13','enr14','enr15','enr16','enr23','enr30','enr31','enr33','enr34','enr_tc_distrib'];
   SECT.forEach(sec => {
@@ -682,7 +780,7 @@ function renderCoverageCard(cov){
   </div>`;
 }
 
-function computeMenuCoverage(menu){
+function computeMenuCoverage(menu, dateOpt){
   let total=0, tracked=0;
   try { migratePotagesToEntrees(menu); } catch(e){}
   const ids = CATS.map(c => c.id);
@@ -693,7 +791,7 @@ function computeMenuCoverage(menu){
   ids.forEach(id => {
     (menu && menu.categories && menu.categories[id] || []).forEach(p => {
       total++;
-      if(p.statut_auto === 'preparé_minute' || countEnrLinkedToPlat(p.plat_id) > 0) tracked++;
+      if(p.statut_auto === 'preparé_minute' || countEnrLinkedToPlat(p.plat_id, dateOpt) > 0) tracked++;
     });
   });
   return { total, expected: total, tracked };
@@ -789,6 +887,27 @@ window._menuToggleAccordion = function(svcId){
 window._menuSwitchDate = function(d){
   if(!d || !/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
   _menuState.date = d;
+  try {
+    _menuState.service = 'midi';
+    _menuState.openServices = { midi: true };
+    const dt = new Date(d+'T12:00');
+    _menuState.calY = dt.getFullYear();
+    _menuState.calM = dt.getMonth();
+  } catch(e){}
+  if(typeof renderMain === 'function') renderMain();
+};
+window._menuPickCalDay = function(d){
+  window._menuSwitchDate(d);
+};
+window._menuCalMove = function(dir){
+  try {
+    let m = (_menuState.calM == null ? new Date((_menuState.date||today())+'T12:00').getMonth() : _menuState.calM) + (dir||0);
+    let y = _menuState.calY == null ? new Date((_menuState.date||today())+'T12:00').getFullYear() : _menuState.calY;
+    while(m > 11){ m -= 12; y++; }
+    while(m < 0){ m += 12; y--; }
+    _menuState.calY = y;
+    _menuState.calM = m;
+  } catch(e){ console.warn('[menu] cal move', e); }
   if(typeof renderMain === 'function') renderMain();
 };
 window._menuQuickJump = function(){
