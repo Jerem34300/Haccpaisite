@@ -353,9 +353,9 @@ header{background:var(--plum);color:#fff;position:sticky;top:0;z-index:300;box-s
 /* Raccourcis rapides */
 .task-shortcuts{display:flex;gap:8px;margin-top:12px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
 .task-shortcuts::-webkit-scrollbar{display:none;}
-.task-sh-btn{flex-shrink:0;width:66px;padding:10px 4px 8px;border-radius:12px;border:1.5px solid var(--brd);background:var(--fond);font-size:1.3rem;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.15s;}
+.task-sh-btn{flex-shrink:0;min-width:66px;padding:10px 8px 8px;border-radius:12px;border:1.5px solid var(--brd);background:var(--fond);font-size:1.3rem;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.15s;}
 .task-sh-btn:active{background:#f0e4f0;border-color:var(--plum);transform:scale(.93);}
-.task-sh-btn span{font-size:.62rem;font-weight:700;color:var(--gris2);line-height:1;}
+.task-sh-btn span{font-size:.62rem;font-weight:700;color:var(--gris2);line-height:1;white-space:nowrap;}
 /* ── ENR_TC_DISTRIB ─────────────────────────────────── */
 .distrib-services{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
 @media(max-width:420px){.distrib-services{grid-template-columns:1fr;}}

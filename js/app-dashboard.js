@@ -5474,6 +5474,7 @@ const ENR_LABELS = {
   enr_distrib_midi:'🌞 Distribution Midi',enr_distrib_soir:'🌙 Distribution Soir',
   enr_tc_distrib:'🌡️ T°C Distribution',
   enr24:'🔧 Maintenance',enr25:'🔬 Contrôle labo',enr_allergenes:'⚠️ Allergènes INCO',
+  fourc_nonlivre:'🚚 Livraison non reçue',
 };
 
 // Labels lisibles pour les champs data

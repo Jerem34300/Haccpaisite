@@ -25,7 +25,7 @@ function _hasEnc(){
 
 var STEPS = [
   { id:'profil', ico:'👤', titre:'Choisis ton profil',
-    aide:'Touche le rond en haut à droite et choisis ton prénom : chaque saisie sera signée à ton nom.',
+    aide:'Touche le bouton 👤 en haut à droite et choisis ton prénom : chaque saisie sera signée à ton nom.',
     btn:'Choisir mon profil', go:function(){ try { openSessModal(); } catch(e){ console.warn('[tuto] profil:', e); } },
     done:function(){ try { return !!getActiveSession(); } catch(e){ return false; } } },
   { id:'enceintes', ico:'🌡️', titre:'Relève tes enceintes froides',
