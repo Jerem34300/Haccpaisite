@@ -351,9 +351,11 @@ header{background:var(--plum);color:#fff;position:sticky;top:0;z-index:300;box-s
 .task-progress-ring{position:relative;width:58px;height:58px;flex-shrink:0;}
 .task-ring-txt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;}
 /* Raccourcis rapides */
-.task-shortcuts{display:flex;gap:8px;margin-top:12px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none;}
+.task-shortcuts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:12px;padding-bottom:2px;}
+/* Téléphone : 6 tuiles sur 2 lignes (3 colonnes), toutes visibles sans défilement horizontal */
+@media(max-width:640px){.task-shortcuts{grid-template-columns:repeat(3,minmax(0,1fr));}}
 .task-shortcuts::-webkit-scrollbar{display:none;}
-.task-sh-btn{flex-shrink:0;min-width:66px;padding:10px 8px 8px;border-radius:12px;border:1.5px solid var(--brd);background:var(--fond);font-size:1.3rem;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.15s;}
+.task-sh-btn{min-width:0;padding:10px 4px 8px;border-radius:12px;border:1.5px solid var(--brd);background:var(--fond);font-size:1.3rem;cursor:pointer;font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:3px;transition:.15s;}
 .task-sh-btn:active{background:#f0e4f0;border-color:var(--plum);transform:scale(.93);}
 .task-sh-btn span{font-size:.62rem;font-weight:700;color:var(--gris2);line-height:1;white-space:nowrap;}
 /* ── ENR_TC_DISTRIB ─────────────────────────────────── */
