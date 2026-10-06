@@ -5213,7 +5213,7 @@ function nettProfilHintHtml(){
     if(getActiveSession()) return '';
     return `<div role="button" tabindex="0" onclick="openSessModal()" style="background:#fff7ed;border:1.5px solid #fdba74;border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:.8rem;font-weight:800;color:#9a3412;cursor:pointer;display:flex;align-items:center;gap:8px">
       <span style="font-size:1.1rem">👤</span>
-      <span>Choisis ton profil (rond en haut) pour valider un nettoyage</span>
+      <span>Choisis ton profil (bouton 👤 en haut à droite) pour valider un nettoyage</span>
     </div>`;
   }catch(e){ return ''; }
 }
@@ -5291,10 +5291,14 @@ function renderNettPriorites(){
   });
 
   // Résumé stats en haut
-  const nbUrgent=(groups.nc.items.length+groups.retard.items.length+groups.today.items.length);
+  // Même source et même libellé que l'Accueil : nettNbRetards() = NC + en retard → « N en retard »
+  const nbRetard=(groups.nc.items.length+groups.retard.items.length);
+  const nbToday=groups.today.items.length;
   const statsHtml=`<div class="nett-stats-bar">
-    ${nbUrgent>0?
-      `<span class="nett-stat-pill red">${nbUrgent} urgent${nbUrgent>1?'s':''}</span>`:''}
+    ${nbRetard>0?
+      `<span class="nett-stat-pill red">${nbRetard} en retard</span>`:''}
+    ${nbToday>0?
+      `<span class="nett-stat-pill orange">${nbToday} à faire aujourd'hui</span>`:''}
     ${groups.demain.items.length?
       `<span class="nett-stat-pill orange">${groups.demain.items.length} dans 1-2j</span>`:''}
     ${groups.semaine.items.length?
@@ -5654,7 +5658,7 @@ function openNettModal(refId){
   if(roCheck())return;
   // Micro UX: empty « — » is expected without session — nudge to header profile round
   if(!getActiveSession()){
-    try{toast('👤 Choisis ton profil (rond en haut)','warning');}catch(e){}
+    try{toast('👤 Choisis ton profil (bouton 👤 en haut à droite)','warning');}catch(e){}
     try{openSessModal();}catch(e){}
     return;
   }
@@ -6810,7 +6814,7 @@ function accueilTaches(){
       ).join('') + (nettRet>3 ? '<div style="font-size:.65rem;color:#b89ab6">+ '+(nettRet-3)+' autres...</div>' : '') + '</div>'
     : '';
   const nettDetail = nettRet>0
-    ? '⚠️ ' + nettRet + ' en retard' + (nettNC>0 ? ' · ' + nettNC + ' NC ⚠️' : '') + nettTopHtml
+    ? '⚠️ ' + nettRet + ' en retard' + (nettNC>0 ? ' (dont ' + nettNC + ' NC)' : '') + nettTopHtml
     : (nettNC>0 ? '⚠️ ' + nettNC + ' non-conformité' + (nettNC>1?'s':'') + ' à résoudre' : '✓ Tout à jour');
   tasks.push({
     time:'quotidien', priority: nettRet>0?2:(nettNC>0?1:0),
@@ -6849,21 +6853,63 @@ function accueilTaches(){
     });
   }
 
-  // ── RAPPELS FOURNISSEURS ──────────────────────────
-  const todayDeliveries = fourcTodayDeliveries();
-  todayDeliveries.forEach(f=>{
-    const done = fourcAlreadyDone(f.nom);
-    if(!done){
-      tasks.push({
-        time:'reception', priority: h>=8?3:2,
-        html: taskStatus(false, h>=8,
-          'Livraison attendue — '+f.nom,
-          '🚚', "goTo('enr23')",
-          f.notes ? f.notes : 'Faire la réception et la traçabilité'
-        )
-      });
+  // ── RÉCEPTION — uniquement les jours où au moins un fournisseur est attendu
+  // (calendrier fournisseurs, même logique que le score : fourcTodayDeliveries / fourcAlreadyDone).
+  // Pas de fournisseur attendu (ou aucun fournisseur configuré) → pas de ligne, 100 % atteignable.
+  // Un fournisseur attendu qui ne vient pas peut être marqué « Pas livré aujourd'hui » (trace datée + cuisinier).
+  let _recepNbAttendus = 0, _recepNbNonLivres = 0;
+  try{
+    if(!hid['enr23']){
+      const _attendus = fourcTodayDeliveries();
+      if(_attendus.length>0){
+        const _items = _attendus.map(f=>{
+          const recu = fourcAlreadyDone(f.nom);
+          return {f, recu, nl: recu ? null : fourcNonLivre(f)};
+        });
+        _recepNbAttendus = _items.length;
+        _recepNbNonLivres = _items.filter(x=>x.nl).length;
+        const _nbRecus = _items.filter(x=>x.recu).length;
+        const _recDone = _items.every(x=>x.recu||x.nl);
+        const _lignesF = _items.map(x=>{
+          if(x.recu) return '<div style="font-size:.7rem;font-weight:800;color:#166534;padding:1px 0">✅ '+escH(x.f.nom)+' — contrôlé</div>';
+          if(x.nl) return '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:.7rem;font-weight:700;color:#64748b;padding:1px 0">➖ '+escH(x.f.nom)+' — pas livré ('+escH(x.nl.cuisinier||'?')+(x.nl.heure?', '+escH(x.nl.heure):'')+')'
+            +'<button data-fid="'+escAttr(x.f.id)+'" onclick="event.stopPropagation();fourcAnnulerNonLivre(this.getAttribute(\'data-fid\'))" style="background:none;border:none;color:#7A6579;text-decoration:underline;font-size:.66rem;font-weight:700;cursor:pointer;padding:2px 4px;font-family:inherit;touch-action:manipulation">Annuler (admin)</button></div>';
+          let _nlAnn = null;
+          try{ _nlAnn = fourcNonLivre(x.f, true); }catch(e){ _nlAnn = null; }
+          return '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:.7rem;font-weight:800;color:#c2410c;padding:1px 0">⏳ '+escH(x.f.nom)+' — à contrôler'
+            +(_nlAnn?'<span style="font-size:.64rem;font-weight:700;color:#94a3b8">(pas livré annulé — '+escH(_nlAnn.annule_par||'Admin')+(_nlAnn.annule_heure?', '+escH(_nlAnn.annule_heure):'')+')</span>':'')
+            +'<button data-fid="'+escAttr(x.f.id)+'" onclick="event.stopPropagation();fourcMarkNonLivre(this.getAttribute(\'data-fid\'))" style="background:none;border:none;color:#7A6579;text-decoration:underline;font-size:.66rem;font-weight:700;cursor:pointer;padding:2px 4px;font-family:inherit;touch-action:manipulation">Pas livré aujourd\'hui</button></div>';
+        }).join('');
+        tasks.push({
+          time:'reception', priority: _recDone?0:(h>=8?3:2),
+          html: taskStatus(_recDone, !_recDone&&h>=8,
+            'Réception : '+_attendus.map(f=>escH(f.nom)).join(', '),
+            '📦', "goTo('enr23')",
+            _nbRecus+'/'+_items.length+' reçue'+(_nbRecus>1?'s':'')+'<div style="margin-top:3px">'+_lignesF+'</div>'
+          )
+        });
+      }
     }
-  });
+  }catch(e){ console.warn('[accueil] réception:', e); }
+
+  // ── TRAÇABILITÉ MP — liée aux réceptions (« Faire la réception et la traçabilité ») :
+  // affichée si une livraison est attendue (hors « pas livré ») ou si une réception a été saisie aujourd'hui.
+  try{
+    if(!hid['enr31']){
+      const _recepAuj = (S['enr23']?.lignes||[]).some(r=>_notDeleted(r)&&r.date===todayStr);
+      if(_recepAuj || (_recepNbAttendus-_recepNbNonLivres)>0){
+        const _nbTra = (S['enr31']?.lignes||[]).filter(r=>_notDeleted(r)&&r.date===todayStr).length;
+        tasks.push({
+          time:'tracabilite', priority: _nbTra>0?0:1,
+          html: taskStatus(_nbTra>0, false,
+            'Traçabilité des matières premières',
+            '📋', "goTo('enr31')",
+            _nbTra>0 ? _nbTra+' lot'+(_nbTra>1?'s':'')+' enregistré'+(_nbTra>1?'s':'')+' aujourd\'hui ✓' : 'Enregistrer les lots des produits reçus'
+          )
+        });
+      }
+    }
+  }catch(e){ console.warn('[accueil] traçabilité:', e); }
 
   // ── POUBELLES : sortir ce soir ─────────────────────
   const pbSortir = poubellesTodayVeille();
@@ -6919,7 +6965,13 @@ function accueilTaches(){
 
   const nbTotal = tasks.length;
   const nbOk = faites.length;
-  const pct = Math.round(nbOk/nbTotal*100);
+  const pct = nbTotal ? Math.round(nbOk/nbTotal*100) : 100;
+  // Compteur : orange en cours, vert à 100 % ; liste des tâches comptées (tap sur le rond)
+  let ringCol = '#f59e0b', ringFill = '#fff3e0', ringTxt = '#c2410c';
+  try{
+    if(pct===100){ ringCol = '#4caf50'; ringFill = '#e8f5e9'; ringTxt = '#166534'; }
+    window._accTasksLast = tasks.map(t=>({html:t.html, done:t.priority===0}));
+  }catch(e){ console.warn('[accueil] compteur:', e); }
 
   return `
     <!-- En-tête du jour -->
@@ -6930,29 +6982,29 @@ function accueilTaches(){
           <div style="font-size:1rem;font-weight:900;color:var(--plum);margin-top:1px">${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>
           ${getActiveSession()?`<div style="font-size:.78rem;font-weight:700;color:#b89ab6;margin-top:2px">👋 Bonjour ${escH(getActiveSession())} !</div>`:''}
         </div>
-        <div style="text-align:center">
+        <div style="text-align:center;cursor:pointer" role="button" tabindex="0" onclick="accueilOpenTaskList()" title="Voir la liste des tâches">
           <div class="task-progress-ring">
             <svg width="58" height="58" viewBox="0 0 58 58">
-              <circle cx="29" cy="29" r="24" fill="none" stroke="#f0e4f0" stroke-width="5"/>
-              <circle cx="29" cy="29" r="24" fill="none" stroke="${pct===100?'#4caf50':'#5C1E5A'}" stroke-width="5"
+              <circle cx="29" cy="29" r="24" fill="${ringFill}" stroke="#f0e4f0" stroke-width="5"/>
+              <circle cx="29" cy="29" r="24" fill="none" stroke="${ringCol}" stroke-width="5"
                 stroke-dasharray="${2*Math.PI*24}" stroke-dashoffset="${2*Math.PI*24*(1-pct/100)}"
                 stroke-linecap="round" transform="rotate(-90 29 29)" style="transition:.6s"/>
             </svg>
             <div class="task-ring-txt">
-              <div style="font-size:.95rem;font-weight:900;color:var(--plum)">${nbOk}/${nbTotal}</div>
+              <div style="font-size:.95rem;font-weight:900;color:${ringTxt}">${nbOk}/${nbTotal}</div>
             </div>
           </div>
-          <div style="font-size:.62rem;font-weight:700;color:#b89ab6;margin-top:2px">${pct===100?'✅ Tout fait !':'tâches ok'}</div>
+          <div style="font-size:.62rem;font-weight:700;color:#b89ab6;margin-top:2px">${pct===100?'✅ Tout fait !':'tâches faites'}<br><span style="text-decoration:underline">Voir la liste</span></div>
         </div>
       </div>
       <!-- Raccourcis rapides -->
       <div class="task-shortcuts">
-        <button class="task-sh-btn" onclick="goTo('enr01')">❄️<br><span>Refroid.</span></button>
-        <button class="task-sh-btn" onclick="goTo('enr_tc_distrib')">🌡️<br><span>Distrib.</span></button>
+        <button class="task-sh-btn" onclick="goTo('enr01')">❄️<br><span>Refroidissement</span></button>
+        <button class="task-sh-btn" onclick="goTo('enr_tc_distrib')">🌡️<br><span>Distribution</span></button>
         <button class="task-sh-btn" onclick="goTo('enr19')">🧊<br><span>Enceintes</span></button>
-        <button class="task-sh-btn" onclick="goTo('enr30')">🚨<br><span>Non-conf.</span></button>
+        <button class="task-sh-btn" onclick="goTo('enr30')">🚨<br><span>Non-conformité</span></button>
         <button class="task-sh-btn" onclick="goTo('enr23')">📦<br><span>Réception</span></button>
-        <button class="task-sh-btn" style="border-color:#d4a017;background:#fff8e6" onclick="openAuditModal()">🔍<br><span style="color:#92400e">Audit</span></button>
+        <button class="task-sh-btn" onclick="openAuditModal()">🔍<br><span>Audit</span></button>
       </div>
     </div>
 
@@ -6969,6 +7021,48 @@ function accueilTaches(){
     <div class="task-list">${faites.map(t=>t.html).join('')}</div>`:''}
 
     ${pct===100?`<div style="background:linear-gradient(135deg,#1b5e20,#2e7d32);color:#fff;border-radius:14px;padding:16px;text-align:center;font-size:.95rem;font-weight:800;margin-top:4px">🎉 Toutes les tâches HACCP du jour sont complètes !</div>`:''}`;
+}
+
+// Liste des tâches comptées dans le rond du Tableau de bord (fait / à faire)
+function accueilCloseTaskList(){
+  try{ const el=document.getElementById('acc-tasks-ov'); if(el) el.remove(); }catch(e){ console.warn('[accueil] fermer liste:', e); }
+}
+function accueilOpenTaskList(){
+  try{
+    accueilCloseTaskList();
+    const list = Array.isArray(window._accTasksLast) ? window._accTasksLast : [];
+    const nbOk = list.filter(t=>t.done).length;
+    const rows = list.map(t=>{
+      let lbl = '', det = '';
+      try{
+        const tmp = document.createElement('div');
+        tmp.innerHTML = t.html;
+        tmp.querySelectorAll('button').forEach(b=>b.remove());
+        const l = tmp.querySelector('.task-label'), d = tmp.querySelector('.task-detail');
+        lbl = l ? l.textContent.trim() : '';
+        det = d ? d.innerHTML : '';
+      }catch(e){ console.warn('[accueil] liste tâche:', e); }
+      return '<div style="display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #f0e4f0">'
+        +'<span style="font-size:1rem">'+(t.done?'✅':'⏳')+'</span>'
+        +'<div style="flex:1;min-width:0"><div style="font-size:.85rem;font-weight:800;color:var(--gris)">'+escH(lbl)+'</div>'
+        +(det?'<div style="font-size:.7rem;color:#7A6579;font-weight:600;margin-top:2px">'+det+'</div>':'')+'</div>'
+        +'<span style="flex-shrink:0;font-size:.68rem;font-weight:900;padding:3px 9px;border-radius:10px;background:'+(t.done?'#dcfce7':'#fff3e0')+';color:'+(t.done?'#166534':'#c2410c')+'">'+(t.done?'Fait':'À faire')+'</span>'
+        +'</div>';
+    }).join('');
+    const el = document.createElement('div');
+    el.id = 'acc-tasks-ov';
+    el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(10,22,48,.6);display:flex;align-items:center;justify-content:center;padding:14px';
+    el.onclick = function(ev){ if(ev.target===el) accueilCloseTaskList(); };
+    el.innerHTML = '<div style="background:#fff;border-radius:18px;max-width:520px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)">'
+      +'<div style="padding:14px 16px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #f0e4f0">'
+      +'<div style="flex:1"><div style="font-size:.72rem;font-weight:800;color:#b89ab6;text-transform:uppercase;letter-spacing:.5px">Tâches du jour</div>'
+      +'<div style="font-size:1rem;font-weight:900;color:var(--plum)">'+nbOk+'/'+list.length+' faite'+(nbOk>1?'s':'')+'</div></div>'
+      +'<button onclick="accueilCloseTaskList()" style="background:var(--fond);border:1.5px solid var(--brd);border-radius:10px;padding:8px 12px;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit">✕ Fermer</button>'
+      +'</div>'
+      +'<div style="padding:4px 16px 12px">'+(rows||'<div style="padding:14px 0;font-size:.8rem;color:#7A6579">Aucune tâche aujourd\'hui.</div>')+'</div>'
+      +'</div>';
+    document.body.appendChild(el);
+  }catch(e){ console.warn('[accueil] liste des tâches:', e); try{ toast('⚠️ Impossible d\'afficher la liste','warning'); }catch(_e){} }
 }
 
 
@@ -7332,9 +7426,15 @@ function calcHACCPScore(){
   let recepPts=100, recepDetail='', recepAction=null, recepOk=true;
   if(livraisonsAttendues.length>0){
     // Il y a des livraisons prévues aujourd'hui
-    const faites=livraisonsAttendues.filter(f=>fourcAlreadyDone(f.nom)).length;
+    // « Pas livré aujourd'hui » (trace datée + cuisinier) = fournisseur traité, comme sur l'Accueil
+    let nonLivrees=0;
+    const faites=livraisonsAttendues.filter(f=>{
+      if(fourcAlreadyDone(f.nom)) return true;
+      try{ if(fourcNonLivre(f)){ nonLivrees++; return true; } }catch(e){ console.warn('[score] non livré:', e); }
+      return false;
+    }).length;
     recepPts=Math.round((faites/livraisonsAttendues.length)*100);
-    recepDetail=`${faites}/${livraisonsAttendues.length} livraison${livraisonsAttendues.length>1?'s':''} contrôlée${faites>1?'s':''}`;
+    recepDetail=`${faites-nonLivrees}/${livraisonsAttendues.length} livraison${livraisonsAttendues.length>1?'s':''} contrôlée${(faites-nonLivrees)>1?'s':''}`+(nonLivrees>0?` · ${nonLivrees} non livrée${nonLivrees>1?'s':''}`:'');
     recepAction=faites<livraisonsAttendues.length?{label:'Saisir',id:'enr23'}:null;
     recepOk=faites===livraisonsAttendues.length;
   } else if(fourc.length>0){
@@ -7647,7 +7747,7 @@ function renderMissionBanner(){
     if(!getActiveSession()){
       return '<div role="button" tabindex="0" onclick="try{openSessModal()}catch(e){}" style="background:#fff7ed;border:1.5px solid #fdba74;color:#9a3412;cursor:pointer;'+base+'">'
         +'<span style="font-size:1.1rem">👤</span>'
-        +'<span>Choisis ton profil (rond à côté du nuage)</span>'
+        +'<span>Choisis ton profil (bouton 👤 en haut à droite)</span>'
         +'</div>';
     }
     // Bandeaux « Premier geste / Ensuite / Tout est à jour » retirés : doublon des widgets
@@ -10169,6 +10269,82 @@ function fourcAlreadyDone(nom){
   );
 }
 
+// ── Livraison prévue mais non reçue : trace HACCP (date, heure, cuisinier) ──
+// Stockée comme une saisie (S.fourc_nonlivre.lignes) et synchronisée via SupaEngine.enqueue
+// (pms_records, enr_type 'fourc_nonlivre'), rechargée par le cas général de _loadFromSupabase.
+var FOURC_NL_SEC = 'fourc_nonlivre';
+function fourcNonLivre(f, annules){
+  // annules=true → dernière trace « pas livré » ANNULÉE aujourd'hui (pour affichage) ; sinon trace active
+  try{
+    if(!f) return null;
+    const t = today();
+    const nom = String(f.nom||'').toLowerCase();
+    return ((S[FOURC_NL_SEC]||{}).lignes||[]).find(r=>_notDeleted(r) && r.date===t
+      && ((r.annule==='OUI') === !!annules)
+      && ((f.id && r.fournisseur_id===f.id) || (nom && String(r.fournisseur||'').toLowerCase()===nom))) || null;
+  }catch(e){ console.warn('[fourcNonLivre]', e); return null; }
+}
+// Annulation admin d'un « pas livré » saisi par erreur : la ligne est conservée (trace),
+// marquée annule='OUI' + heure + nom, puis re-synchronisée (même _ts → même client_id pms_records).
+function fourcAnnulerNonLivre(id){
+  try{
+    const f = getFournisseurs().find(x=>x && x.id===id);
+    const nl = f ? fourcNonLivre(f) : null;
+    if(!nl){ toast('⚠️ Aucune trace « pas livré » à annuler','warning'); return; }
+    showConfirm('Annuler « pas livré »', f.nom+' repassera « à contrôler ». La trace est conservée, marquée annulée. Code admin requis.', 'Annuler la trace', ()=>{
+      try{
+        nettAdminGuard(()=>{
+          try{
+            const now = new Date();
+            const who = getActiveSession();
+            nl.annule = 'OUI';
+            nl.annule_ts = now.toISOString();
+            nl.annule_heure = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+            nl.annule_par = 'Admin'+(who?' · '+who:'');
+            save();
+            try { SupaEngine.enqueue(FOURC_NL_SEC, nl); } catch(e){ console.warn('[fourcAnnulerNonLivre] sync:', e); }
+            toast('↩️ '+f.nom+' — « pas livré » annulé','success');
+            renderMain();
+          }catch(e){ console.warn('[fourcAnnulerNonLivre]', e); try{ toast('⚠️ Erreur annulation','warning'); }catch(_e){} }
+        });
+      }catch(e){ console.warn('[fourcAnnulerNonLivre] admin:', e); }
+    });
+  }catch(e){ console.warn('[fourcAnnulerNonLivre]', e); }
+}
+function fourcMarkNonLivre(id){
+  try{
+    const f = getFournisseurs().find(x=>x && x.id===id);
+    if(!f){ toast('⚠️ Fournisseur introuvable','warning'); return; }
+    const who = getActiveSession();
+    if(!who){
+      toast('👤 Choisis ton profil (bouton 👤 en haut à droite)','warning');
+      try{ openSessModal(); }catch(e){ console.warn('[fourcMarkNonLivre] profil:', e); }
+      return;
+    }
+    showConfirm('Livraison non reçue', f.nom+' : pas livré aujourd\'hui ? Une trace datée sera enregistrée au nom de '+who+'.', 'Confirmer', ()=>{
+      try{
+        if(fourcNonLivre(f)) { renderMain(); return; }
+        const now = new Date();
+        const row = {
+          _ts: now.toISOString(), _sec: FOURC_NL_SEC,
+          date: today(),
+          heure: String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),
+          fournisseur_id: f.id||'', fournisseur: f.nom||'',
+          motif: 'Pas livré aujourd\'hui',
+          cuisinier: who,
+        };
+        S[FOURC_NL_SEC] = S[FOURC_NL_SEC] || {};
+        S[FOURC_NL_SEC].lignes = S[FOURC_NL_SEC].lignes || [];
+        S[FOURC_NL_SEC].lignes.unshift(stampEntry(row));
+        save();
+        try { SupaEngine.enqueue(FOURC_NL_SEC, row); } catch(e){ console.warn('[fourcMarkNonLivre] sync:', e); }
+        toast('✅ '+f.nom+' — pas livré (trace enregistrée)','success');
+        renderMain();
+      }catch(e){ console.warn('[fourcMarkNonLivre]', e); try{ toast('⚠️ Erreur enregistrement','warning'); }catch(_e){} }
+    });
+  }catch(e){ console.warn('[fourcMarkNonLivre]', e); }
+}
+
 function fourcAddFournisseur(){
   nettAdminGuard(()=>{
     showPrompt('Ajouter un fournisseur','','Ex: Terre Azur, Metro, Brake...', nom=>{
@@ -11774,7 +11950,7 @@ async function _loadFromSupabase() {
   function _purgeLocalEnrForTenantSwitch(opts){
     opts = opts || {};
     const PURGE_SAISIES = [
-      'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending',
+      'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending','fourc_nonlivre',
     ];
     try {
       PURGE_SAISIES.forEach(key => {
@@ -12337,6 +12513,15 @@ async function _loadFromSupabase() {
           if(supa._jete_date) l._jete_date = supa._jete_date;
           if(supa._jete_by) l._jete_by = supa._jete_by;
         }
+        // annule : propager l'annulation admin d'un « pas livré » (fourc_nonlivre)
+        try{
+          if(supa.annule==='OUI' && l.annule!=='OUI'){
+            l.annule = 'OUI';
+            if(supa.annule_ts) l.annule_ts = supa.annule_ts;
+            if(supa.annule_heure) l.annule_heure = supa.annule_heure;
+            if(supa.annule_par) l.annule_par = supa.annule_par;
+          }
+        }catch(e){ console.warn('[cloud] merge annule:', e); }
       });
     });
 
@@ -19365,7 +19550,7 @@ function _wgRenderOne(w){
   }
 
   if(id==='nett'){
-    var retards=nettRef().filter(function(it){return ['retard','nc'].includes(nettStatus(it));}).length;
+    var retards=nettNbRetards(); // même source que la tâche « Plan de nettoyage » et la page Nettoyage
     var valsJour=(S.nett_val||[]).filter(function(r){return r.date===t&&r.conforme==='OUI';}).length;
     var cls2=retards>0?'wc-danger':valsJour>0?'wc-ok':'wc-idle';
     var val2=retards>0?retards+' en retard':valsJour>0?valsJour+' validé'+(valsJour>1?'s':''):'—';
