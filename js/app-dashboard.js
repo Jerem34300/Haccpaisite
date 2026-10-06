@@ -5513,6 +5513,7 @@ const FIELD_LABELS = {
   observations:'📝 Observations', commentaire:'📝 Commentaire',
   theme:'📌 Thème', association:'🤝 Association',
   plat:'🍽️ Plat', plat_midi:'🍽️ Plat midi',
+  fournisseur_id:'🏭 Réf. fournisseur', annule:'↩️ Annulé', annule_par:'↩️ Annulé par', annule_heure:'↩️ Heure annulation', annule_ts:'↩️ Annulé le',
 };
 
 const SKIP_FIELDS = ['_ts','_sec','_auto','_enr01_ref','_enr02_ref','_enr01_idx',
@@ -5728,6 +5729,14 @@ function openDetail(id) {
     if(d.observation) algHtml+=`<div style="background:#f5f3ff;border-radius:8px;padding:8px 12px;font-size:.78rem;color:#5C1E5A"><strong>💬 Observation :</strong> ${escH(d.observation)}</div>`;
     body+=`<div class="detail-section"><div class="detail-section-title">⚠️ Déclaration allergènes INCO 1169/2011</div>${algHtml}</div>`;
   }
+
+  // ── Livraison non reçue (cuisine « Pas livré aujourd'hui ») : statut actif / annulé ──
+  try{
+    if(r.enr_type==='fourc_nonlivre'){
+      const ann=d.annule==='OUI';
+      body+=`<div class="detail-section"><div class="detail-section-title">🚚 Livraison non reçue</div><div style="background:${ann?'#f1f5f9':'#fff7ed'};border:1.5px solid ${ann?'#cbd5e1':'#fdba74'};border-radius:10px;padding:10px 12px;font-size:.82rem;font-weight:800;color:${ann?'#475569':'#9a3412'}">${escH(d.fournisseur||'Fournisseur')} — pas livré (${escH(d.cuisinier||'?')}${d.heure?', '+escH(d.heure):''})${ann?` · <span style="text-decoration:none">annulé (${escH(d.annule_par||'Admin')}${d.annule_heure?', '+escH(d.annule_heure):''})</span>`:''}</div></div>`;
+    }
+  }catch(e){ console.warn('[detail] fourc_nonlivre:', e); }
 
   // ── ENR24 Maintenance : bloc structuré ──────────────────────────────────
   if(r.enr_type==='enr24'){

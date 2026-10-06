@@ -6872,8 +6872,12 @@ function accueilTaches(){
         const _recDone = _items.every(x=>x.recu||x.nl);
         const _lignesF = _items.map(x=>{
           if(x.recu) return '<div style="font-size:.7rem;font-weight:800;color:#166534;padding:1px 0">✅ '+escH(x.f.nom)+' — contrôlé</div>';
-          if(x.nl) return '<div style="font-size:.7rem;font-weight:700;color:#64748b;padding:1px 0">➖ '+escH(x.f.nom)+' — pas livré ('+escH(x.nl.cuisinier||'?')+(x.nl.heure?', '+escH(x.nl.heure):'')+')</div>';
+          if(x.nl) return '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:.7rem;font-weight:700;color:#64748b;padding:1px 0">➖ '+escH(x.f.nom)+' — pas livré ('+escH(x.nl.cuisinier||'?')+(x.nl.heure?', '+escH(x.nl.heure):'')+')'
+            +'<button data-fid="'+escAttr(x.f.id)+'" onclick="event.stopPropagation();fourcAnnulerNonLivre(this.getAttribute(\'data-fid\'))" style="background:none;border:none;color:#7A6579;text-decoration:underline;font-size:.66rem;font-weight:700;cursor:pointer;padding:2px 4px;font-family:inherit;touch-action:manipulation">Annuler (admin)</button></div>';
+          let _nlAnn = null;
+          try{ _nlAnn = fourcNonLivre(x.f, true); }catch(e){ _nlAnn = null; }
           return '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:.7rem;font-weight:800;color:#c2410c;padding:1px 0">⏳ '+escH(x.f.nom)+' — à contrôler'
+            +(_nlAnn?'<span style="font-size:.64rem;font-weight:700;color:#94a3b8">(pas livré annulé — '+escH(_nlAnn.annule_par||'Admin')+(_nlAnn.annule_heure?', '+escH(_nlAnn.annule_heure):'')+')</span>':'')
             +'<button data-fid="'+escAttr(x.f.id)+'" onclick="event.stopPropagation();fourcMarkNonLivre(this.getAttribute(\'data-fid\'))" style="background:none;border:none;color:#7A6579;text-decoration:underline;font-size:.66rem;font-weight:700;cursor:pointer;padding:2px 4px;font-family:inherit;touch-action:manipulation">Pas livré aujourd\'hui</button></div>';
         }).join('');
         tasks.push({
@@ -10269,14 +10273,43 @@ function fourcAlreadyDone(nom){
 // Stockée comme une saisie (S.fourc_nonlivre.lignes) et synchronisée via SupaEngine.enqueue
 // (pms_records, enr_type 'fourc_nonlivre'), rechargée par le cas général de _loadFromSupabase.
 var FOURC_NL_SEC = 'fourc_nonlivre';
-function fourcNonLivre(f){
+function fourcNonLivre(f, annules){
+  // annules=true → dernière trace « pas livré » ANNULÉE aujourd'hui (pour affichage) ; sinon trace active
   try{
     if(!f) return null;
     const t = today();
     const nom = String(f.nom||'').toLowerCase();
     return ((S[FOURC_NL_SEC]||{}).lignes||[]).find(r=>_notDeleted(r) && r.date===t
+      && ((r.annule==='OUI') === !!annules)
       && ((f.id && r.fournisseur_id===f.id) || (nom && String(r.fournisseur||'').toLowerCase()===nom))) || null;
   }catch(e){ console.warn('[fourcNonLivre]', e); return null; }
+}
+// Annulation admin d'un « pas livré » saisi par erreur : la ligne est conservée (trace),
+// marquée annule='OUI' + heure + nom, puis re-synchronisée (même _ts → même client_id pms_records).
+function fourcAnnulerNonLivre(id){
+  try{
+    const f = getFournisseurs().find(x=>x && x.id===id);
+    const nl = f ? fourcNonLivre(f) : null;
+    if(!nl){ toast('⚠️ Aucune trace « pas livré » à annuler','warning'); return; }
+    showConfirm('Annuler « pas livré »', f.nom+' repassera « à contrôler ». La trace est conservée, marquée annulée. Code admin requis.', 'Annuler la trace', ()=>{
+      try{
+        nettAdminGuard(()=>{
+          try{
+            const now = new Date();
+            const who = getActiveSession();
+            nl.annule = 'OUI';
+            nl.annule_ts = now.toISOString();
+            nl.annule_heure = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+            nl.annule_par = 'Admin'+(who?' · '+who:'');
+            save();
+            try { SupaEngine.enqueue(FOURC_NL_SEC, nl); } catch(e){ console.warn('[fourcAnnulerNonLivre] sync:', e); }
+            toast('↩️ '+f.nom+' — « pas livré » annulé','success');
+            renderMain();
+          }catch(e){ console.warn('[fourcAnnulerNonLivre]', e); try{ toast('⚠️ Erreur annulation','warning'); }catch(_e){} }
+        });
+      }catch(e){ console.warn('[fourcAnnulerNonLivre] admin:', e); }
+    });
+  }catch(e){ console.warn('[fourcAnnulerNonLivre]', e); }
 }
 function fourcMarkNonLivre(id){
   try{
@@ -12480,6 +12513,15 @@ async function _loadFromSupabase() {
           if(supa._jete_date) l._jete_date = supa._jete_date;
           if(supa._jete_by) l._jete_by = supa._jete_by;
         }
+        // annule : propager l'annulation admin d'un « pas livré » (fourc_nonlivre)
+        try{
+          if(supa.annule==='OUI' && l.annule!=='OUI'){
+            l.annule = 'OUI';
+            if(supa.annule_ts) l.annule_ts = supa.annule_ts;
+            if(supa.annule_heure) l.annule_heure = supa.annule_heure;
+            if(supa.annule_par) l.annule_par = supa.annule_par;
+          }
+        }catch(e){ console.warn('[cloud] merge annule:', e); }
       });
     });
 
