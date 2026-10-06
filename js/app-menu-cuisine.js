@@ -647,12 +647,37 @@ function _menuSetLotPlat(uuid, ref, on){
     try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr31', l); } catch(e){}
   } catch(e){ console.warn('[menu] set lot plat', e); }
 }
+// Lot utilisable pour un lien : produit renseigné, DLC/DDM non dépassée, saisi il y a ≤ 30 jours (v487)
+const MP_LOT_RECENT_JOURS = 30;
+function _mpIsoDate(v){
+  try {
+    const t = String(v||'').trim();
+    let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if(m) return m[1]+'-'+m[2]+'-'+m[3];
+    m = t.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+    if(m){ const y = m[3].length === 2 ? '20'+m[3] : m[3]; return y+'-'+('0'+m[2]).slice(-2)+'-'+('0'+m[1]).slice(-2); }
+  } catch(e){}
+  return '';
+}
+function _mpLotUtilisable(l){
+  try {
+    if(!l || l._deleted) return false;
+    if(!String(l.produit||'').trim()) return false;
+    const t = today();
+    const dlc = _mpIsoDate(l.dlc);
+    if(dlc && dlc < t) return false;
+    const d = _mpIsoDate(l.date) || String(l._ts||'').slice(0,10);
+    if(d && d < addDays(t, -MP_LOT_RECENT_JOURS)) return false;
+    return true;
+  } catch(e){ return false; }
+}
 // Historique Traçabilité MP : un bouton par plat du jour pour lier / délier le lot après coup
 function _mpSafeId(v){ return String(v == null ? '' : v).replace(/[^\w-]/g, ''); }
 window._menuMpPlatsChips = function(l){
   try {
     if(!l || l._deleted) return '';
-    const plats = l._uuid ? todayMenuPlats() : [];
+    // Lot périmé / ancien / vide : plus de boutons, seulement les plats déjà liés (lecture seule)
+    const plats = (l._uuid && _mpLotUtilisable(l)) ? todayMenuPlats() : [];
     const uuid = _mpSafeId(l._uuid);
     // Plats liés hors menu du jour : affichés par leur nom (pas le code plat_id)
     const autres = _menuPlatRefsFromLigne(l)
@@ -719,7 +744,7 @@ window._menuOpenTraces = function(catId, idx, svcId){
     const prev = document.getElementById('mn-trace-ov');
     if(prev) prev.remove();
     const ref = { plat_id:plat.plat_id, nom:plat.nom, menu_id:menu.menu_id, profil_haccp:plat.profil_haccp||'' };
-    const lignes = ((S.enr31 && S.enr31.lignes) || []).filter(l => l && !l._deleted).slice(0, 40);
+    const lignes = ((S.enr31 && S.enr31.lignes) || []).filter(l => _mpLotUtilisable(l) || _ligneHasPlat(l, plat.plat_id)).slice(0, 40);
     const lots = lignes.map(l => {
       const on = _ligneHasPlat(l, plat.plat_id);
       const lot = l.lot ? ' · lot '+escH(l.lot) : '';
@@ -775,7 +800,7 @@ window._menuOpenTraces = function(catId, idx, svcId){
 };
 
 // Pastilles colorées du plat (v486) : Préparé minute / Sortie directe / Remise T°C (profil HACCP)
-// + fiche de traçabilité liée. Plus de « À tracer » ni de chips ingrédients devinés depuis le nom.
+// Le lien lot ↔ plat se fait depuis la fiche Traçabilité MP (ENR31), pas depuis le menu (v487).
 const PASTILLES_PLAT = ['PREP_MINUTE','SORTIE_DIRECTE','REMISE_TC'];
 function renderPlatPastilles(catId, plat, idx, sid){
   try {
@@ -784,10 +809,7 @@ function renderPlatPastilles(catId, plat, idx, sid){
       const on = plat.profil_haccp === k;
       return `<button type="button" class="mn-pas${on?' on':''}" style="color:${pr.color};${on?'background:'+pr.color+';border-color:'+pr.color:''}" onclick="event.preventDefault();event.stopPropagation();window._menuSetPastille('${catId}',${idx},'${k}','${sid}')" title="${on?'Retirer':'Marquer'} : ${pr.label}">${pr.ico} ${pr.label}</button>`;
     }).join('');
-    let linked = 0;
-    try { linked = countEnrLinkedToPlat(plat.plat_id); } catch(e){ linked = 0; }
-    const fiche = `<button type="button" class="mn-pas fiche${linked>0?' on':''}" onclick="event.preventDefault();event.stopPropagation();window._menuOpenTraces('${catId}',${idx},'${sid}')" title="Fiches de traçabilité liées à ce plat">📝 ${linked>0 ? linked+' fiche'+(linked>1?'s':'')+' liée'+(linked>1?'s':'') : 'Lier une fiche'}</button>`;
-    return btns + fiche;
+    return btns;
   } catch(e){ console.warn('[menu] pastilles', e); return ''; }
 }
 
@@ -1896,7 +1918,7 @@ const LINK_ENRS = ['enr01','enr02','enr03','enr07','enr08','enr09','enr10',
                    'enr11','enr12','enr13','enr14','enr15','enr16','enr23','enr31','enr33','enr34','enr36','enr_allergenes'];
 
 let _menuLinkPending = {};
-let _bannerOpen = {};
+let _bannerOpen = { enr31: true }; // ENR31 : plats du jour visibles d'emblée pour lier le lot (v487)
 
 const FILL_FIELD_PRIORITY = {
   enr01: ['produit'], enr02: ['produit'], enr03: ['produit'],
@@ -1938,6 +1960,7 @@ function fillNamedField(el, value){
 
 function fillFormWithPlat(enrId, ref){
   if(!ref || !ref.nom) return;
+  if(enrId === 'enr31') return; // le produit d'un lot MP n'est pas le nom du plat (lien via _plat_liens)
   try {
     if(enrId === 'enr36') fillNamedField(document.getElementById('e36-produit-inp'), ref.nom);
     if(enrId === 'enr_allergenes'){
