@@ -13725,6 +13725,13 @@ function etiqRegimeHtml(rec){
     const v = String((rec && rec._variant) || '');
     const nom = String((rec && rec.produit) || '');
     const bits = [];
+    const prof = String((rec && rec._plat_profil) || '');
+    const isMixe = /^mix/i.test(v) || /\(mix[ée]\)/i.test(nom);
+    // v486 : profil du plat (menu) imprimé sur l'étiquette — BF Cru/Cuit pour le mixé
+    if(isMixe) bits.push(prof === 'BF_CRU' ? 'MIXÉ · BF CRU' : (prof === 'BF_CUIT' ? 'MIXÉ · BF CUIT' : 'MIXÉ'));
+    else if(prof === 'PREP_MINUTE') bits.push('PRÉPARÉ MINUTE');
+    else if(prof === 'SORTIE_DIRECTE') bits.push('SORTIE DIRECTE');
+    else if(prof === 'REMISE_TC') bits.push('REMISE T°C');
     if(v === 'sans_sel' || v === 'SANS SEL' || /sans sel/i.test(nom)) bits.push('SANS SEL');
     if(v === 'hp' || v === 'HP' || /\(HP\)/.test(nom)) bits.push('HP');
     if(!bits.length) return '';

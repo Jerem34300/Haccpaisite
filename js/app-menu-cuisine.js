@@ -329,6 +329,10 @@ function renderMenuJour(){
     button.mn-plat-st{border:none;cursor:pointer;font-family:inherit}
     .mn-chip{font-size:.62rem;font-weight:800;background:#fff;color:#5C1E5A;border:1px solid #d8b4d8;border-radius:999px;padding:1px 7px}
     .mn-plat-comp{font-size:.66rem;color:#7A6579;font-style:italic}
+    .mn-pas{font-size:.66rem;font-weight:800;padding:3px 8px;border-radius:999px;cursor:pointer;font-family:inherit;background:#fff;border:1.5px solid currentColor;opacity:.55;touch-action:manipulation}
+    .mn-pas.on{color:#fff !important;opacity:1}
+    .mn-pas.fiche{color:#7A6579;border-style:dashed}
+    .mn-pas.fiche.on{background:#16a34a;border:1.5px solid #16a34a}
     .mn-cov{background:linear-gradient(135deg,#1b5e20,#2e7d32);color:#fff;border-radius:14px;padding:11px 14px;margin-bottom:10px}
     .mn-cov.warn{background:linear-gradient(135deg,#92400e,#d97706)}
     .mn-cov.bad{background:linear-gradient(135deg,#991b1b,#dc2626)}
@@ -770,34 +774,38 @@ window._menuOpenTraces = function(catId, idx, svcId){
   } catch(e){ console.warn('[menu] open traces', e); }
 };
 
+// Pastilles colorées du plat (v486) : Préparé minute / Sortie directe / Remise T°C (profil HACCP)
+// + fiche de traçabilité liée. Plus de « À tracer » ni de chips ingrédients devinés depuis le nom.
+const PASTILLES_PLAT = ['PREP_MINUTE','SORTIE_DIRECTE','REMISE_TC'];
+function renderPlatPastilles(catId, plat, idx, sid){
+  try {
+    const btns = PASTILLES_PLAT.map(k => {
+      const pr = PROFILS[k];
+      const on = plat.profil_haccp === k;
+      return `<button type="button" class="mn-pas${on?' on':''}" style="color:${pr.color};${on?'background:'+pr.color+';border-color:'+pr.color:''}" onclick="event.preventDefault();event.stopPropagation();window._menuSetPastille('${catId}',${idx},'${k}','${sid}')" title="${on?'Retirer':'Marquer'} : ${pr.label}">${pr.ico} ${pr.label}</button>`;
+    }).join('');
+    let linked = 0;
+    try { linked = countEnrLinkedToPlat(plat.plat_id); } catch(e){ linked = 0; }
+    const fiche = `<button type="button" class="mn-pas fiche${linked>0?' on':''}" onclick="event.preventDefault();event.stopPropagation();window._menuOpenTraces('${catId}',${idx},'${sid}')" title="Fiches de traçabilité liées à ce plat">📝 ${linked>0 ? linked+' fiche'+(linked>1?'s':'')+' liée'+(linked>1?'s':'') : 'Lier une fiche'}</button>`;
+    return btns + fiche;
+  } catch(e){ console.warn('[menu] pastilles', e); return ''; }
+}
+
 function renderPlatRow(catId, plat, idx, svcId){
   const sid = svcId || _menuState.service;
-  const prof = PROFILS[plat.profil_haccp] || PROFILS.BF_CUIT;
-  const stat = computePlatStatus(plat);
   const variants = plat.variants || {};
-  const mxp = PROFILS[variants.mixe_profil || mixeProfil(plat)];
+  const mxp = PROFILS[variants.mixe_profil || mixeProfil(plat)] || PROFILS.BF_CUIT;
   const mxBadge = variants.mixe
     ? ` <button onclick="event.preventDefault();event.stopPropagation();window._menuToggleMixeProfil('${catId}',${idx},'${sid}')" style="background:${mxp.color};color:#fff;font-size:.58rem;padding:1px 7px;border-radius:5px;font-weight:800;vertical-align:middle;border:none;cursor:pointer;font-family:inherit;touch-action:manipulation">${mxp.label} ⇄</button>`
     : '';
-  const showProf = plat.profil_haccp !== 'BF_CUIT' && plat.profil_haccp !== 'BF_CRU';
-  const profBtn = showProf
-    ? `<button class="mn-plat-prof" style="background:${prof.color}" onclick="window._menuChangeProfil('${catId}',${idx},'${sid}')" title="Changer le profil HACCP">${prof.ico} ${prof.label}</button>`
-    : '';
-  let chips = '';
-  try {
-    const names = _menuChipsForPlat(plat);
-    if(names.length) chips = names.map(n => `<span class="mn-chip">${escH(n)}</span>`).join('');
-  } catch(e){}
   return `
   <div class="mn-plat">
     <div class="mn-plat-row1">
       <div class="mn-plat-name">${escH(plat.nom)}</div>
-      ${profBtn}
       <button class="mn-plat-del" onclick="window._menuRemove('${catId}',${idx},'${sid}')">✕</button>
     </div>
     <div class="mn-plat-row2">
-      <button type="button" class="mn-plat-st ${stat.cls}" onclick="window._menuOpenTraces('${catId}',${idx},'${sid}')" title="Lier les lots et les ingrédients">${stat.label}</button>
-      ${chips}
+      ${renderPlatPastilles(catId, plat, idx, sid)}
     </div>
     <div class="mn-plat-row3">
       <label class="mn-plat-chk">
@@ -1028,7 +1036,7 @@ function _addPlat(catId, nom){
     plat_id:    newUUID().slice(0,8),
     nom:        nom,
     profil_haccp: profil,
-    composants: detectComposants(nom),
+    composants: [],
     allergenes: [],
     statut_auto:null,
     variants:   {},
@@ -1089,7 +1097,77 @@ window._menuChangeProfil = function(catId, idx, svcId){
     if(typeof toast === 'function') toast('Profil → ' + (PROFILS[plat.profil_haccp]?.label||'?'), 'info');
   }
   setMenu(_menuState.date, _menuState.service, menu);
+  _menuSyncAfterEdit(menu);
   if(typeof renderMain === 'function') renderMain();
+};
+// Menu déjà validé (« Enregistrer ») : renvoyer la version à jour au siège (enr_menu) et
+// recaler le profil des plats témoins du jour (ENR33 + lot d'étiquettes en attente).
+function _menuSyncAfterEdit(menu){
+  try {
+    if(!menu || !menu.categories) return;
+    const d = _menuState.date, svc = _menuState.service;
+    const plats = {};
+    allDisplayCats().forEach(c => (menu.categories[c.id]||[]).forEach(p => { if(p && p.plat_id) plats[p.plat_id] = p; }));
+    const profFor = function(p, variant){
+      const v = String(variant||'').toLowerCase();
+      if(v === 'mixé' || v === 'mixe') return (p.variants && (p.variants.mixe_profil || mixeProfil(p))) || mixeProfil(p);
+      return p.profil_haccp;
+    };
+    try {
+      ((S.enr33 && S.enr33.lignes) || []).forEach(l => {
+        try {
+          if(!l || l._menu_id !== menu.menu_id || !plats[l._plat_id]) return;
+          const np = profFor(plats[l._plat_id], l._variant);
+          if(np && l._plat_profil !== np){
+            l._plat_profil = np;
+            if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue('enr33', l);
+          }
+        } catch(e){}
+      });
+    } catch(e){ console.warn('[menu] sync enr33', e); }
+    try {
+      if(typeof _e33batch !== 'undefined' && Array.isArray(_e33batch)){
+        _e33batch.forEach(b => {
+          try { if(b && b._from_menu && plats[b._plat_id]) b._plat_profil = profFor(plats[b._plat_id], b._variant) || b._plat_profil; } catch(e){}
+        });
+      }
+    } catch(e){}
+    const hist = (S.menu_history || []).find(h => h && h.menu_date === d && h.service === svc);
+    if(!hist) return; // brouillon jamais validé : il partira au siège à « Enregistrer »
+    const rec = stampEntry({ menu_date:d, service:svc, categories:menu.categories, menu_id:menu.menu_id, date:d, _ts:new Date().toISOString() });
+    menu._ts = rec._ts;
+    S.menu_history = S.menu_history.filter(h => !(h && h.menu_date === d && h.service === svc));
+    S.menu_history.push(rec);
+    save();
+    if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue){
+      SupaEngine.enqueue('enr_menu', rec);
+      if(SupaEngine.flush) setTimeout(()=>{ try { SupaEngine.flush(); } catch(e){} }, 200);
+    }
+  } catch(e){ console.warn('[menu] sync after edit', e); }
+}
+window._menuSyncAfterEdit = _menuSyncAfterEdit;
+// Pastille Préparé minute / Sortie directe / Remise T°C : 2e clic = retour au profil de base
+window._menuSetPastille = function(catId, idx, key, svcId){
+  try {
+    _menuEnsureService(svcId);
+    const menu = getMenu(_menuState.date, _menuState.service);
+    const plat = menu && menu.categories && menu.categories[catId] && menu.categories[catId][idx];
+    if(!plat || !PROFILS[key]) return;
+    if(plat.profil_haccp === key){
+      const det = detectProfil(plat.nom);
+      plat.profil_haccp = plat.profil_base || ((det === 'BF_CUIT' || det === 'BF_CRU') ? det : 'BF_CUIT');
+      plat.statut_auto = null;
+    } else {
+      if(plat.profil_haccp === 'BF_CUIT' || plat.profil_haccp === 'BF_CRU') plat.profil_base = plat.profil_haccp;
+      plat.profil_haccp = key;
+      plat.statut_auto = (key === 'SORTIE_DIRECTE' || key === 'PREP_MINUTE') ? 'preparé_minute' : null;
+    }
+    if(plat.variants && plat.variants.mixe) plat.variants.mixe_profil = mixeProfil(plat);
+    setMenu(_menuState.date, _menuState.service, menu);
+    _menuSyncAfterEdit(menu);
+    if(typeof toast === 'function') toast((PROFILS[plat.profil_haccp]?.ico||'') + ' ' + plat.nom + ' → ' + (PROFILS[plat.profil_haccp]?.label||'?'), 'info');
+    if(typeof renderMain === 'function') renderMain();
+  } catch(e){ console.warn('[menu] set pastille', e); }
 };
 window._menuToggleVariant = function(catId, idx, variant, checked, svcId){
   _menuEnsureService(svcId);
@@ -1107,6 +1185,7 @@ window._menuToggleVariant = function(catId, idx, variant, checked, svcId){
     }
   }
   setMenu(_menuState.date, _menuState.service, menu);
+  _menuSyncAfterEdit(menu);
   if(typeof renderMain === 'function') renderMain();
 };
 window._menuToggleMixeProfil = function(catId, idx, svcId){
@@ -1118,6 +1197,7 @@ window._menuToggleMixeProfil = function(catId, idx, svcId){
   const cur = plat.variants.mixe_profil || mixeProfil(plat);
   plat.variants.mixe_profil = cur === 'BF_CUIT' ? 'BF_CRU' : 'BF_CUIT';
   setMenu(_menuState.date, _menuState.service, menu);
+  _menuSyncAfterEdit(menu);
   if(typeof renderMain === 'function') renderMain();
   if(typeof toast === 'function') toast('Mixé → ' + (PROFILS[plat.variants.mixe_profil]?.label||'?'), 'info');
 };
@@ -1409,10 +1489,13 @@ window._menuPrintEtiquettes = function(){
   const etiqs = [];
   allDisplayCats().forEach(c => {
     (menu.categories[c.id]||[]).forEach(plat => {
-      const group = [{ nom: plat.nom, variant: '' }];
-      if(plat.variants?.mixe)     group.push({ nom: plat.nom, variant: 'MIXÉ' });
-      if(plat.variants?.sans_sel) group.push({ nom: plat.nom, variant: 'SANS SEL' });
-      if(plat.variants?.hp)       group.push({ nom: plat.nom, variant: 'HP' });
+      const tag = ({ REMISE_TC:'REMISE T°C', SORTIE_DIRECTE:'SORTIE DIRECTE', PREP_MINUTE:'PRÉPARÉ MINUTE' })[plat.profil_haccp] || '';
+      const withTag = function(v){ return [v, tag].filter(Boolean).join(' · '); };
+      const mxLab = plat.variants?.mixe ? ((plat.variants.mixe_profil || mixeProfil(plat)) === 'BF_CRU' ? 'MIXÉ · BF CRU' : 'MIXÉ · BF CUIT') : '';
+      const group = [{ nom: plat.nom, variant: tag }];
+      if(plat.variants?.mixe)     group.push({ nom: plat.nom, variant: mxLab });
+      if(plat.variants?.sans_sel) group.push({ nom: plat.nom, variant: withTag('SANS SEL') });
+      if(plat.variants?.hp)       group.push({ nom: plat.nom, variant: withTag('HP') });
       // Pad à un multiple de 2 pour que le plat suivant commence toujours à gauche
       if(group.length % 2 !== 0)  group.push(null);
       etiqs.push(...group);
@@ -2736,7 +2819,7 @@ function _menuPhotoMakePlat(nom){
     plat_id: newUUID().slice(0,8),
     nom: n,
     profil_haccp: profil,
-    composants: detectComposants(n),
+    composants: [],
     allergenes: [],
     statut_auto: null,
     variants: {},

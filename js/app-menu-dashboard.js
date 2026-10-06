@@ -470,7 +470,7 @@ function _dashPlatFlags(p){
     const bits = [];
     if(v.sans_sel) bits.push('🚫 Sans sel');
     if(v.hp) bits.push('💪 HP');
-    if(v.mixe) bits.push('🥄 Mixé');
+    if(v.mixe) bits.push('🥄 Mixé' + (v.mixe_profil === 'BF_CRU' ? ' (BF Cru)' : (v.mixe_profil === 'BF_CUIT' ? ' (BF Cuit)' : '')));
     return bits.join(' · ');
   } catch(e){ return ''; }
 }
