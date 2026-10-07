@@ -2259,7 +2259,8 @@ function platDejaSaisi(enrId, plat){
     const lignes = store.lignes || store.saisies || [];
     const nom = String(plat && plat.nom || '').trim().toLowerCase();
     return lignes.some(l => {
-      if(!ligneIsToday(l)) return false;
+      // v503 : ENR03 datée du jour du refroidissement (veille) mais remise faite aujourd'hui
+      if(!ligneIsToday(l) && !(enrId === 'enr03' && (l.date_rechauff === today() || ligneIsToday({ _ts: l._created || l._ts })))) return false;
       if(enrId === 'enr33' && !_temoinImprime(l)) return false;
       if(plat && plat.plat_id && _ligneHasPlat(l, plat.plat_id)) return true;
       const alt = String(l._plat_nom || l.produit || '').trim().toLowerCase();
@@ -2632,7 +2633,11 @@ function platMpNoms(p){
 // (l'appli ne connaît pas la recette : un seul lot ne suffit pas à valider)
 function platMpComplet(p){ return !!(p && p.mp_complet === true) && platMpLie(p); }
 function platStepDone(enrId, p){
-  return enrId === 'enr31' ? platMpComplet(p) : platDejaSaisi(enrId, p);
+  if(enrId === 'enr31') return platMpComplet(p);
+  if(platDejaSaisi(enrId, p)) return true;
+  // v503 : une fiche Refroid.+Remise (ENR03) vaut refroidissement ET remise en T°C
+  if(enrId === 'enr02' || enrId === 'enr01') return platDejaSaisi('enr03', p);
+  return false;
 }
 /** v493 — SOURCE UNIQUE des compteurs du jour (badge Traça MP, widget Accueil, couverture Menu). */
 function menuTraceJour(){

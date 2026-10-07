@@ -3985,6 +3985,33 @@ function lancerENR03(idx){
   toast('🔄 Refroidissement chargé — complétez la remise','success');
 }
 
+// v503 : remises en T°C faites sur une fiche Refroid.+Remise (ENR03) — visibles aussi sur ENR02
+// (hors fiches ENR03 auto-créées depuis une ENR02, déjà dans l'historique ENR02)
+function enr03RemisesBlock(){
+  try {
+    const cutoff = new Date(Date.now() - 7*24*3600*1000).toISOString();
+    const rows = ((S['enr03']||{}).lignes||[])
+      .filter(r => r && !r._deleted && !r._enr02_ref && (r.h3 || r.t4) && String(r._created || r._ts || '') >= cutoff);
+    if(!rows.length) return '';
+    const items = rows.map(r => {
+      const conf = r.conf_rt === 'OUI' ? '<span style="color:#166534;font-weight:800">✓ Conforme</span>'
+        : r.conf_rt === 'NON' ? '<span style="color:#991b1b;font-weight:800">✗ Non conforme</span>' : '';
+      const d = r.date_rechauff || r.date || '';
+      return `<div class="pending-item" onclick="goTo('enr03')" style="cursor:pointer">
+        <div class="pending-info">
+          <div class="pending-name">${escH(r.produit||'—')}</div>
+          <div class="pending-meta">${escH(d)}${r.h3?' · ⏰ '+escH(r.h3)+(r.h4?'→'+escH(r.h4):''):''}${r.t4!==undefined&&r.t4!==''?' · '+escH(r.t4)+'°C':''} ${conf}${r.cuisinier?' · 👨‍🍳 '+escH(r.cuisinier):''}</div>
+        </div>
+        <span class="pcb pcb-remise">🔄 Voir</span>
+      </div>`;
+    }).join('');
+    return `<div class="card">
+      <div class="hh"><span class="hh-title">🔄 Remises faites via Refroid.+Remise</span><span class="hh-badge">${rows.length} (7 j)</span></div>
+      ${items}
+    </div>`;
+  } catch(e){ console.warn('[enr02] remises ENR03', e); return ''; }
+}
+
 // ── Bloc "produits en attente" affiché en haut de ENR02 et ENR03 ─
 function pendingENR01Block(cible){
   const _now48h = Date.now() - 48*60*60*1000;
@@ -13123,9 +13150,21 @@ async function _loadFromSupabase() {
   }
 }
 
+// v503 : chaque save() relançait lecture + réécriture complète de sites.config
+// (~1 900 PATCH/jour par tablette → base saturée, envois en « Failed to fetch »).
+// On n'écrit plus que si la config locale a changé depuis le dernier envoi réussi.
+let _cfgCloudSig = '', _cfgCloudBusy = false;
 async function _saveConfigToSupabase() {
   const c = SupaEngine.cfg();
   if (!c.url || !c.anonKey || !c.siteId) return;
+  let _sig = '';
+  try { _sig = c.siteId + '|' + JSON.stringify(CONFIG_KEYS.map(k => S[k])); } catch(e) { console.warn('[save config cloud] signature', e); }
+  if (_sig && _sig === _cfgCloudSig) return;
+  if (_cfgCloudBusy) return;
+  _cfgCloudBusy = true;
+  try { await _saveConfigToSupabaseRun(c, _sig); } finally { _cfgCloudBusy = false; }
+}
+async function _saveConfigToSupabaseRun(c, _sig) {
 
   // ── Protection anti-écrasement : ne pas sauvegarder tant que le chargement initial
   // depuis Supabase n'a pas réussi. Sinon on risque d'écraser le cloud avec un S vide.
@@ -13263,7 +13302,7 @@ async function _saveConfigToSupabase() {
       body: JSON.stringify({ config: cloudConfig })
     });
     if(!r.ok) console.warn('[save config cloud] HTTP', r.status);
-    else console.log('[save config cloud] OK (merged) →', c.siteId);
+    else { console.log('[save config cloud] OK (merged) →', c.siteId); _cfgCloudSig = _sig; }
   } catch(e) { console.warn('[save config cloud]', e); }
 }
 
@@ -16130,7 +16169,8 @@ REND['enr02']=()=>{
 
       </div>
     </div>
-    ${renderHistoCard('enr02',def.fields)}`;
+    ${renderHistoCard('enr02',def.fields)}
+    ${enr03RemisesBlock()}`;
 };
 REND['enr03']=()=>{
   const def=FDEFS['enr03'];
