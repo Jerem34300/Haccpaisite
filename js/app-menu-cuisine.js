@@ -1168,6 +1168,8 @@ function _menuSyncAfterEdit(menu){
   } catch(e){ console.warn('[menu] sync after edit', e); }
 }
 window._menuSyncAfterEdit = _menuSyncAfterEdit;
+// Module Stock (v489) : accès lecture aux plats du jour / plats cochés et au lien lot ↔ plat existant
+window._stkMenuApi = { todayMenuPlats: todayMenuPlats, pendingRefs: _menuPendingRefs, setLotPlat: _menuSetLotPlat, refsFromLigne: _menuPlatRefsFromLigne };
 // Pastille Préparé minute / Sortie directe / Remise T°C : 2e clic = retour au profil de base
 window._menuSetPastille = function(catId, idx, key, svcId){
   try {

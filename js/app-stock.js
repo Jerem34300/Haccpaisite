@@ -568,3 +568,204 @@ function stkCorriger(key){
     }, 'Suivant');
   } catch(e){ console.warn('[stock] corriger', e); }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+ * PR B (v489) — « J'entame » avec photo d'étiquette → ENR31 auto,
+ * « Choisir dans le stock » à côté de la saisie manuelle (traça plat).
+ * Les formulaires existants restent inchangés et utilisables sans stock.
+ * ════════════════════════════════════════════════════════════════════ */
+function _stkEnr31For(itemId){
+  try { return ((S.enr31||{}).lignes||[]).find(function(l){ return l && !l._deleted && l._stock_item_id === itemId; }) || null; } catch(e){ return null; }
+}
+/** Crée la ligne Traçabilité MP (ENR31) liée au BL et au stock. */
+function stkCreateEnr31(it, o){
+  try {
+    o = o || {};
+    var now = new Date();
+    var rec = {
+      _ts: now.toISOString(), _sec: 'enr31',
+      date: _stkToday(), produit: it.produit, lot: o.lot || it.lot || '—', dlc: o.dlc || it.dlc || '',
+      estampille: o.estampille || '', cuisinier: _stkWho() || '',
+      _from_stock: true, _stock_item_id: it.id, _bl_ts: it.bl_ts, bl_numero: it.bl_numero, fournisseur: it.fournisseur,
+      date_reception: it.date_rec
+    };
+    if (o.photo) rec.photo = o.photo;
+    if (o.photo2) rec.photo2 = o.photo2;
+    if (o.mvt_ts) rec._stock_mvt_ts = o.mvt_ts;
+    S.enr31 = S.enr31 || {};
+    S.enr31.lignes = Array.isArray(S.enr31.lignes) ? S.enr31.lignes : [];
+    S.enr31.lignes.unshift(stampEntry(rec));
+    save();
+    try { SupaEngine.enqueue('enr31', rec); } catch(e){ console.warn('[stock] sync enr31', e); }
+    return rec;
+  } catch(e){ console.warn('[stock] enr31', e); return null; }
+}
+/** « J'entame » depuis la liste : choix de l'unité, puis photo d'étiquette (sauf produit sans étiquette). */
+function stkEntamerPhoto(key){
+  stkEntamer(key, function(it, row){
+    try {
+      if (!row) return; // on continue un entamé : la ligne ENR31 existe déjà
+      if (it.sans_etiquette) { stkCreateEnr31(it, { mvt_ts: row._ts }); toast('✅ Entamé — fiche traçabilité MP remplie','success'); _stkRefresh(); return; }
+      _stkChoice(it.produit, '📷 Prends l\'étiquette en photo (lot / DLC remplis automatiquement)', [
+        { k: 'camera', html: '📷 Caméra', hl: true }, { k: 'gallery', html: '🖼️ Galerie (1 ou 2 photos)' }, { k: 'none', html: '🚫 Pas d\'étiquette sur ce produit' }
+      ], function(o){
+        try {
+          if (o.k === 'none') { stkCreateEnr31(it, { mvt_ts: row._ts }); toast('✅ Fiche traçabilité MP remplie (lot du BL)','success'); _stkRefresh(); return; }
+          var inp = document.createElement('input');
+          inp.type = 'file'; inp.accept = 'image/*';
+          if (o.k === 'camera') inp.setAttribute('capture','environment'); else inp.multiple = true;
+          inp.style.display = 'none';
+          inp.onchange = function(){ try { stkLabelFiles(it, row, inp.files); } catch(e){ console.warn('[stock] label files', e); } try { inp.remove(); } catch(e){} };
+          document.body.appendChild(inp); inp.click();
+        } catch(e){ console.warn('[stock] label pick', e); }
+      });
+    } catch(e){ console.warn('[stock] entamerPhoto', e); }
+  });
+}
+function _stkReadFile(f){
+  return new Promise(function(res){ try { var rd = new FileReader(); rd.onload = function(){ res(String(rd.result||'')); }; rd.onerror = function(){ res(''); }; rd.readAsDataURL(f); } catch(e){ res(''); } });
+}
+async function stkLabelFiles(it, row, files){
+  var arr = Array.prototype.slice.call(files||[]).slice(0, 2);
+  if (!arr.length) { stkCreateEnr31(it, { mvt_ts: row._ts }); _stkRefresh(); return; }
+  try { haccShowWait({ icon: '📷', title: 'Lecture de l\'étiquette…', sub: 'Lot et DLC proposés, à vérifier' }); } catch(e){}
+  var raws = [], refs = [], prop = null;
+  try {
+    for (var i = 0; i < arr.length; i++) { var r = await _stkReadFile(arr[i]); if (r) raws.push(r); }
+    for (var j = 0; j < raws.length; j++) refs.push(await _stkThumbRef(raws[j], 640));
+    for (var k = 0; k < raws.length; k++) {
+      try {
+        var res = (typeof _labelOcrPost === 'function') ? await _labelOcrPost(raws[k]) : null;
+        if (res && res.proposed) prop = (typeof _labelOcrMerge === 'function') ? _labelOcrMerge(prop, res.proposed) : (prop || res.proposed);
+      } catch(e){ console.warn('[stock] label post', e); }
+    }
+  } catch(e){ console.warn('[stock] label', e); }
+  try { haccHideWait(); } catch(e){}
+  var lot = (prop && prop.lot) || '', dlc = '';
+  try { dlc = (prop && prop.dlc) ? (String(prop.dlc).match(/^\d{4}-\d{2}-\d{2}$/) ? prop.dlc : '') : ''; } catch(e){}
+  var warn = '';
+  if (lot && it.lot && !it.lot_auto && _stkNorm(lot) !== _stkNorm(it.lot)) warn = '⚠️ Lot étiquette ('+_stkE(lot)+') ≠ lot BL ('+_stkE(it.lot)+')';
+  if (!prop) toast('ℹ️ Étiquette non lue — lot du BL conservé, photo jointe','warning');
+  var fin = { lot: lot || it.lot, dlc: dlc || it.dlc, estampille: (prop && prop.estampille) || '', photo: refs[0] || '', photo2: refs[1] || '', mvt_ts: row._ts };
+  var rec = stkCreateEnr31(it, fin);
+  try { if (lot || dlc) stkMvt('lecture_etiquette', it, { lot_lu: lot, dlc_lue: dlc, enr31_uuid: rec && rec._uuid }); } catch(e){}
+  toast('✅ Fiche traçabilité MP remplie automatiquement'+(warn?' — '+warn.replace(/<[^>]+>/g,''):''), warn ? 'warning' : 'success');
+  _stkRefresh();
+}
+
+/** Sélecteur « Choisir dans le stock » : produits + switch entamé / fini, liés au plat (et au BL). */
+function stkPickForDish(ref, ctx){
+  try {
+    if (!_stkNeedWho()) return;
+    ctx = ctx || {};
+    var groups = stkGroups().filter(function(G){ return G.dispo > 0 && !G.bloque; });
+    var plats = [];
+    try { plats = (window._stkMenuApi && window._stkMenuApi.todayMenuPlats) ? window._stkMenuApi.todayMenuPlats() : []; } catch(e){ plats = []; }
+    var prev = document.getElementById('stk-dish-ov'); if (prev) prev.remove();
+    var ov = document.createElement('div');
+    ov.id = 'stk-dish-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9500;display:flex;align-items:flex-end;justify-content:center';
+    var pend = [];
+    try { if (!ref && window._stkMenuApi && window._stkMenuApi.pendingRefs) pend = (window._stkMenuApi.pendingRefs('enr31')||[]).filter(function(r){ return r && r.plat_id; }); } catch(e){ pend = []; }
+    var platSel = pend.length ? '<div class="stk-sub" style="margin-bottom:6px">🍽️ '+pend.map(function(r){ return _stkE(r.nom||''); }).join(', ')+' <small>(bandeau Menu du jour)</small></div>' : ref ? '<div class="stk-sub" style="margin-bottom:6px">🍽️ '+_stkE(ref.nom||'')+(ctx.service?' · '+_stkE(ctx.service):'')+'</div>'
+      : ('<select id="stk-dish-plat" class="stk-in" style="margin-bottom:8px"><option value="">— Plat (facultatif) —</option>'
+        + plats.map(function(x, i){ return '<option value="'+i+'">'+_stkE(x.p.nom)+(x.svc&&x.svc.label?' ('+_stkE(x.svc.label)+')':'')+'</option>'; }).join('') + '</select>');
+    ov.innerHTML = '<div style="background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:16px 14px 22px;max-height:88vh;overflow:auto">'
+      + '<div class="stk-h">📦 Produits du stock</div>' + platSel
+      + (groups.length ? groups.map(function(G, i){
+          var src = G.lot_auto ? ('BL '+_stkE(G.items[0].fournisseur)+' '+_stkFr(G.items[0].bl_date)) : _stkE(G.lot);
+          return '<div class="stk-line" data-g="'+i+'" style="display:flex;align-items:center;gap:8px;padding:8px">'
+            + '<input type="checkbox" data-gi="'+i+'" style="width:20px;height:20px;accent-color:#16a34a">'
+            + '<div style="flex:1;min-width:0"><div class="nm">'+_stkE(G.produit)+'</div><div class="mt">'+src+(G.entames?' · entamé '+_stkFr(G.ouvert_le):' · neuf')+'</div></div>'
+            + '<div style="display:flex;border:1.5px solid #d9c6dc;border-radius:9px;overflow:hidden" data-sw="'+i+'">'
+            + '<button type="button" data-v="entame" style="border:none;padding:6px 9px;font-weight:800;font-size:.74rem;background:#f59e0b;color:#fff;font-family:inherit">Entamé</button>'
+            + '<button type="button" data-v="fini" style="border:none;padding:6px 9px;font-weight:800;font-size:.74rem;background:#fff;color:#5C1E5A;font-family:inherit">Fini</button></div></div>';
+        }).join('') : '<div class="empty-s">Stock vide — utilise la saisie manuelle.</div>')
+      + '<button type="button" id="stk-dish-ok" class="stk-btn ok big" style="margin-top:10px">✓ Lier au plat</button>'
+      + '<button type="button" id="stk-dish-cancel" class="stk-btn big" style="margin-top:6px">Fermer</button></div>';
+    document.body.appendChild(ov);
+    var etat = {};
+    ov.querySelectorAll('[data-sw]').forEach(function(sw){
+      sw.addEventListener('click', function(ev){
+        try {
+          var b = ev.target.closest('button[data-v]'); if (!b) return;
+          var i = sw.getAttribute('data-sw'); etat[i] = b.getAttribute('data-v');
+          sw.querySelectorAll('button').forEach(function(x){ var on = x === b; x.style.background = on ? (x.getAttribute('data-v')==='fini'?'#16a34a':'#f59e0b') : '#fff'; x.style.color = on ? '#fff' : '#5C1E5A'; });
+          var cb = ov.querySelector('input[data-gi="'+i+'"]'); if (cb) cb.checked = true;
+        } catch(e){ console.warn('[stock] switch', e); }
+      });
+    });
+    var close = function(){ try { ov.remove(); renderMain(); renderNav(); } catch(e){} };
+    ov.addEventListener('click', function(e){ if (e.target === ov) close(); });
+    document.getElementById('stk-dish-cancel').onclick = close;
+    document.getElementById('stk-dish-ok').onclick = function(){
+      try {
+        var r = ref, svc = ctx.service || '', dsv = ctx.date || _stkToday();
+        var refs = ref ? [ref] : pend.slice();
+        if (!r && !refs.length) {
+          var sel = document.getElementById('stk-dish-plat');
+          var x = sel && sel.value !== '' ? plats[parseInt(sel.value,10)] : null;
+          if (x) { r = { plat_id: x.p.plat_id, nom: x.p.nom, menu_id: x.menu_id || '', profil_haccp: x.p.profil_haccp || '' }; svc = (x.svc && (x.svc.label || x.svc.id)) || ''; refs = [r]; }
+        }
+        if (!r && refs.length) r = { nom: refs.map(function(z){ return z.nom; }).join(', ') };
+        var n = 0;
+        ov.querySelectorAll('input[data-gi]:checked').forEach(function(cb){
+          var i = cb.getAttribute('data-gi');
+          var res = stkUseForDish(groups[parseInt(i,10)], refs, etat[i] || 'entame', { service: svc, date: dsv });
+          if (res) n++;
+        });
+        if (!n) { toast('Coche au moins un produit','warning'); return; }
+        toast('🔗 Chaîne complète ✓ — '+n+' produit'+(n>1?'s':'')+(r?' lié'+(n>1?'s':'')+' à '+r.nom:' tracé'+(n>1?'s':'')),'success');
+        close();
+      } catch(e){ console.warn('[stock] dish ok', e); }
+    };
+  } catch(e){ console.warn('[stock] pickForDish', e); }
+}
+/** Utilisation d'un produit du stock pour un plat : ENR31 (existante ou créée), lien plat, mouvement « usage », fini éventuel. */
+function stkUseForDish(G, refs, etat, ctx){
+  try {
+    if (!G) return null;
+    refs = Array.isArray(refs) ? refs.filter(Boolean) : (refs ? [refs] : []);
+    var ref = refs[0] || null;
+    var it = G.items.find(function(i){ return i.entames > 0; });
+    var openRow = null;
+    if (!it) {
+      it = G.items.find(function(i){ return i.neufs > 0; });
+      if (!it) return null;
+      if (etat === 'fini') { stkMvt('fini', it, { from: 'neuf', plat: ref ? ref.nom : '' }); }
+      else openRow = stkMvt('entame', it, { from: 'neuf' });
+    } else if (etat === 'fini') {
+      stkMvt('fini', it, { from: 'entame', plat: ref ? ref.nom : '' });
+    }
+    var l = _stkEnr31For(it.id) || stkCreateEnr31(it, { mvt_ts: openRow ? openRow._ts : '' });
+    refs.forEach(function(rf){
+      if (!rf || !rf.plat_id || !l || !l._uuid) return;
+      try { if (window._stkMenuApi && window._stkMenuApi.setLotPlat) window._stkMenuApi.setLotPlat(l._uuid, rf, true); }
+      catch(e){ console.warn('[stock] lien plat', e); }
+    });
+    stkMvt('usage', it, { plat_id: refs.map(function(z){ return z.plat_id; }).join(','), plat: refs.map(function(z){ return z.nom; }).join(', '), service: (ctx && ctx.service) || '', date_service: (ctx && ctx.date) || _stkToday(), etat: etat, enr31_uuid: l ? l._uuid : '' });
+    return l;
+  } catch(e){ console.warn('[stock] useForDish', e); return null; }
+}
+/* Branchements non intrusifs (aucune modification des formulaires existants) */
+(function stkHooksB(){
+  try {
+    // Liste stock : « J'entame » → version avec photo d'étiquette + ENR31 auto
+    var _list = stkListHtml;
+    stkListHtml = function(groups){ return String(_list(groups)).replace(/onclick="stkEntamer\(/g, 'onclick="stkEntamerPhoto('); };
+  } catch(e){ console.warn('[stock] hook list', e); }
+  try {
+    // Fiche ENR31 : bouton « Choisir dans le stock » à côté de la saisie manuelle
+    if (typeof REND !== 'undefined' && typeof REND['enr31'] === 'function') {
+      var _r31 = REND['enr31'];
+      REND['enr31'] = function(){
+        var h = _r31.apply(this, arguments);
+        try {
+          var btn = '<div class="label-ocr-bar" style="margin:6px 0 10px"><button type="button" onclick="stkPickForDish(null)" style="background:#16a34a;color:#fff;border-color:#16a34a">📦 Choisir dans le stock</button></div>';
+          var anchor = '<div class="fg-label">Nouvelle saisie</div>';
+          return h.indexOf(anchor) >= 0 ? h.replace(anchor, btn + anchor) : (btn + h);
+        } catch(e){ return h; }
+      };
+    }
+  } catch(e){ console.warn('[stock] hook enr31', e); }
+})();
