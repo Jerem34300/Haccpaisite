@@ -291,7 +291,7 @@ function stkRender(){
       var ph = ['photo','photo2','photo3','photo4','photo5','photo6'].map(function(k){ try { return bl[k] ? photoThumb(bl[k], '', true) : ''; } catch(e){ return ''; } }).join('');
       var refus = (bl.lignes_bl||[]).filter(function(l){ return l.statut==='refuse'; }).map(function(l){ return '⛔ '+_stkE(l.produit)+' — refusé'; });
       var manq = (bl.lignes_bl||[]).filter(function(l){ return l.statut==='manquant'; }).map(function(l){ return '✗ '+_stkE(l.produit)+' — manquant sur BL n° '+_stkE(bl.numero||'?'); });
-      return '<div class="stk-line"><div class="nm">'+_stkE(bl.fournisseur||'Fournisseur ?')+' — BL '+_stkE(bl.numero||'?')+'</div>'
+      return '<div class="stk-line"><div class="nm">'+_stkE(bl.fournisseur||'Fournisseur ?')+' — '+_stkE(/^BL/i.test(bl.numero||'')?bl.numero:'BL '+(bl.numero||'?'))+'</div>'
         + '<div class="mt">'+_stkFrY(bl.date)+' · reçu le '+_stkFr(bl.date_reception)+' '+_stkE(bl.heure||'')+' par '+_stkE(bl.cuisinier||'?')+' · '+_stkE(bl.resume||'')+'</div>'
         + (ph ? '<div style="display:flex;gap:6px;margin-top:6px">'+ph+'</div>' : '')
         + ((refus.length||manq.length) ? '<div class="mt" style="color:#991b1b">'+refus.concat(manq).join('<br>')+'</div>' : '')
@@ -1021,4 +1021,216 @@ function _stkEtiqIdx(G){
       };
     }
   } catch(e){ console.warn('[stock] hook saveRow', e); }
+})();
+
+/* ════════════════════════════════════════════════════════════════════
+ * PR C (v490) — Rappel de lot : lot → BL, plats concernés, stock, « Bloquer ce lot »,
+ * + export PDF (inspecteur) et branchement exports existants (Audit / Traça MP).
+ * ════════════════════════════════════════════════════════════════════ */
+_stk.rq = '';
+/** Rapport complet pour un lot (recherche tolérante : lot, produit). */
+function stkRecall(q){
+  var out = { q: q, lots: [] };
+  try {
+    var n = _stkNorm(q); if (!n) return out;
+    var items = stkItems().filter(function(i){ return _stkNorm(i.lot).indexOf(n) >= 0 || _stkNorm(i.lot_lu||'').indexOf(n) >= 0; });
+    var e31 = ((S.enr31||{}).lignes||[]).filter(function(l){ return l && !l._deleted && _stkNorm(l.lot).indexOf(n) >= 0; });
+    var keys = {};
+    items.forEach(function(i){ var k = _stkNorm(i.produit)+'|'+_stkNorm(i.lot); (keys[k] = keys[k] || { produit: i.produit, lot: i.lot, items: [], e31: [] }).items.push(i); });
+    e31.forEach(function(l){
+      var it = l._stock_item_id && items.find(function(i){ return i.id === l._stock_item_id; });
+      var k = it ? (_stkNorm(it.produit)+'|'+_stkNorm(it.lot)) : (_stkNorm(l.produit)+'|'+_stkNorm(l.lot));
+      (keys[k] = keys[k] || { produit: l.produit, lot: l.lot, items: [], e31: [] }).e31.push(l);
+    });
+    var mv = _stkMvts();
+    Object.keys(keys).forEach(function(k){
+      var L = keys[k], ids = {};
+      L.items.forEach(function(i){ ids[i.id] = 1; });
+      var bls = {}, plats = [], seen = {};
+      L.items.forEach(function(i){ bls[i.bl_ts] = { fournisseur: i.fournisseur, numero: i.bl_numero, date: i.bl_date, date_rec: i.date_rec }; });
+      mv.filter(function(m){ return ids[m.item_id] && m.type === 'usage' && m.plat; }).forEach(function(m){
+        var key = m.plat+'|'+(m.date_service||m.date)+'|'+(m.service||'');
+        if (seen[key]) return; seen[key] = 1;
+        plats.push({ nom: m.plat, date: m.date_service || m.date, service: m.service || '', par: m.cuisinier || '' });
+      });
+      L.e31.forEach(function(l){
+        try {
+          (l._plat_liens || (l._plat_nom ? [{ nom: l._plat_nom }] : [])).forEach(function(p){
+            if (!p || !p.nom) return;
+            var already = plats.some(function(x){ return x.nom === p.nom && x.date === l.date; });
+            if (!already) plats.push({ nom: p.nom, date: l.date || '', service: '', par: l.cuisinier || '' });
+          });
+        } catch(e){}
+      });
+      plats.sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); });
+      L.bls = Object.keys(bls).map(function(t){ return bls[t]; });
+      L.plats = plats;
+      L.entames = L.items.reduce(function(s,i){ return s+i.entames; },0);
+      L.neufs = L.items.reduce(function(s,i){ return s+i.neufs; },0);
+      L.bloque = L.items.some(function(i){ return i.bloque; });
+      L.motif = (L.items.find(function(i){ return i.bloque; })||{}).bloque_motif || '';
+      out.lots.push(L);
+    });
+  } catch(e){ console.warn('[stock] recall', e); }
+  return out;
+}
+function stkRecallHtml(q){
+  try {
+    if (!String(q||'').trim()) return '<div class="stk-sub">Tape un n° de lot (ou une partie) pour voir les BL, les plats concernés et le stock restant.</div>';
+    var R = stkRecall(q);
+    if (!R.lots.length) return '<div class="empty-s">Aucun lot trouvé pour « '+_stkE(q)+' ».</div>';
+    return R.lots.map(function(L, i){
+      return '<div class="stk-line"'+(L.bloque?' style="border-color:#fca5a5;background:#fff5f5"':'')+'>'
+        + '<div class="nm">'+_stkE(L.produit)+'</div><div class="mt">Lot <b>'+_stkE(L.lot||'—')+'</b></div>'
+        + '<div class="mt">'+(L.bls.length ? ('Reçu : '+L.bls.map(function(b){ return _stkE(/^BL/i.test(b.numero||'')?b.numero:'BL '+(b.numero||'?'))+' ('+_stkE(b.fournisseur||'?')+') du '+_stkFr(b.date)+(b.date_rec && b.date_rec!==b.date?' · reçu le '+_stkFr(b.date_rec):''); }).join(' · ')) : 'Hors stock (saisie Traçabilité MP manuelle)')+'</div>'
+        + '<div class="stk-h" style="font-size:.78rem;margin-top:8px">PLATS CONCERNÉS ('+L.plats.length+')</div>'
+        + (L.plats.length ? L.plats.map(function(p){ return '<div class="mt">🍽️ '+_stkE(p.nom)+' — '+_stkFr(p.date)+(p.service?' '+_stkE(p.service):'')+'</div>'; }).join('') : '<div class="mt">Aucun plat lié</div>')
+        + '<div class="stk-h" style="font-size:.78rem;margin-top:8px">EN STOCK</div>'
+        + '<div class="mt"><b>'+L.entames+' entamé'+(L.entames>1?'s':'')+' · '+L.neufs+' neuf'+(L.neufs>1?'s':'')+'</b>'+(L.bloque?' · <span style="color:#991b1b;font-weight:800">⛔ bloqué'+(L.motif?' ('+_stkE(L.motif)+')':'')+'</span>':((L.entames+L.neufs)?' → à bloquer':''))+'</div>'
+        + (L.items.length ? (L.bloque
+            ? '<button class="stk-btn big" style="margin-top:8px" onclick="stkBloquer('+i+',false)">↩️ Débloquer (code admin)</button>'
+            : '<button class="stk-btn big" style="margin-top:8px;background:#dc2626;border-color:#dc2626;color:#fff" onclick="stkBloquer('+i+',true)">⛔ Bloquer ce lot</button>') : '')
+        + '</div>';
+    }).join('') + '<button class="stk-btn big" style="margin-top:8px" onclick="stkRecallPdf()">📄 Export PDF inspecteur</button>';
+  } catch(e){ console.warn('[stock] recallHtml', e); return ''; }
+}
+function stkRecallFocus(){
+  try { var c = document.getElementById('stk-recall'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); var q = document.getElementById('stk-recall-q'); if (q) setTimeout(function(){ try { q.focus(); } catch(e){} }, 350); } catch(e){ console.warn('[stock] recallFocus', e); }
+}
+function stkRecallSearch(v){
+  try { _stk.rq = String(v||''); var el = document.getElementById('stk-recall-res'); if (el) el.innerHTML = stkRecallHtml(_stk.rq); } catch(e){ console.warn('[stock] recallSearch', e); }
+}
+/** Bloquer / débloquer : motif obligatoire, tracé (qui / quand / pourquoi) sur chaque ligne du lot. Débloquer = code admin. */
+function stkBloquer(idx, on){
+  try {
+    var who = _stkNeedWho(); if (!who) return;
+    var lots = stkRecall(_stk.rq).lots;
+    var L = lots[idx]; if (!L) return;
+    var apply = function(sel){
+      showPrompt(on ? '⛔ Bloquer '+sel.length+' lot'+(sel.length>1?'s':'') : '↩️ Débloquer le lot '+(L.lot||''), 'Motif obligatoire — tracé avec ton nom et l\'heure', on ? 'Ex : rappel fournisseur, alerte DGAL…' : 'Ex : levée du rappel', function(m){
+        try {
+          m = String(m||'').trim();
+          if (!m) { toast('⚠️ Motif obligatoire','warning'); return; }
+          sel.forEach(function(X){ X.items.forEach(function(it){ stkMvt(on ? 'bloque' : 'debloque', it, { motif: m }); }); });
+          toast(on ? '⛔ Bloqué : '+sel.map(function(X){ return X.lot; }).join(', ')+' — ne plus utiliser' : '↩️ Lot '+L.lot+' débloqué', on ? 'warning' : 'success');
+          stkRecallSearch(_stk.rq);
+        } catch(e){ console.warn('[stock] bloquer2', e); }
+      }, on ? 'Bloquer' : 'Débloquer');
+    };
+    if (on) {
+      // Confirmation : liste exacte des lots qui seront bloqués (recherche partielle → plusieurs possibles), décochables
+      var cand = lots.filter(function(X){ return !X.bloque && X.items.length; });
+      var ov = document.createElement('div');
+      ov.className = 'hacc-wait-ov'; ov.id = 'stk-block-ov';
+      ov.innerHTML = '<div class="hacc-wait-card" style="text-align:left;padding:16px;max-width:400px">'
+        + '<div class="stk-h">⛔ Lots à bloquer</div><div class="stk-sub" style="margin-bottom:8px">Vérifie la liste : seuls les lots cochés seront bloqués.</div>'
+        + cand.map(function(X, j){ var same = _stkNorm(X.lot) === _stkNorm(L.lot);
+            return '<label class="stk-line" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-bi="'+j+'" '+(same?'checked':'')+' style="width:20px;height:20px;accent-color:#dc2626;margin-top:2px">'
+              + '<span><b>'+_stkE(X.lot||'—')+'</b> — '+_stkE(X.produit)+'<br><small>'+X.entames+' entamé(s) · '+X.neufs+' neuf(s) · '+X.bls.length+' BL</small></span></label>'; }).join('')
+        + '<button class="stk-btn big" data-ok="1" style="margin-top:8px;background:#dc2626;border-color:#dc2626;color:#fff">Bloquer la sélection</button>'
+        + '<button class="stk-btn big" data-no="1" style="margin-top:6px">Annuler</button></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function(ev){
+        try {
+          if (ev.target === ov || ev.target.closest('[data-no]')) { ov.remove(); return; }
+          if (!ev.target.closest('[data-ok]')) return;
+          var sel = [];
+          ov.querySelectorAll('input[data-bi]:checked').forEach(function(c){ sel.push(cand[parseInt(c.getAttribute('data-bi'),10)]); });
+          if (!sel.length) { toast('Coche au moins un lot','warning'); return; }
+          ov.remove(); apply(sel);
+        } catch(e){ console.warn('[stock] block ov', e); }
+      });
+      return;
+    }
+    // Déblocage : fail closed — code admin EXISTANT obligatoire (jamais de création à la volée)
+    if (!S.adminPin) { toast('⛔ Déblocage impossible : définis d\'abord un code admin dans ⚙️ Réglages','error'); return; }
+    if (typeof openPinModal !== 'function') { toast('⛔ Déblocage refusé (code admin non vérifiable)','error'); return; }
+    try { openPinModal({ mode: 'check', target: 'admin', onSuccess: function(){ apply([L]); } }); }
+    catch(e){ console.warn('[stock] admin pin', e); toast('⛔ Déblocage refusé (code admin non vérifié)','error'); }
+  } catch(e){ console.warn('[stock] bloquer', e); }
+}
+function _stkRecallPdfSection(R){
+  try {
+    return R.lots.map(function(L){
+      return '<h2 style="color:#5C1E5A;border-color:#d9a8d6">🔎 Lot '+_stkE(L.lot||'—')+' — '+_stkE(L.produit)+(L.bloque?' — ⛔ BLOQUÉ':'')+'</h2>'
+        + '<table><thead><tr><th>Bon de livraison</th><th>Fournisseur</th><th>Date BL</th><th>Reçu le</th></tr></thead><tbody>'
+        + (L.bls.map(function(b){ return '<tr><td>'+_stkE(b.numero||'—')+'</td><td>'+_stkE(b.fournisseur||'—')+'</td><td>'+_stkFrY(b.date)+'</td><td>'+_stkFrY(b.date_rec)+'</td></tr>'; }).join('') || '<tr><td colspan="4">Saisie Traçabilité MP manuelle (hors stock)</td></tr>')
+        + '</tbody></table><table style="margin-top:6px"><thead><tr><th>Plat concerné</th><th>Date</th><th>Service</th><th>Cuisinier</th></tr></thead><tbody>'
+        + (L.plats.map(function(p){ return '<tr><td>'+_stkE(p.nom)+'</td><td>'+_stkFrY(p.date)+'</td><td>'+_stkE(p.service||'—')+'</td><td>'+_stkE(p.par||'—')+'</td></tr>'; }).join('') || '<tr><td colspan="4">Aucun plat lié</td></tr>')
+        + '</tbody></table><p style="font-size:11px">En stock : <b>'+L.entames+' entamé(s), '+L.neufs+' neuf(s)</b>'+(L.bloque?' — bloqué'+(L.motif?' (motif : '+_stkE(L.motif)+')':''):'')+'</p>';
+    }).join('');
+  } catch(e){ return ''; }
+}
+function stkRecallPdf(){
+  try {
+    var R = stkRecall(_stk.rq);
+    if (!R.lots.length) { toast('Aucun lot à exporter','warning'); return; }
+    var site = ''; try { site = getSiteName(); } catch(e){}
+    var css = ''; try { css = _pdfCSS(); } catch(e){}
+    var html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rappel de lot — '+_stkE(site)+'</title><style>'+css+'@media print{.no-print{display:none!important}}</style></head><body>'
+      + '<div class="no-print" style="padding:10px"><button onclick="window.print()" style="background:#5C1E5A;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:bold">🖨️ Imprimer / PDF</button></div>'
+      + '<div class="hdr" style="border-color:#5C1E5A"><div><h1 style="color:#5C1E5A">🔎 Rappel de lot « '+_stkE(R.q)+' »</h1><p><strong>'+_stkE(site)+'</strong></p><p>Généré le '+new Date().toLocaleString('fr-FR')+' par '+_stkE(_stkWho()||'—')+'</p></div></div>'
+      + _stkRecallPdfSection(R)
+      + '<div class="footer"><span>HACC.PRO — Rappel de lot — '+_stkE(site)+'</span></div></body></html>';
+    openPrintWindow(html);
+  } catch(e){ console.warn('[stock] recallPdf', e); try{ toast('⚠️ Export impossible','warning'); }catch(_e){} }
+}
+/** Section « Réceptions BL / lots bloqués » pour les exports existants. */
+function _stkExportSection(from, to){
+  try {
+    var bls = _stkBls().filter(function(b){ var d = b.date_reception || b.date; return (!from || d >= from) && (!to || d <= to); });
+    var blk = stkGroups().filter(function(G){ return G.bloque; });
+    if (!bls.length && !blk.length) return '';
+    var h = '<h2 style="color:#5C1E5A;border-color:#d9a8d6">📦 Réceptions (bons de livraison) — stock</h2>';
+    if (bls.length) h += '<table><thead><tr><th>Reçu le</th><th>Fournisseur</th><th>N° BL</th><th>Bilan</th><th>Écarts</th><th>Par</th></tr></thead><tbody>'
+      + bls.map(function(b){
+          var ec = (b.lignes_bl||[]).filter(function(l){ return l.statut !== 'recu'; }).map(function(l){ return (l.statut==='refuse'?'⛔ ':'✗ ')+_stkE(l.produit); }).join('<br>');
+          return '<tr><td>'+_stkFrY(b.date_reception||b.date)+'</td><td>'+_stkE(b.fournisseur||'—')+'</td><td>'+_stkE(b.numero||'—')+'</td><td>'+_stkE(b.resume||'')+'</td><td>'+(ec||'—')+'</td><td>'+_stkE(b.cuisinier||'—')+'</td></tr>';
+        }).join('') + '</tbody></table>';
+    if (blk.length) h += '<h2 style="color:#b71c1c">⛔ Lots bloqués</h2><table><thead><tr><th>Produit</th><th>Lot</th><th>Motif</th><th>En stock</th></tr></thead><tbody>'
+      + blk.map(function(G){ var it = G.items.find(function(i){ return i.bloque; }) || {}; return '<tr><td>'+_stkE(G.produit)+'</td><td>'+_stkE(G.lot)+'</td><td>'+_stkE(it.bloque_motif||'')+'</td><td>'+G.entames+' entamé(s) · '+G.neufs+' neuf(s)</td></tr>'; }).join('') + '</tbody></table>';
+    return h;
+  } catch(e){ console.warn('[stock] exportSection', e); return ''; }
+}
+(function stkHooksC(){
+  try {
+    // Carte « Rappel de lot » en bas de l'onglet Stock
+    var _rs = stkRender;
+    stkRender = function(){
+      var h = _rs.apply(this, arguments);
+      if (_stk.draft) return h;
+      var top = '<div style="display:flex;justify-content:flex-end;margin:0 0 8px"><button class="stk-btn" onclick="stkRecallFocus()">🔎 Rappel de lot</button></div>';
+      return top + h + '<div class="card" id="stk-recall" style="margin-bottom:96px"><div class="stk-h">🔎 Rappel de lot</div>'
+        + '<input class="stk-in" id="stk-recall-q" placeholder="N° de lot…" value="'+_stkA(_stk.rq)+'" oninput="stkRecallSearch(this.value)">'
+        + '<div id="stk-recall-res" style="margin-top:8px">'+stkRecallHtml(_stk.rq)+'</div></div>';
+    };
+  } catch(e){ console.warn('[stock] hook recall', e); }
+  try {
+    // Export PDF Traça MP existant : ajoute réceptions BL + lots bloqués de la période (fonction d'origine inchangée)
+    if (typeof exportMP_PDF === 'function') {
+      var _mp = exportMP_PDF;
+      exportMP_PDF = function(period){
+        var opw = openPrintWindow, from = '', to = '';
+        try { if (period === 'jour') { from = to = _stkToday(); } else if (typeof _mpDateRange === 'function') { var rg = _mpDateRange(period); from = rg.from; to = rg.to; } } catch(e){}
+        try {
+          openPrintWindow = function(html){
+            try { var sec = _stkExportSection(from, to); if (sec) html = String(html).replace('<div class="footer">', sec + '<div class="footer">'); } catch(e){ console.warn('[stock] inject mp', e); }
+            return opw(html);
+          };
+          return _mp.apply(this, arguments);
+        } finally { openPrintWindow = opw; }
+      };
+    }
+  } catch(e){ console.warn('[stock] hook exportMP', e); }
+  try {
+    // Audit contrôle sanitaire : ajoute la même section (mois en cours)
+    if (typeof buildAuditBody === 'function') {
+      var _ab = buildAuditBody;
+      buildAuditBody = function(){
+        var h = _ab.apply(this, arguments);
+        try { var m = (typeof getConfigMois === 'function') ? getConfigMois() : _stkToday().slice(0,7); var sec = _stkExportSection(m+'-01', m+'-31'); if (sec) h += '<div class="stk-audit">'+sec+'</div>'; } catch(e){ console.warn('[stock] inject audit', e); }
+        return h;
+      };
+    }
+  } catch(e){ console.warn('[stock] hook audit', e); }
 })();
