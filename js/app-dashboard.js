@@ -718,6 +718,26 @@ function getScopedSiteCodes(){
   }
   return [...new Set(sites.map(s=>s.code).filter(Boolean))];
 }
+/** v500 : services de distribution désassignés / réassignés automatiquement (config du site). */
+function _siteTasksOffHtml(code){
+  try {
+    const site=getSiteByCode(code); const root=(site&&site.config&&typeof site.config==='object')?site.config:{};
+    const cfg=(root.config&&typeof root.config==='object')?root.config:root;
+    const off=cfg.tasksOff||{}, log=Array.isArray(cfg.tasksOffLog)?cfg.tasksOffLog:[];
+    const last=k=>{ for(let i=log.length-1;i>=0;i--){ if(log[i]&&log[i].key===k) return log[i]; } return null; };
+    let h='';
+    Object.keys(off).filter(k=>/^distrib:|^t°c distribution — /.test(k)).forEach(k=>{
+      const e=last(k)||{};
+      h+=`<div style="font-size:.62rem;font-weight:700;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:6px;padding:3px 7px;margin-top:4px">🚫 Service ${escH(e.service||String(off[k]===true?k:off[k]).replace(/^T°C Distribution — /i,''))} désassigné${e.motif?' — '+escH(e.motif):''}${e.date?' · '+escH(e.date)+(e.heure?' '+escH(e.heure):''):''}${e.by?' · '+escH(e.by):''}</div>`;
+    });
+    const lim=Date.now()-7*864e5, seen={};
+    log.filter(e=>e&&e.action==='auto_on'&&Date.parse(e.ts)>lim).reverse().forEach(e=>{
+      if(seen[e.service]) return; seen[e.service]=1;
+      h+=`<div style="font-size:.62rem;font-weight:800;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;border-radius:6px;padding:3px 7px;margin-top:4px">⚠️ Service ${escH(e.service||'')} réassigné automatiquement (T°C saisie) · ${escH(e.date||'')} ${escH(e.heure||'')}</div>`;
+    });
+    return h;
+  } catch(e){ console.warn('[dash] tasksOff', e); return ''; }
+}
 function getSiteByCode(siteCode){
   return _sites.find(s=>String(s.code||'').toUpperCase()===String(siteCode||'').toUpperCase())||null;
 }
@@ -1850,6 +1870,7 @@ function renderOverview(){
         <span style="font-size:.7rem;color:var(--muted)">›</span>
       </div>
       ${catBadges?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:7px">${catBadges}</div>`:''}
+      ${_siteTasksOffHtml(s.code)}
       <div style="margin-top:10px;text-align:right">
         <button onclick="event.stopPropagation();openCuisine('${escH(s.id)}','${escH(s.code)}','${escH(s.name)}')"
           style="padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:var(--font);transition:background .15s"
@@ -5627,6 +5648,8 @@ function haccRecordLinksPlat(rec, platId){
     if(!rec || platId == null || String(platId) === '') return false;
     const d = (rec.data && typeof rec.data === 'object') ? rec.data : rec;
     const id = String(platId);
+    // v499 : champ plats présent (même vide) = seule source
+    if(Array.isArray(d._plat_liens)) return d._plat_liens.some(function(x){ return x && String(x.plat_id) === id; });
     if(d._plat_id != null && String(d._plat_id) === id) return true;
     if(Array.isArray(d._plat_ids) && d._plat_ids.some(function(x){ return String(x) === id; })) return true;
     if(Array.isArray(d._plat_liens) && d._plat_liens.some(function(x){ return x && String(x.plat_id) === id; })) return true;

@@ -406,7 +406,7 @@ function renderMenuJour(){
     <input type="file" id="mn-photo-cam" accept="image/*" capture="environment" style="display:none" onchange="window._menuPhotoOnFile(this)">
     <input type="file" id="mn-photo-gal" accept="image/*" style="display:none" onchange="window._menuPhotoOnFile(this)">
     <div class="mn-hd-sub">
-      <input type="date" class="mn-date-input" value="${d}" onchange="window._menuSwitchDate(this.value)" aria-label="Date du menu">
+      <input type="date" lang="fr-FR" class="mn-date-input" value="${d}" onchange="window._menuSwitchDate(this.value)" aria-label="Date du menu">${typeof frDateTag==='function'?frDateTag(d):''}
       ${isToday ? '<span class="mn-when-pill">Aujourd\'hui</span>' : (isPast ? '<span class="mn-when-pill">Passé</span>' : '<span class="mn-when-pill">À venir</span>')}
       <span class="mn-when-pill">${dFr}</span>
       <span class="mn-when-pill">${dayTotal} plat${dayTotal>1?'s':''}</span>
@@ -550,6 +550,8 @@ function _ligneHasPlat(l, platId){
   try {
     if(!l || platId == null || platId === '') return false;
     const id = String(platId);
+    // v499 : champ plats présent (même vide) = seule source ; anciens _plat_id / _plat_ids ignorés
+    if(Array.isArray(l._plat_liens)) return l._plat_liens.some(x => x && String(x.plat_id) === id);
     if(l._plat_id != null && String(l._plat_id) === id) return true;
     if(Array.isArray(l._plat_ids) && l._plat_ids.some(x => String(x) === id)) return true;
     if(Array.isArray(l._plat_liens) && l._plat_liens.some(x => x && String(x.plat_id) === id)) return true;
@@ -565,7 +567,7 @@ function _menuPlatRefsFromLigne(l){
       seen[String(id)] = 1;
       out.push({ plat_id:String(id), nom:nom||'', menu_id:menu_id||'', profil:profil||'' });
     };
-    if(l && Array.isArray(l._plat_liens)) l._plat_liens.forEach(x => { if(x) push(x.plat_id, x.nom, x.menu_id, x.profil); });
+    if(l && Array.isArray(l._plat_liens)){ l._plat_liens.forEach(x => { if(x) push(x.plat_id, x.nom, x.menu_id, x.profil); }); return out; }
     if(l && Array.isArray(l._plat_ids)) l._plat_ids.forEach(id => push(id, '', '', ''));
     if(l && l._plat_id) push(l._plat_id, l._plat_nom, l._menu_id, l._plat_profil);
   } catch(e){ console.warn('[menu] refs ligne', e); }
@@ -1967,7 +1969,7 @@ function menuBannerWanted(id){
   } catch(e){ return false; }
 }
 
-const LINK_ENRS = ['enr01','enr02','enr03','enr04','enr07','enr08','enr09','enr10',
+const LINK_ENRS = ['enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10',
                    'enr11','enr12','enr13','enr14','enr15','enr16','enr23','enr31','enr33','enr34','enr36','enr_allergenes'];
 
 let _menuLinkPending = {};
@@ -1975,7 +1977,7 @@ let _bannerOpen = { enr31: true }; // ENR31 : plats du jour visibles d'emblée p
 
 const FILL_FIELD_PRIORITY = {
   enr01: ['produit'], enr02: ['produit'], enr03: ['produit'],
-  enr04: ['produit'], enr07: ['produit'], enr08: ['produit'],
+  enr04: ['produit'], enr05: ['produit'], enr06: ['produit'], enr07: ['produit'], enr08: ['produit'],
   enr09: ['produit'], enr10: ['produit'],
   enr11: ['produit'], enr12: ['produit'],
   enr13: ['type','produit'], enr14: ['produit','type'],
@@ -2145,6 +2147,14 @@ function _ligneNom(l){ return (l && (l.produit || l.plat || l.nom || l._plat_nom
 function _tagLigne(enrId, l, x){
   try {
     l._plat_id = x.p.plat_id; l._plat_nom = x.p.nom; l._menu_id = x.menu_id; l._plat_profil = x.p.profil_haccp;
+    // v500 : le champ plats (_plat_liens), s'il existe, est la seule source lue → y ajouter aussi le rattachement manuel
+    try {
+      if(Array.isArray(l._plat_liens)){
+        const pid = String(x.p.plat_id);
+        if(!l._plat_liens.some(r => r && String(r.plat_id) === pid)) l._plat_liens.push({ plat_id:pid, nom:x.p.nom||'', menu_id:x.menu_id||'', profil:x.p.profil_haccp||'' });
+        l._plat_ids = l._plat_liens.filter(Boolean).map(r => String(r.plat_id));
+      }
+    } catch(e){ console.warn('[menu] _tagLigne liens:', e); }
     save();
     try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue(enrId, l); } catch(e){ console.warn('[menu] enqueue tag:', e); }
   } catch(e){ console.warn('[menu] _tagLigne:', e); }
@@ -2613,9 +2623,9 @@ function menuTraceJour(){
       out.plats++;
       const lie = platMpLie(p);
       if(lie) out.platsLies++; else out.sansLot++;
-      let all = true;
-      platTraceSteps(p).forEach(st => { out.steps++; let d = false; try { d = platStepDone(st.enr, p); } catch(e){} if(d) out.stepsDone++; else all = false; });
-      if(all) out.platsComplets++;
+      platTraceSteps(p).forEach(st => { out.steps++; let d = false; try { d = platStepDone(st.enr, p); } catch(e){} if(d) out.stepsDone++; });
+      // v499 : « tracé complet » = même état que le badge du plat (lots liés + « Tout tracé » confirmé)
+      if(platMpComplet(p)) out.platsComplets++;
     });
   } catch(e){ console.warn('[menu] traceJour', e); }
   return out;
@@ -2744,7 +2754,7 @@ function renderMenuHomeWidget(){
               mpBtn = '<button type="button" onclick="window._menuMpComplet(event,\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
                 + ' style="font-family:inherit;cursor:pointer;border-radius:999px;padding:2px 7px;font-size:.6rem;font-weight:800;line-height:1.3;'
                 + (done ? 'background:#fff;color:#7A6579;border:1px solid #e5d5e5' : 'background:#5C1E5A;color:#fff;border:1px solid #5C1E5A')
-                + '">' + (done ? '↺ Rouvrir' : '✔ Tout tracé') + '</button>';
+                + '">' + (done ? '✔ Tout tracé · ↺' : '☐ Confirmer « tout tracé »') + '</button>';
             }
           }
           return '<button type="button" onclick="window._menuOpenStep(event,\''+st.enr+'\',\''+q(s.id)+'\',\''+q(c.id)+'\','+idx+')"'
@@ -3118,8 +3128,8 @@ function _menuPhotoRenderDraftHtml(){
     html += `<div style="background:#f7f2f7;border:1.5px solid #ede0ed;border-radius:12px;padding:10px;margin-bottom:10px">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <span style="font-size:.85rem;font-weight:900;color:#5C1E5A">📅</span>
-        <input type="date" value="${escH(day.date||'')}" onchange="window._menuPhotoSetDate(${di},this.value)"
-          style="border:1.5px solid #d8b4d8;border-radius:9px;padding:6px 8px;font-family:inherit;font-weight:800;color:#5C1E5A;background:#fff">
+        <input type="date" lang="fr-FR" value="${escH(day.date||'')}" onchange="window._menuPhotoSetDate(${di},this.value)"
+          style="border:1.5px solid #d8b4d8;border-radius:9px;padding:6px 8px;font-family:inherit;font-weight:800;color:#5C1E5A;background:#fff">${typeof frDateTag==='function'?frDateTag(day.date):''}
       </div>`;
     ['midi','gouter','soir'].forEach(function(svc){
       const items = (day.services && day.services[svc]) || [];
