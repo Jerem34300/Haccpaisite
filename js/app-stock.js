@@ -1655,6 +1655,24 @@ function stkPlatsLiesEdit(ts){
   } catch(e){ console.warn('[stock] plats liés', e); }
 }
 window.stkPlatsLiesEdit = stkPlatsLiesEdit;
+/** v501 : plats retirés d'une fiche, lus dans _plat_corrections (pas de donnée en double). Un plat re-lié n'y figure plus. */
+function _stkPlatsRetires(l){
+  var out = [];
+  try {
+    var cur = _stkPlatsOf(l).map(_stkNorm);
+    (Array.isArray(l && l._plat_corrections) ? l._plat_corrections : []).forEach(function(e){
+      (e && e.retires || []).forEach(function(n){
+        var k = _stkNorm(n); if (!k || cur.indexOf(k) >= 0) return;
+        out = out.filter(function(x){ return _stkNorm(x.nom) !== k; });
+        out.push({ nom: n, date: e.date||'', heure: e.heure||'', par: e.par||'', motif: e.motif||'' });
+      });
+    });
+  } catch(e){ console.warn('[stock] retirés', e); }
+  return out;
+}
+window._stkPlatsRetires = _stkPlatsRetires;
+function _stkRetireTxt(x){ return 'retiré le '+(x.date||'?')+' à '+(x.heure||'?')+', par '+(x.par||'?')+', motif « '+(x.motif||'')+' »'; }
+window._stkRetireTxt = _stkRetireTxt;
 /** Ligne « Corrigé le … par … : avant X, après Y, motif » (historique de la fiche). */
 function stkPlatsCorrHtml(l){
   try {
@@ -1702,6 +1720,7 @@ function stkRecallHtml(q){
         + '<div class="mt">'+(L.bls.length ? ('Reçu : '+L.bls.map(function(b){ return _stkE(/^BL/i.test(b.numero||'')?b.numero:'BL '+(b.numero||'?'))+' ('+_stkE(b.fournisseur||'?')+') du '+_stkFr(b.date)+(b.date_rec && b.date_rec!==b.date?' · reçu le '+_stkFr(b.date_rec):''); }).join(' · ')) : 'Hors stock (saisie Traçabilité MP manuelle)')+'</div>'
         + '<div class="stk-h" style="font-size:.78rem;margin-top:8px">PLATS CONCERNÉS ('+L.plats.length+')</div>'
         + (L.plats.length ? L.plats.map(function(p){ return '<div class="mt">🍽️ '+_stkE(p.nom)+' — '+_stkFr(p.date)+(p.service?' '+_stkE(p.service):'')+'</div>'; }).join('') : '<div class="mt">Aucun plat lié</div>')
+        + L.e31.map(function(l){ try { return _stkPlatsRetires(l).map(function(x){ return '<div class="mt" style="color:#9ca3af"><s>🍽️ '+_stkE(x.nom)+'</s> — <i>'+_stkE(_stkRetireTxt(x))+'</i></div>'; }).join(''); } catch(e){ return ''; } }).join('')
         + L.e31.map(function(l){ try { return '<div class="mt" style="display:flex;gap:6px;align-items:center;margin-top:4px"><span style="flex:1">📄 Fiche du '+_stkFr(l.date)+' : '+(_stkE(_stkPlatsOf(l).join(', '))||'aucun plat')+'</span><button class="stk-btn" onclick="stkPlatsLiesEdit(\''+_stkE(String(l._ts||''))+'\')">✏️ Corriger les plats liés</button></div>'+stkPlatsCorrHtml(l); } catch(e){ return ''; } }).join('')
         + '<div class="stk-h" style="font-size:.78rem;margin-top:8px">EN STOCK</div>'
         + L.items.slice().sort(function(a,b){ return String(a.date_rec).localeCompare(String(b.date_rec)); }).map(function(it){ return '<div class="mt">• BL '+_stkE(it.bl_numero||'?')+' reçu le '+_stkFrY(it.date_rec)+' : '+it.entames+' entamé'+(it.entames>1?'s':'')+' · '+it.neufs+' neuf'+(it.neufs>1?'s':'')+(it.jetes.length?' · 🗑️ '+it.jetes.map(function(j){ return j.n+' jeté'+(j.n>1?'s':'')+' le '+_stkFr(j.date)+' ('+_stkE(j.motif)+', '+_stkE(j.par)+')'; }).join(', '):'')+'</div>'; }).join('')
@@ -1777,6 +1796,7 @@ function _stkRecallPdfSection(R){
         + (L.bls.map(function(b){ return '<tr><td>'+_stkE(b.numero||'—')+'</td><td>'+_stkE(b.fournisseur||'—')+'</td><td>'+_stkFrY(b.date)+'</td><td>'+_stkFrY(b.date_rec)+'</td></tr>'; }).join('') || '<tr><td colspan="4">Saisie Traçabilité MP manuelle (hors stock)</td></tr>')
         + '</tbody></table><table style="margin-top:6px"><thead><tr><th>Plat concerné</th><th>Date</th><th>Service</th><th>Cuisinier</th></tr></thead><tbody>'
         + (L.plats.map(function(p){ return '<tr><td>'+_stkE(p.nom)+'</td><td>'+_stkFrY(p.date)+'</td><td>'+_stkE(p.service||'—')+'</td><td>'+_stkE(p.par||'—')+'</td></tr>'; }).join('') || '<tr><td colspan="4">Aucun plat lié</td></tr>')
+        + L.e31.map(function(l){ try { return _stkPlatsRetires(l).map(function(x){ return '<tr style="color:#6b7280"><td><s>'+_stkE(x.nom)+'</s> — RETIRÉ</td><td>'+_stkFrY(l.date)+'</td><td colspan="2">'+_stkE(_stkRetireTxt(x))+'</td></tr>'; }).join(''); } catch(e){ return ''; } }).join('')
         + '</tbody></table>'
         + '<table style="margin-top:6px"><thead><tr><th>BL</th><th>Reçu le</th><th>Entamés</th><th>Neufs</th><th>Jetés</th></tr></thead><tbody>'
         + L.items.slice().sort(function(a,b){ return String(a.date_rec).localeCompare(String(b.date_rec)); }).map(function(it){ return '<tr><td>'+_stkE(it.bl_numero||'—')+'</td><td>'+_stkFrY(it.date_rec)+'</td><td>'+it.entames+'</td><td>'+it.neufs+'</td><td>'+(it.jetes.map(function(j){ return j.n+' le '+_stkFrY(j.date)+' ('+_stkE(j.motif)+', '+_stkE(j.par)+')'; }).join('<br>')||'—')+'</td></tr>'; }).join('')
