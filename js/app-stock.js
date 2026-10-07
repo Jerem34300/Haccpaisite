@@ -957,9 +957,40 @@ function stkUseForDish(it, rec, refs, etat, ctx){
     return linked;
   } catch(e){ console.warn('[stock] useForDish', e); return 0; }
 }
+/** Index (dans S.enr31.lignes) de la fiche traçabilité de l'entamé le plus ancien du groupe, sinon -1. */
+function _stkEtiqIdx(G){
+  try {
+    if (!G) return -1;
+    var L = (S.enr31||{}).lignes||[];
+    for (var j = 0; j < G.items.length; j++) {
+      var it = G.items[j]; if (!it.entames) continue;
+      var l = _stkEnr31For(it.id); if (l) return L.indexOf(l);
+    }
+  } catch(e){}
+  return -1;
+}
 /* Branchements non intrusifs (aucune modification des formulaires existants) */
 (function stkHooksB(){
   try { stkEntamerUI = stkEntamerPhoto; } catch(e){ console.warn('[stock] hook entamer', e); }
+  try {
+    // Bouton étiquette EXISTANT (🏷️ de l'historique Traçabilité MP → enr31ToEtiq) sur les produits entamés du stock
+    var _lh = stkListHtml;
+    stkListHtml = function(groups){
+      var h = String(_lh(groups));
+      try {
+        if (typeof enr31ToEtiq !== 'function') return h;
+        return h.replace(/<button onclick="stkGroupAct\('fini',(\d+)\)">Fini<\/button>/g, function(m, gi){
+          return _stkEtiqIdx((_stk.view||[])[parseInt(gi,10)]) >= 0
+            ? m + '<button onclick="stkGroupAct(\'etiq\','+gi+')" title="Créer étiquette Entamé">🏷️ Étiquette</button>' : m;
+        });
+      } catch(e){ return h; }
+    };
+    var _ga = stkGroupAct;
+    stkGroupAct = function(act, i){
+      if (act !== 'etiq') return _ga.apply(this, arguments);
+      try { var k = _stkEtiqIdx((_stk.view||[])[i]); if (k >= 0) enr31ToEtiq(k); } catch(e){ console.warn('[stock] etiq', e); }
+    };
+  } catch(e){ console.warn('[stock] hook etiq', e); }
   try {
     // Fiche ENR31 : bouton « Choisir dans le stock » à côté de la saisie manuelle
     if (typeof REND !== 'undefined' && typeof REND['enr31'] === 'function') {
