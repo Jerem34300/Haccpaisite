@@ -1563,7 +1563,7 @@ function _stkMenuPlatsOfDate(date){
   var out = [];
   try {
     var M = S.menus || {}, seen = {};
-    Object.keys(M).forEach(function(k){
+    Object.keys(M).sort().reverse().forEach(function(k){ // plus récent d'abord
       if (date && k.indexOf(date) < 0) return;
       var m = M[k] || {}, c = m.categories || {};
       Object.keys(c).forEach(function(ck){ (c[ck]||[]).forEach(function(p){ if (p && p.plat_id && p.nom && !seen[p.plat_id]) { seen[p.plat_id] = 1; out.push({ plat_id: String(p.plat_id), nom: p.nom, menu_id: p.menu_id || m.menu_id || '', profil: p.profil_haccp || p.profil || '' }); } }); });
@@ -1590,7 +1590,9 @@ function stkPlatsLiesApply(l, keepKeys, add, motif, by){
     if (r.plat_id) { after.push(r); return; }
     // Ancien lien par nom seul : retrouver l'id dans le menu (nom normalisé), sinon garder le lien par son nom
     try { if (!menuAll) menuAll = _stkMenuPlatsOfDate(''); } catch(e){ menuAll = []; }
-    var m = (menuAll||[]).filter(function(p){ return _stkNorm(p.nom) === _stkNorm(r.nom); }).pop();
+    var m = null; // v501 : menu de la date de la fiche d'abord, puis le plus récent
+    try { var sd = l.date ? _stkMenuPlatsOfDate(l.date) : []; m = sd.filter(function(p){ return _stkNorm(p.nom) === _stkNorm(r.nom); })[0] || null; } catch(e){ m = null; }
+    if (!m) m = (menuAll||[]).filter(function(p){ return _stkNorm(p.nom) === _stkNorm(r.nom); })[0] || null; // liste triée du plus récent au plus ancien
     after.push(m ? { plat_id: m.plat_id, nom: m.nom, menu_id: m.menu_id||'', profil: m.profil||'' } : { plat_id: '', nom: r.nom||g.nom, menu_id: '', profil: '' });
   }); });
   (add||[]).forEach(function(r){ if (r && r.plat_id && !after.some(function(x){ return x.plat_id === String(r.plat_id); })) after.push({ plat_id: String(r.plat_id), nom: r.nom||'', menu_id: r.menu_id||'', profil: r.profil||'' }); });
