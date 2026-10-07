@@ -125,6 +125,48 @@ function renderStockHQ(){
     setContent(h);
   } catch(e){ console.error('[stock siège]', e); setContent('<div class="empty">⚠️ Erreur affichage Stock : '+_sdE(e && e.message)+'</div>'); }
 }
+/** v501 : plats des menus d'un site (enr_menu), pour rapprocher les liens par id ou par nom. */
+function _sdMenuPlats(code){
+  var out = [];
+  try {
+    _sdRecs(['enr_menu']).filter(function(r){ return r.site_id === code; }).forEach(function(r){
+      var d = r.data || {}, dt = String(d.menu_date || r.recorded_at || '').slice(0,10), ts = String(d._ts || r.recorded_at || ''), c = d.categories || {};
+      Object.keys(c).forEach(function(k){ (c[k]||[]).forEach(function(p){ if (p && p.nom) out.push({ plat_id: p.plat_id ? String(p.plat_id) : '', nom: p.nom, date: dt, ts: ts }); }); });
+    });
+  } catch(e){ console.warn('[stock siège] menus', e); }
+  return out;
+}
+/** Nom affiché d'un lien : menu de la date de la fiche en priorité, puis le plus récent ; par id, sinon par nom normalisé. */
+function _sdPlatNom(menus, ref, date){
+  try {
+    var id = ref && ref.plat_id ? String(ref.plat_id) : '', n = _sdN(ref && ref.nom);
+    var hit = (menus||[]).filter(function(p){ return id ? p.plat_id === id : (n && _sdN(p.nom) === n); });
+    if (!hit.length) return (ref && ref.nom) || '';
+    var sameDay = hit.filter(function(p){ return p.date === date; });
+    var pool = sameDay.length ? sameDay : hit;
+    pool.sort(function(a,b){ return String(b.date+b.ts).localeCompare(String(a.date+a.ts)); });
+    return pool[0].nom;
+  } catch(e){ return (ref && ref.nom) || ''; }
+}
+/** Liens d'une fiche ENR31 côté siège : _plat_liens (seule source si présent), sinon anciens _plat_nom. */
+function _sdLiensOf(d){
+  try {
+    if (Array.isArray(d && d._plat_liens)) return d._plat_liens.filter(Boolean);
+    return (d && d._plat_nom) ? [{ plat_id: d._plat_id || '', nom: d._plat_nom }] : [];
+  } catch(e){ return []; }
+}
+/** Plats retirés (lus dans _plat_corrections) qui ne sont pas re-liés. */
+function _sdRetiresOf(d, curNoms){
+  var out = [];
+  try {
+    var cur = (curNoms||[]).map(_sdN);
+    (Array.isArray(d && d._plat_corrections) ? d._plat_corrections : []).forEach(function(e){
+      (e && e.retires || []).forEach(function(n){ var k = _sdN(n); if (!k || cur.indexOf(k) >= 0) return; out = out.filter(function(x){ return _sdN(x.nom) !== k; }); out.push({ nom: n, le: e.date||'', heure: e.heure||'', par: e.par||'', motif: e.motif||'' }); });
+    });
+  } catch(e){}
+  return out;
+}
+function _sdRetTxt(x){ return 'retiré le '+(x.le||'?')+' à '+(x.heure||'?')+', par '+(x.par||'?')+', motif « '+(x.motif||'')+' »'; }
 function _sdRecall(q){
   var out = [];
   try {
@@ -141,11 +183,16 @@ function _sdRecall(q){
           var k = r.data.plat+'|'+(r.data.date_service||r.data.date)+'|'+(r.data.service||''); if (seen[k]) return; seen[k] = 1;
           plats.push({ nom: r.data.plat, date: r.data.date_service || r.data.date, service: r.data.service || '' });
         });
-        e31.forEach(function(r){ (r.data._plat_liens||[]).forEach(function(p){ if (p && p.nom && !plats.some(function(x){ return x.nom === p.nom && x.date === r.data.date; })) plats.push({ nom: p.nom, date: r.data.date, service: '' }); }); });
+        var menus = _sdMenuPlats(s.code), retires = [];
+        e31.forEach(function(r){
+          var noms = [];
+          _sdLiensOf(r.data).forEach(function(p){ var nom = _sdPlatNom(menus, p, r.data.date); if (!nom) return; noms.push(nom); if (!plats.some(function(x){ return _sdN(x.nom) === _sdN(nom) && x.date === r.data.date; })) plats.push({ nom: nom, date: r.data.date, service: '' }); });
+          _sdRetiresOf(r.data, noms).forEach(function(x){ x.date = r.data.date; retires.push(x); });
+        });
         var bls = {}; items.forEach(function(i){ bls[i.bl_numero+'|'+i.fournisseur] = { numero: i.bl_numero, fournisseur: i.fournisseur, date: i.bl_date, rec: i.date_rec }; });
         var prods = {}; items.forEach(function(i){ prods[i.produit] = 1; }); e31.forEach(function(r){ prods[r.data.produit] = 1; });
         out.push({ site: s.code, nom: s.name || s.code, produits: Object.keys(prods), lots: items.map(function(i){ return i.lot; }).concat(e31.map(function(r){ return r.data.lot; })).filter(function(v,i,a){ return v && a.indexOf(v)===i; }),
-          bls: Object.keys(bls).map(function(k){ return bls[k]; }), plats: plats.sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); }),
+          bls: Object.keys(bls).map(function(k){ return bls[k]; }), plats: plats.sort(function(a,b){ return String(a.date).localeCompare(String(b.date)); }), retires: retires,
           entames: items.reduce(function(a,i){ return a+i.entames; },0), neufs: items.reduce(function(a,i){ return a+i.neufs; },0), bloque: items.some(function(i){ return i.bloque; }) });
       });
   } catch(e){ console.warn('[stock siège] recall', e); }
@@ -161,6 +208,7 @@ function _sdRecallHtml(q){
       + '<div>'+_sdE(x.produits.join(', '))+' — lot '+_sdE(x.lots.join(', '))+'</div>'
       + '<div style="color:#475569">BL : '+(x.bls.map(function(b){ return _sdE(b.numero)+' ('+_sdE(b.fournisseur)+', '+_sdFr(b.date)+')'; }).join(' · ')||'saisie manuelle hors stock')+'</div>'
       + '<div>Plats : '+(x.plats.map(function(p){ return _sdE(p.nom)+' '+_sdFr(p.date)+(p.service?' '+_sdE(p.service):''); }).join(' · ')||'aucun')+'</div>'
+      + (x.retires||[]).map(function(r){ return '<div style="color:#94a3b8"><s>'+_sdE(r.nom)+'</s> '+_sdFr(r.date)+' — '+_sdE(_sdRetTxt(r))+'</div>'; }).join('')
       + '<div><b>En stock : '+x.entames+' entamé(s) · '+x.neufs+' neuf(s)</b></div></div>';
   }).join('') + '<button onclick="_sdRecallPdf()" style="padding:10px 16px;background:#0F2240;color:#fff;border:none;border-radius:10px;font-weight:800;cursor:pointer;font-family:inherit">📄 Export PDF rappel (tous sites)</button>';
 }
@@ -171,7 +219,8 @@ function _sdRecallPdf(){
     var rows = R.map(function(x){
       return '<h2>'+_sdE(x.nom)+(x.bloque?' — ⛔ BLOQUÉ':'')+'</h2><p>'+_sdE(x.produits.join(', '))+' — lot '+_sdE(x.lots.join(', '))+'</p>'
         + '<table><tr><th>BL</th><th>Fournisseur</th><th>Date BL</th><th>Reçu le</th></tr>'+(x.bls.map(function(b){ return '<tr><td>'+_sdE(b.numero)+'</td><td>'+_sdE(b.fournisseur)+'</td><td>'+_sdFr(b.date)+'</td><td>'+_sdFr(b.rec)+'</td></tr>'; }).join('')||'<tr><td colspan="4">Saisie manuelle</td></tr>')+'</table>'
-        + '<table><tr><th>Plat</th><th>Date</th><th>Service</th></tr>'+(x.plats.map(function(p){ return '<tr><td>'+_sdE(p.nom)+'</td><td>'+_sdFr(p.date)+'</td><td>'+_sdE(p.service||'—')+'</td></tr>'; }).join('')||'<tr><td colspan="3">Aucun plat lié</td></tr>')+'</table>'
+        + '<table><tr><th>Plat</th><th>Date</th><th>Service</th></tr>'+(x.plats.map(function(p){ return '<tr><td>'+_sdE(p.nom)+'</td><td>'+_sdFr(p.date)+'</td><td>'+_sdE(p.service||'—')+'</td></tr>'; }).join('')||'<tr><td colspan="3">Aucun plat lié</td></tr>')
+          + (x.retires||[]).map(function(r){ return '<tr style="color:#6b7280"><td><s>'+_sdE(r.nom)+'</s> — RETIRÉ</td><td>'+_sdFr(r.date)+'</td><td>'+_sdE(_sdRetTxt(r))+'</td></tr>'; }).join('')+'</table>'
         + '<p>En stock : <b>'+x.entames+' entamé(s), '+x.neufs+' neuf(s)</b></p>';
     }).join('');
     var w = window.open('', '_blank');

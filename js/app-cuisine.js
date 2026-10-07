@@ -3137,7 +3137,10 @@ function renderHistoCard(secId,fieldDefs,opts){
           </div>`;
         };
         let platsLies='';
-        try{ const pl=(typeof window._stkPlatsOf==='function')?window._stkPlatsOf(r):[]; if(pl.length) platsLies=`<div class="hdi"><div class="hdi-label">Plat${pl.length>1?'s':''} lié${pl.length>1?'s':''}</div><div class="hdi-val">${pl.map(n=>'🍽️ '+escH(n)).join('<br>')}</div></div>`; }catch(e){ platsLies=''; }
+        try{ const pl=(typeof window._stkPlatsOf==='function')?window._stkPlatsOf(r):[]; try{ const rt=(typeof window._stkPlatsRetires==='function')?window._stkPlatsRetires(r):[]; if(rt.length) platsLies+=`<div class="hdi"><div class="hdi-label">Plat${rt.length>1?'s':''} retiré${rt.length>1?'s':''}</div><div class="hdi-val" style="color:#9ca3af">${rt.map(x=>'<s>🍽️ '+escH(x.nom)+'</s> — '+escH(window._stkRetireTxt(x))).join('<br>')}</div></div>`; }catch(e){}
+        if(pl.length) platsLies=`<div class="hdi"><div class="hdi-label">Plat${pl.length>1?'s':''} lié${pl.length>1?'s':''}</div><div class="hdi-val">${pl.map(n=>'🍽️ '+escH(n)).join('<br>')}</div></div>`; }catch(e){ platsLies=''; }
+        // v501 : correction des plats liés (code admin) + trace avant/après
+        try{ if(secId==='enr31'){ platsLies+=`<div class="hdi" style="grid-column:1/-1">${(typeof window.stkPlatsCorrHtml==='function')?window.stkPlatsCorrHtml(r):''}<button type="button" onclick="${escAttr('event.stopPropagation();stkPlatsLiesEdit('+JSON.stringify(String(r._ts||''))+')')}" style="margin-top:6px;background:#fff;border:1.5px solid #5C1E5A;color:#5C1E5A;border-radius:8px;padding:5px 10px;font-size:.72rem;font-weight:800;font-family:inherit;cursor:pointer">✏️ Corriger les plats liés</button></div>`; } }catch(e){ console.warn('[enr31] corr btn', e); }
         const grid=[...dataItems.map(k=>mkItem(k,false)),...confItems.map(k=>mkItem(k,true))].join('')+platsLies;
         let photoCompact='', photoFull='';
         try{ photoCompact=_histoPhotosHtml(r,true); photoFull=_histoPhotosHtml(r,false); }catch(e){ photoCompact=''; photoFull=''; }
@@ -13688,6 +13691,8 @@ function exportMP_PDF(period){
         const dlcOk = (dIso && !inf.jete) ? dIso >= todayStr : null;
         let plats = '—';
         try { const pl = (!inf.jete && typeof window._stkPlatsOf==='function') ? window._stkPlatsOf(r) : []; if(pl.length) plats = pl.map(escH).join('<br>'); } catch(e){}
+        // v501 : plats retirés (correction) visibles et barrés, marqués RETIRÉ
+        try { const rt = (typeof window._stkPlatsRetires==='function') ? window._stkPlatsRetires(r) : []; if(rt.length) plats = (plats==='—'?'':plats+'<br>') + rt.map(x=>'<span style="color:#6b7280"><s>'+escH(x.nom)+'</s> — RETIRÉ ('+escH(window._stkRetireTxt(x))+')</span>').join('<br>'); } catch(e){}
         tableBody += `<tr>
           <td>${escH(inf.produit||r.produit||'—')}</td>
           <td style="white-space:normal;word-break:break-all">${escH(r.lot||'—')}</td>

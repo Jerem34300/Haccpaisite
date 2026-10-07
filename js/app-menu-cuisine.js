@@ -897,7 +897,7 @@ function renderCoverageCard(cov){
   <div class="mn-cov ${cls}">
     <div class="mn-cov-tit">${ico} Couverture HACCP du jour — ${pct}%</div>
     <div class="mn-cov-bar"><div class="mn-cov-fill" style="width:${pct}%"></div></div>
-    <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''}${cov.lies!=null?` • ${cov.lies} plat${cov.lies>1?'s':''} avec lot`:''} • ${cov.tracked} tracé${cov.tracked>1?'s':''} complet${cov.tracked>1?'s':''}</div>
+    <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''}${cov.lies!=null?` • ${cov.lies} plat${cov.lies>1?'s':''} avec lot`:''} • ${cov.tracked} confirmé${cov.tracked>1?'s':''} « tout tracé »</div>${(cov.lies>0&&!cov.tracked)?'<div class="mn-cov-sub" style="font-style:italic">Appuie sur ☐ Confirmer « tout tracé » sur chaque plat</div>':''}
   </div>`;
 }
 
@@ -2808,9 +2808,10 @@ function renderMenuHomeWidget(){
     </div>
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;font-size:.66rem;font-weight:800;color:#5C1E5A;margin-bottom:3px">
-        <span>Traçabilité des plats</span><span>${(()=>{ try { const tj = menuTraceJour(); return tj.platsLies+' plat'+(tj.platsLies>1?'s':'')+' avec lot · '+tj.platsComplets+' tracé'+(tj.platsComplets>1?'s':'')+' complet'+(tj.platsComplets>1?'s':'')+' · '; } catch(e){ return ''; } })()}${pct}%</span>
+        <span>Traçabilité des plats</span><span>${(()=>{ try { const tj = menuTraceJour(); return tj.platsLies+' plat'+(tj.platsLies>1?'s':'')+' avec lot · '+tj.platsComplets+' confirmé'+(tj.platsComplets>1?'s':'')+' « tout tracé » · '; } catch(e){ return ''; } })()}${pct}%</span>
       </div>
       <div style="height:8px;background:#f1e6f1;border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barCol};border-radius:999px"></div></div>
+      ${(()=>{ try { const tj = menuTraceJour(); return (tj.platsLies>0 && !tj.platsComplets) ? '<div style="font-size:.62rem;font-weight:700;color:#7A6579;margin-top:3px">Appuie sur ☐ Confirmer « tout tracé » sur chaque plat</div>' : ''; } catch(e){ return ''; } })()}
     </div>
     <div id="menu-wg-plats" style="${folded ? 'display:none' : ''}">${blocks}</div>
   </div>`;
