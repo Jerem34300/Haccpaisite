@@ -8,8 +8,8 @@
  * même si le réseau tablette est instable.
  */
 
-const CACHE_NAME = 'haccpro-v492';
-const CDN_CACHE_NAME = 'haccpro-cdn-v492';
+const CACHE_NAME = 'haccpro-v493';
+const CDN_CACHE_NAME = 'haccpro-cdn-v493';
 
 // Assets à mettre en cache dès l'installation
 // ⚠ NE PAS pré-cacher les pages HTML : elles utilisent Network-First
