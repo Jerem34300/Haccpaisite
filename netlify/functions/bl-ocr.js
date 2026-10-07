@@ -60,6 +60,8 @@ Règles:
 7) Conditionnement multiple "N × P" (ex: "20×250 g", "6 x 1 L", "colis de 12") : "unites" = N × nombre de colis (ex: 1 colis de 20×250 g → unites = 20). Ne jamais renvoyer 1 unité pour un colis de N pièces.
 8) Dates : toujours l'ANNÉE COMPLÈTE sur 4 chiffres (JJ/MM/AAAA). Si l'année imprimée a 2 chiffres, la convertir en 20AA. Ne jamais confondre date de livraison et DLC.
 9) "dlc_type" : "DLC" si "à consommer jusqu'au" / DLC ; "DDM" si "à consommer de préférence avant" / DDM / DLUO / BBD.
+11) "produit" : recopier la DÉSIGNATION MOT POUR MOT, telle qu'imprimée sur la ligne (ex: "OIGNON JAUNE", "BANANE CAT 1"). Ne JAMAIS normaliser, traduire, résumer ni remplacer par un produit proche (un oignon n'est pas une pomme). Chaque ligne a sa propre désignation : ne pas recopier celle de la ligne précédente.
+12) "conditionnement" : recopier tel quel calibre, catégorie, poids et format (ex: "cal. 40/60", "cat. I", "colis 10 kg") sans les arrondir ni les inventer ; vide si absent.
 10) Lot : recopier EXACTEMENT les caractères imprimés (lettres, chiffres, tirets, espaces), sans corriger ni compléter ; ne pas confondre avec un code article, un EAN ou une date.`;
 
 function toInt(v) {

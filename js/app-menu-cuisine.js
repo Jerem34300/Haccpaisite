@@ -86,7 +86,12 @@ function detectComposants(nom){
 // BF Cuit = mixé chaud (plat cuit/chaud → mixé → servi chaud)
 // BF Cru  = mixé froid (aliment cru/froid → mixé → servi froid)
 function mixeProfil(plat){
-  return ['BF_CUIT','REMISE_TC'].includes(plat.profil_haccp) ? 'BF_CUIT' : 'BF_CRU';
+  try {
+    if(['BF_CUIT','REMISE_TC'].includes(plat.profil_haccp)) return 'BF_CUIT';
+    // v495 : plat cuit par nature (potage, purée, viande…) même s'il est en « Préparé minute » / « Sortie directe » → mixé CUIT
+    if(['PREP_MINUTE','SORTIE_DIRECTE'].includes(plat.profil_haccp) && typeof detectProfil === 'function' && detectProfil(plat.nom||'') === 'BF_CUIT') return 'BF_CUIT';
+  } catch(e){}
+  return 'BF_CRU';
 }
 
 const CATS = [
@@ -2046,7 +2051,10 @@ function refreshLinkBanner(enrId){
 function ligneIsToday(l){
   if(!l) return false;
   const d = today();
-  return l.date === d || String(l._ts||'').slice(0,10) === d;
+  if(l.date) return l.date === d;
+  // v495 : _ts est en UTC → convertir en date LOCALE avant comparaison
+  try { const t = new Date(l._ts); if(!isNaN(t)) return (t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')) === d; } catch(e){}
+  return String(l._ts||'').slice(0,10) === d;
 }
 
 // ── Reconnaissance d'un plat du menu à partir d'un nom saisi à la main ──
@@ -2161,6 +2169,8 @@ function _temoinKey(platId, variant){
 function _temoinImprime(l){
   try {
     if(!l || !l._from_menu) return true;
+    // v495 : un témoin auto-créé depuis le menu est un enregistrement réel → compté (l'impression n'est plus une condition des compteurs)
+    if(!l._deleted) return true;
     const m = S.etiqImprimees;
     return !!(m && m.date === today() && m.keys && m.keys[_temoinKey(l._plat_id, l._variant)]);
   } catch(e){ return true; }
@@ -2178,6 +2188,8 @@ window._temoinMarkImprime = function(entries){
 
 function platDejaSaisi(enrId, plat){
   try {
+    // v495 : Traça MP = UNE seule source (liens lot ↔ plat), jamais une correspondance de nom
+    if(enrId === 'enr31') return platMpLie(plat);
     const store = (typeof S !== 'undefined' && S[enrId]) || {};
     const lignes = store.lignes || store.saisies || [];
     const nom = String(plat && plat.nom || '').trim().toLowerCase();
