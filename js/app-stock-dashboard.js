@@ -179,16 +179,25 @@ function _sdRecall(q){
         if (!items.length && !e31.length) return;
         var ids = {}; items.forEach(function(i){ ids[i.id] = 1; });
         var plats = [], seen = {};
-        _sdRecs(['stock_mvt']).filter(function(r){ return r.site_id === s.code && ids[r.data.item_id] && r.data.type === 'usage' && r.data.plat; }).forEach(function(r){
-          var k = r.data.plat+'|'+(r.data.date_service||r.data.date)+'|'+(r.data.service||''); if (seen[k]) return; seen[k] = 1;
-          plats.push({ nom: r.data.plat, date: r.data.date_service || r.data.date, service: r.data.service || '' });
-        });
         var menus = _sdMenuPlats(s.code), retires = [];
         e31.forEach(function(r){
           var noms = [];
           _sdLiensOf(r.data).forEach(function(p){ var nom = _sdPlatNom(menus, p, r.data.date); if (!nom) return; noms.push(nom); if (!plats.some(function(x){ return _sdN(x.nom) === _sdN(nom) && x.date === r.data.date; })) plats.push({ nom: nom, date: r.data.date, service: '' }); });
           _sdRetiresOf(r.data, noms).forEach(function(x){ x.date = r.data.date; retires.push(x); });
         });
+        // v502 : mouvements « usage » seulement si AUCUNE fiche ENR31 du lot n'a de plats (même règle que app-stock.js), découpés sur « , »
+        var e31Plats = 0; e31.forEach(function(r){ try { e31Plats += _sdLiensOf(r.data).length + (Array.isArray(r.data._plat_liens) ? 1 : 0); } catch(e){} });
+        if (!e31Plats) _sdRecs(['stock_mvt']).filter(function(r){ return r.site_id === s.code && ids[r.data.item_id] && r.data.type === 'usage' && r.data.plat; }).forEach(function(r){
+          String(r.data.plat).split(/\s*,\s*/).forEach(function(nom){
+            nom = String(nom||'').trim(); if (!nom) return;
+            var k = _sdN(nom)+'|'+(r.data.date_service||r.data.date)+'|'+(r.data.service||''); if (seen[k]) return; seen[k] = 1;
+            plats.push({ nom: nom, date: r.data.date_service || r.data.date, service: r.data.service || '' });
+          });
+        });
+        // Un plat retiré (et non re-lié sur une autre fiche) n'apparaît jamais dans « concernés »
+        try { var curAll = {}; e31.forEach(function(r){ _sdLiensOf(r.data).forEach(function(p){ curAll[_sdN(_sdPlatNom(menus, p, r.data.date))] = 1; }); });
+          var ret = {}; retires.forEach(function(x){ var k = _sdN(x.nom); if (!curAll[k]) ret[k] = 1; });
+          plats = plats.filter(function(p){ return !ret[_sdN(p.nom)]; }); } catch(e){ console.warn('[stock siège] retirés filtre', e); }
         var bls = {}; items.forEach(function(i){ bls[i.bl_numero+'|'+i.fournisseur] = { numero: i.bl_numero, fournisseur: i.fournisseur, date: i.bl_date, rec: i.date_rec }; });
         var prods = {}; items.forEach(function(i){ prods[i.produit] = 1; }); e31.forEach(function(r){ prods[r.data.produit] = 1; });
         out.push({ site: s.code, nom: s.name || s.code, produits: Object.keys(prods), lots: items.map(function(i){ return i.lot; }).concat(e31.map(function(r){ return r.data.lot; })).filter(function(v,i,a){ return v && a.indexOf(v)===i; }),
