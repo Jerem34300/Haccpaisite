@@ -862,8 +862,8 @@ function navBadge(id){
         const encs=getEnceintes();
         const saisies=(S['enr19']?.saisies||[]).filter(r=>r.date===todayStr);
         const ncEnc=encs.filter(e=>{
-          const rOuv=saisies.filter(r=>r.enc_id===e.id&&r.moment==='ouv').slice(-1)[0];
-          const rFerm=saisies.filter(r=>r.enc_id===e.id&&r.moment==='ferm').slice(-1)[0];
+          const rOuv=_encLast(saisies.filter(r=>r.enc_id===e.id&&r.moment==='ouv'));
+          const rFerm=_encLast(saisies.filter(r=>r.enc_id===e.id&&r.moment==='ferm'));
           return encConforme(rOuv?.temp,e.consigne)===false||encConforme(rFerm?.temp,e.consigne)===false;
         }).length;
         const sansOuv=encs.filter(e=>!saisies.some(r=>r.enc_id===e.id&&r.moment==='ouv')).length;
@@ -1978,9 +1978,37 @@ function updWH(col,val,tot){
 }
 
 // Saisie directe dans les champs HH/MM
+/** v496 : champ heure 24 h forcé (le type="time" natif suit le réglage AM/PM de l'appareil).
+ *  « 1115 » → 11:15, « 915 » → 09:15 ; valeur toujours HH:MM (compatible avec les lecteurs .value). */
+function _hhmmFmt(inp, final){
+  try {
+    const d=String(inp.value||'').replace(/\D/g,'').slice(0,4);
+    if(!final){ inp.value = d.length>2 ? d.slice(0,d.length-2)+':'+d.slice(-2) : d; return; }
+    if(!d){ inp.value=''; return; }
+    let h, m;
+    if(d.length<=2){ h=parseInt(d,10); m=0; } else { h=parseInt(d.slice(0,d.length-2),10); m=parseInt(d.slice(-2),10); }
+    if(isNaN(h)||h>23||isNaN(m)||m>59){ inp.value=''; try{ toast('⚠️ Heure invalide (HH:MM, 24 h)','warning'); }catch(e){} return; }
+    inp.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+  } catch(e){}
+}
+window._hhmmFmt=_hhmmFmt;
 function twDirectInput(col,inp){
   const tot=col==='h'?24:60;
   const raw=inp.value.replace(/\D/g,'');
+  // v496 : « 1115 » / « 915 » tapé dans les heures = HHMM → 11:15 / 09:15 (avant : 23:5)
+  try {
+    if(col==='h' && raw.length>=3 && window._twAutoMinT){ clearTimeout(window._twAutoMinT); window._twAutoMinT=null; }
+    if(col==='h' && raw.length===3){ inp.value=raw; return; } // attendre le 4e chiffre ou le blur
+    if(col==='h' && raw.length>=4){
+      const r4=raw.slice(0,4), hh=parseInt(r4.slice(0,r4.length-2),10), mm=parseInt(r4.slice(-2),10);
+      if(hh>=0&&hh<24&&mm>=0&&mm<60){
+        inp.value=String(hh).padStart(2,'0'); setWheel('h',hh,true);
+        const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
+        setWheel('m',mm,true); return;
+      }
+    }
+    if(col==='m' && raw.length>2){ inp.value=raw.slice(0,2); return twDirectInput('m',inp); }
+  } catch(e){ console.warn('[tw] hhmm', e); }
   inp.value=raw; // ne garder que les chiffres
   const v=parseInt(raw);
   if(raw.length===0) return; // en cours de saisie
@@ -1990,12 +2018,25 @@ function twDirectInput(col,inp){
     setWheel(col,v,true); // true = vient du champ, ne pas re-setter l'input
     // Auto-focus sur le champ minutes si 2 chiffres valides saisis pour les heures
     if(col==='h' && raw.length>=2){
-      setTimeout(()=>{const m=document.getElementById('tw-inp-m');if(m){m.focus();m.select();}},120);
+      try{ if(window._twAutoMinT) clearTimeout(window._twAutoMinT); }catch(e){}
+      window._twAutoMinT=setTimeout(()=>{ window._twAutoMinT=null; try{ const hi=document.getElementById('tw-inp-h'); if(hi && String(hi.value).replace(/\D/g,'').length>2) return; const m=document.getElementById('tw-inp-m');if(m){m.focus();m.select();} }catch(e){} },120);
     }
   }
 }
 function twDirectBlur(col,inp){
   const tot=col==='h'?24:60;
+  // v496 : « 915 » / « 1115 » dans les heures = HHMM au blur
+  try {
+    const raw=String(inp.value||'').replace(/\D/g,'');
+    if(col==='h' && raw.length>=3){
+      const r4=raw.slice(0,4), hh=parseInt(r4.slice(0,r4.length-2),10), mm=parseInt(r4.slice(-2),10);
+      if(hh>=0&&hh<24&&mm>=0&&mm<60){
+        inp.value=String(hh).padStart(2,'0'); setWheel('h',hh,true);
+        const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
+        setWheel('m',mm,true); return;
+      }
+    }
+  } catch(e){ console.warn('[tw] blur hhmm', e); }
   let v=parseInt(inp.value);
   if(isNaN(v)||v<0) v=0;
   if(v>=tot) v=tot-1;
@@ -2053,6 +2094,7 @@ function twConfirm(){
     }
   } catch(e){ console.warn('[tw] futur', e); }
   sd(TW.fid,val,TW.sec);
+  try{ const dr=S[TW.sec]&&S[TW.sec].draft; if(dr&&dr._autoT) delete dr._autoT[TW.fid]; }catch(e){}
   const btn=document.querySelector(`[data-tw="${TW.fid}-${TW.sec}"]`);
   if(btn)btn.innerHTML=`<span>⏰</span><span class="tv">${val}</span>`;
   twClose();
@@ -2076,9 +2118,18 @@ function twSE(col){TDS[col].drag=false;setWheel(col,TW[col]);}
 function timeBtnHtml(id,sec,label,autoTime){
   let val=gd(id,sec);
   // Si autoTime et pas encore en draft → pré-sauvegarder l'heure courante
+  // v496 : heure auto = maintenant à l'ouverture, tant que l'utilisateur ne l'a pas choisie et que la fiche n'est pas commencée
+  try {
+    const dr=sec&&S[sec]&&S[sec].draft;
+    if(val && autoTime && dr && dr._autoT && dr._autoT[id]){
+      // fiche « commencée » = une température déjà saisie (un pré-remplissage depuis le menu ne compte pas)
+      const started=((FDEFS[sec]&&FDEFS[sec].fields)||[]).some(f=>f.type==='temp'&&dr[f.id]!==undefined&&dr[f.id]!==null&&dr[f.id]!=='');
+      if(!started){ val=nowT(); dr[id]=val; }
+    }
+  } catch(e){}
   if(!val && autoTime){
     val=nowT();
-    if(sec){S[sec]=S[sec]||{};S[sec].draft=S[sec].draft||{};S[sec].draft[id]=val;}
+    if(sec){S[sec]=S[sec]||{};S[sec].draft=S[sec].draft||{};S[sec].draft[id]=val;try{S[sec].draft._autoT=Object.assign({},S[sec].draft._autoT,{[id]:1});}catch(e){}}
   }
   const inner=val
     ?`<span>⏰</span><span class="tv">${val}</span>`
@@ -3282,7 +3333,7 @@ function saveRow(id){
   if(prod)addProd(prod.trim());
   const ts=new Date().toISOString();
   // ── Photo différée : télécharger avec le bon nom produit ──
-  const _savedRow = {...draft, _sec:id, _ts:ts};
+  const _savedRow = {...draft, _sec:id, _ts:ts}; try{ delete _savedRow._autoT; delete _savedRow._hf_auto; }catch(e){} // v496 : marqueurs UI jamais synchronisés
   // Inclure photo2/3 dans le row ENR31 si présentes
   if(id==='enr31'){
     if(draft.photo2) _savedRow.photo2=draft.photo2;
@@ -4334,8 +4385,8 @@ function renderENR19(){
     <div style="font-size:.73rem;color:var(--gris2)">📅 Relevés du ${new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}</div>
   </div>
   ${encs.map(e=>{
-    const rOuv=saisies.filter(r=>r.enc_id===e.id&&r.moment==='ouv').slice(-1)[0];
-    const rFerm=saisies.filter(r=>r.enc_id===e.id&&r.moment==='ferm').slice(-1)[0];
+    const rOuv=_encLast(saisies.filter(r=>r.enc_id===e.id&&r.moment==='ouv'));
+    const rFerm=_encLast(saisies.filter(r=>r.enc_id===e.id&&r.moment==='ferm'));
     const cOuv=encConforme(rOuv?.temp, e.consigne);
     const cFerm=encConforme(rFerm?.temp, e.consigne);
     const cardCls=(!rOuv&&!rFerm)?'':((cOuv===false||cFerm===false)?'nc':'ok');
@@ -4360,7 +4411,7 @@ function renderENR19(){
           ${rOuv?'<div style="font-size:.6rem;color:var(--gris2)">'+rOuv.heure+(rOuv.cuisinier?' · '+rOuv.cuisinier:'')+'</div>':''}
         </div>
         ${caniculeActive()?(function(){
-          var rA=saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='aprem';}).slice(-1)[0];
+          var rA=_encLast(saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='aprem';}));
           var cA=rA?encConforme(rA.temp,e.consigne):null;
           var cls=cA===false?'nc':cA===true?'ok':'empty';
           return '<div class="enc-reading" style="border-left:2px solid #f59e0b;padding-left:6px">'
@@ -4379,7 +4430,7 @@ function renderENR19(){
         <button class="enc-btn ${cOuv===false?'nc':rOuv?'done':''}" onclick="openEncSaisie('${e.id}','ouv')">
           ${cOuv===false?'⚠️':rOuv?'✓':'+'} Ouverture
         </button>
-        ${caniculeActive()?(()=>{const rA=saisies.filter(r=>r.date===todayStr&&r.enc_id===e.id&&r.moment==='aprem').slice(-1)[0];const cA=rA?encConforme(rA.temp,e.consigne):null;return `<button class="enc-btn ${cA===false?'nc':rA?'done':''}" onclick="openEncSaisie('${e.id}','aprem')" style="background:#ff9800;color:#fff">${cA===false?'⚠️':rA?'✓':'☀️'} Après-midi</button>`;})():''}
+        ${caniculeActive()?(()=>{const rA=_encLast(saisies.filter(r=>r.date===todayStr&&r.enc_id===e.id&&r.moment==='aprem'));const cA=rA?encConforme(rA.temp,e.consigne):null;return `<button class="enc-btn ${cA===false?'nc':rA?'done':''}" onclick="openEncSaisie('${e.id}','aprem')" style="background:#ff9800;color:#fff">${cA===false?'⚠️':rA?'✓':'☀️'} Après-midi</button>`;})():''}
         <button class="enc-btn ${cFerm===false?'nc':rFerm?'done':''}" onclick="openEncSaisie('${e.id}','ferm')">
           ${cFerm===false?'⚠️':rFerm?'✓':'+'} Fermeture
         </button>
@@ -4593,7 +4644,7 @@ function _encIsConge(enc){
 }
 // v495 : heure du relevé réglable (défaut = maintenant, jamais dans le futur)
 function _encHeureHtml(){
-  return '<div class="fg full" style="margin-top:8px"><label>Heure du relevé</label><input type="time" id="enc-heure-inp" class="fi" value="'+nowT()+'" max="'+nowT()+'" style="max-width:140px"></div>';
+  return '<div class="fg full" style="margin-top:8px"><label>Heure du relevé</label><input type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" oninput="_hhmmFmt(this)" onblur="_hhmmFmt(this,1)" id="enc-heure-inp" class="fi" value="'+nowT()+'" max="'+nowT()+'" style="max-width:140px"></div>';
 }
 function _encHeureVal(){
   try {
@@ -4611,6 +4662,10 @@ function closeEncSaisie(){
   _encSaisie={};
   _encAcSelectedIds=[];
   const _acEl=document.getElementById('enc-modal-ac'); if(_acEl) _acEl.innerHTML='';
+}
+/** v496 : relevé le PLUS RÉCENT (par _ts) — la liste est triée du plus récent au plus ancien (unshift) ; une seule règle partout. */
+function _encLast(arr){
+  try { return (arr||[]).filter(r=>r&&!r._deleted).reduce((b,r)=>(!b||String(r._ts||'')>String(b._ts||''))?r:b, null) || undefined; } catch(e){ return (arr||[])[0]; }
 }
 function saveEncSaisie(){
   if(roCheck())return;
@@ -4690,9 +4745,9 @@ function renderENR20(){
     +'</div>';
 
   encs.forEach(function(e){
-    var rOuv=saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='ouv';}).slice(-1)[0];
-    var rMidi=saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='midi';}).slice(-1)[0];
-    var rFerm=saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='ferm';}).slice(-1)[0];
+    var rOuv=_encLast(saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='ouv';}));
+    var rMidi=_encLast(saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='midi';}));
+    var rFerm=_encLast(saisies.filter(function(r){return r.enc_id===e.id&&r.moment==='ferm';}));
     var cOuv=encConforme(rOuv&&rOuv.temp,e.consigne);
     var cMidi=encConforme(rMidi&&rMidi.temp,e.consigne);
     var cFerm=encConforme(rFerm&&rFerm.temp,e.consigne);
@@ -8398,7 +8453,7 @@ function renderENR_DISTRIB_SVC(svcId){
           onclick="qtTap(this)">${dispF}</div>
       </div>
       <div id="dtbadge-svc-${svcId}-${slot}-froid" class="distrib-temp-badge ${confF}" style="display:inline-block;margin-bottom:4px">
-        ${confF==='ok'?'✅':confF==='nc'?'❌':'—'} ${numF!==null?numF.toFixed(1)+'°C':'—'}
+        ${confF==='ok'?'✅':confF==='nc'?'❌':'—'} ${valide?(confF==='ok'?'Conforme':confF==='nc'?'Non conforme':''):(numF!==null?numF.toFixed(1)+'°C':'—')}
       </div>
       <span style="font-size:.7rem;color:#b89ab6;font-weight:700"> Consigne ≤ +${DISTRIB_FROID_MAX}°C</span>
 
@@ -8421,7 +8476,7 @@ function renderENR_DISTRIB_SVC(svcId){
           onclick="qtTap(this)">${dispC}</div>
       </div>
       <div id="dtbadge-svc-${svcId}-${slot}-chaud" class="distrib-temp-badge ${confC}" style="display:inline-block;margin-bottom:4px">
-        ${confC==='ok'?'✅':confC==='nc'?'❌':'—'} ${numC!==null?numC.toFixed(1)+'°C':'—'}
+        ${confC==='ok'?'✅':confC==='nc'?'❌':'—'} ${valide?(confC==='ok'?'Conforme':confC==='nc'?'Non conforme':''):(numC!==null?numC.toFixed(1)+'°C':'—')}
       </div>
       <span style="font-size:.7rem;color:#b89ab6;font-weight:700"> Consigne ≥ +${DISTRIB_CHAUD_MIN}°C</span>
 
@@ -8440,7 +8495,12 @@ function renderENR_DISTRIB_SVC(svcId){
   };
 
   // Historique
-  const lignes = (S[k]&&S[k].lignes)||[];
+  // v496 : une seule ligne par jour à l'affichage (doublons local/sync fusionnés, données non supprimées)
+  let lignes = [];
+  try {
+    const byD = {};
+    ((S[k]&&S[k].lignes)||[]).forEach(r=>{ if(!r||r._deleted) return; const dk=r.date||r._ts; if(!byD[dk]){ byD[dk]=Object.assign({},r); lignes.push(byD[dk]); } else { try{ distribOverlayFilled(byD[dk], r); }catch(e){} } });
+  } catch(e){ lignes = (S[k]&&S[k].lignes)||[]; }
   const histoRows = lignes.slice(0,30).map((r,i)=>{
     const dateH = r.date?new Date(r.date+'T12:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}):'—';
     const midiV=r.midi_valide==='OUI', soirV=r.soir_valide==='OUI';
@@ -13207,24 +13267,30 @@ function auditMPSetPeriod(p){
   renderAuditMP(p);
 }
 
+/** v496 : date locale AAAA-MM-JJ (toISOString décalait d'un jour en UTC+2). */
+function _mpLocalIso(d){ try { return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } catch(e){ return ''; } }
+/** v496 : date d'une fiche ENR31 = date saisie, sinon date LOCALE de _ts (même règle que l'historique). */
+function _mpRowDate(r){ try { if(r.date) return String(r.date).slice(0,10); if(r._ts){ const d=new Date(r._ts); if(!isNaN(d)) return _mpLocalIso(d); } } catch(e){} return ''; }
+/** v496 : source unique Audit MP / export / historique — fiches non supprimées de la période. */
+function _mpRows(from, to){ try { return (S['enr31']?.lignes||[]).filter(r=>{ if(!r||r._deleted) return false; const d=_mpRowDate(r); return d && d>=from && d<=to; }); } catch(e){ return []; } }
 function _mpDateRange(period){
   const now = new Date();
   const todayStr = today();
   if(period==='semaine'){
     const dow=(now.getDay()+6)%7;
     const lun=new Date(now); lun.setDate(now.getDate()-dow);
-    return {from:lun.toISOString().slice(0,10), to:todayStr,
+    return {from:_mpLocalIso(lun), to:todayStr,
       label:'Semaine du '+lun.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})};
   }
   if(period==='15j'){
     const d15=new Date(now); d15.setDate(now.getDate()-14);
-    return {from:d15.toISOString().slice(0,10), to:todayStr, label:'15 derniers jours'};
+    return {from:_mpLocalIso(d15), to:todayStr, label:'15 derniers jours'};
   }
   if(period==='mois'){
     const mois=getConfigMois();
     const [y,m]=mois.split('-');
     const label=new Date(+y,+m-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
-    const lastDay=new Date(+y,+m,0).toISOString().slice(0,10);
+    const lastDay=_mpLocalIso(new Date(+y,+m,0));
     return {from:mois+'-01', to:lastDay, label};
   }
   return {from:'1970-01-01', to:'9999-12-31', label:'Toutes les données'};
@@ -13235,7 +13301,7 @@ function renderAuditMP(period){
   if(!el) return;
 
   const {from, to, label} = _mpDateRange(period);
-  const lignes = (S['enr31']?.lignes||[]).filter(r=>r.date&&r.date>=from&&r.date<=to);
+  const lignes = _mpRows(from, to);
 
   if(!lignes.length){
     el.innerHTML=`<div style="text-align:center;padding:30px;color:#b89ab6;font-size:.9rem">
@@ -13327,7 +13393,8 @@ function renderAuditMP(period){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       <div style="background:#f5edf5;border-radius:10px;padding:10px 12px;text-align:center">
         <div style="font-size:1.6rem;font-weight:900;color:var(--plum)">${totalSaisies}</div>
-        <div style="font-size:.7rem;color:#b89ab6;font-weight:700">saisies totales</div>
+        <div style="font-size:.7rem;color:#b89ab6;font-weight:700">saisies — ${escH(label)}</div>
+        ${(()=>{ try { const all=(S['enr31']?.lignes||[]).filter(r=>r&&!r._deleted).length; return all!==totalSaisies?`<div style="font-size:.62rem;color:#7A6579">${all} au total dans l'historique (toutes périodes)</div>`:''; } catch(e){ return ''; } })()}
       </div>
       <div style="background:#f5edf5;border-radius:10px;padding:10px 12px;text-align:center">
         <div style="font-size:1.6rem;font-weight:900;color:var(--plum)">${nbProduitsDistincts}</div>
@@ -13395,7 +13462,7 @@ function exportMP_PDF(period){
     from = range.from; to = range.to; periodLabel = range.label;
   }
 
-  const filtered = lignes.filter(r=>r.date&&r.date>=from&&r.date<=to)
+  const filtered = _mpRows(from, to).map(r=>r.date?r:Object.assign({},r,{date:_mpRowDate(r)}))
     .sort((a,b)=>a.date.localeCompare(b.date));
 
   const fmtDate = d => d ? new Date(d+'T12:00').toLocaleDateString('fr-FR',{weekday:'short',day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
@@ -13424,24 +13491,21 @@ function exportMP_PDF(period){
         </td></tr>`;
       rows.forEach(r=>{
         totalLignes++;
-        // v493 : DLC normalisée (ISO ou JJ/MM/AAAA, champs alternatifs, DLC du stock si fiche issue du Stock)
-        let dIso = '';
-        try {
-          const raw = r.dlc || r.ddm || r.dluo || r.dlc_lue || '';
-          const m1 = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/), m2 = String(raw).match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
-          dIso = m1 ? m1[1]+'-'+m1[2]+'-'+m1[3] : m2 ? ((m2[3].length===2?'20'+m2[3]:m2[3])+'-'+('0'+m2[2]).slice(-2)+'-'+('0'+m2[1]).slice(-2)) : '';
-          if(!dIso && r._stock_item_id && typeof stkItems==='function'){ const it=stkItems().find(x=>x.id===r._stock_item_id); if(it) dIso = it.dlc_lue || it.dlc || ''; }
-        } catch(e){ dIso = ''; }
-        const dTyp = /^(DDM|DLUO)$/i.test(String(r.dlc_type||'')) ? 'DDM ' : '';
+        // v496 : source unique (fiche + stock) — DLC tous champs, nom normalisé, statut jeté
+        let inf = {};
+        try { inf = (typeof window._stkInfoFor31==='function') ? window._stkInfoFor31(r) : {}; } catch(e){ inf = {}; }
+        let dIso = inf.dlc || '';
+        if(!dIso){ try { const m1=String(r.dlc||'').match(/^(\d{4})-(\d{2})-(\d{2})/); if(m1) dIso=m1[0]; } catch(e){} }
+        const dTyp = /^(DDM|DLUO)$/i.test(String(inf.dlc_type||r.dlc_type||'')) ? 'DDM ' : '';
         const dlc = dIso ? dTyp + new Date(dIso+'T12:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-        const dlcOk = dIso ? dIso >= todayStr : null;
+        const dlcOk = (dIso && !inf.jete) ? dIso >= todayStr : null;
         let plats = '—';
-        try { const pl = (typeof window._stkPlatsOf==='function') ? window._stkPlatsOf(r) : []; if(pl.length) plats = pl.map(escH).join('<br>'); } catch(e){}
+        try { const pl = (!inf.jete && typeof window._stkPlatsOf==='function') ? window._stkPlatsOf(r) : []; if(pl.length) plats = pl.map(escH).join('<br>'); } catch(e){}
         tableBody += `<tr>
-          <td>${escH(r.produit||'—')}</td>
+          <td>${escH(inf.produit||r.produit||'—')}</td>
           <td style="white-space:normal;word-break:break-all">${escH(r.lot||'—')}</td>
-          <td style="${dlcOk===false?'color:#b71c1c;font-weight:800':dlcOk===true?'color:#1b5e20':''}">
-            ${dlc}${dlcOk===false?' ⚠️ PÉRIMÉ':''}
+          <td style="${inf.jete?'color:#6b7280;font-weight:800':dlcOk===false?'color:#b71c1c;font-weight:800':dlcOk===true?'color:#1b5e20':''}">
+            ${dlc}${inf.jete?' 🗑️ Jeté':dlcOk===false?' ⚠️ PÉRIMÉ':''}
           </td>
           <td>${escH(r.estampille||'—')}</td>
           <td>${escH(r.cuisinier||'—')}</td>
@@ -14691,7 +14755,7 @@ function reimprEditModal(type, rec, nb){
       '<label style="'+labelStyle+'">Date de fabrication</label>'+
       '<input id="ed-date-fab" type="date" value="'+(rec.date_fab||today())+'" style="'+inputStyle+'">'+
       '<label style="'+labelStyle+'">Heure de fabrication</label>'+
-      '<input id="ed-heure-fab" type="time" value="'+(rec.heure_fab||nowT())+'" style="'+inputStyle+'">'+
+      '<input id="ed-heure-fab" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" oninput="_hhmmFmt(this)" onblur="_hhmmFmt(this,1)" value="'+(rec.heure_fab||nowT())+'" style="'+inputStyle+'">'+
       '<label style="'+labelStyle+'">DLC</label>'+
       '<input id="ed-dlc" type="date" value="'+(rec.dlc||'')+'" style="'+inputStyle+'">'+
       '<label style="'+labelStyle+'">Cuisinier</label>'+
@@ -14705,7 +14769,7 @@ function reimprEditModal(type, rec, nb){
       '<label style="'+labelStyle+'">Date prélèvement</label>'+
       '<input id="ed-date-prelev" type="date" value="'+(rec.date_prelev||rec.date||today())+'" style="'+inputStyle+'">'+
       '<label style="'+labelStyle+'">Heure prélèvement</label>'+
-      '<input id="ed-heure-prelev" type="time" value="'+(rec.heure_prelev||rec.heure||nowT())+'" style="'+inputStyle+'">'+
+      '<input id="ed-heure-prelev" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" oninput="_hhmmFmt(this)" onblur="_hhmmFmt(this,1)" value="'+(rec.heure_prelev||rec.heure||nowT())+'" style="'+inputStyle+'">'+
       '<label style="'+labelStyle+'">Date de destruction</label>'+
       '<input id="ed-date-destruct" type="date" value="'+(rec.date_destruct||'')+'" style="'+inputStyle+'">'+
       '<label style="'+labelStyle+'">Cuisinier</label>'+
@@ -15059,7 +15123,8 @@ function e34Format(){ return (S['enr34']||{}).format||(S.config||{}).etiqA4Fmt||
 function renderENR34(){
   const d=e34d();
   // Auto-initialiser heure_fab si vide
-  if(!d.heure_fab){ e34s('heure_fab', nowT()); d.heure_fab=nowT(); }
+  // v496 : heure par défaut = maintenant à chaque ouverture tant que l'utilisateur ne l'a pas choisie
+  try { if(!d.heure_fab || d._hf_auto){ S['enr34']=S['enr34']||{}; S['enr34'].draft34=S['enr34'].draft34||{}; const D=S['enr34'].draft34; D.heure_fab=nowT(); D._hf_auto='1'; d.heure_fab=D.heure_fab; d._hf_auto='1'; } } catch(e){} // en mémoire seulement : pas de save() à chaque affichage
   const lignes=(S['enr34']||{}).lignes||[];
   const fmt=e34Format();
 
@@ -15158,7 +15223,7 @@ function renderENR34(){
       </div>
       <div class="fg">
         <label>${d.statut==='Entamé'?"Heure d'ouverture":'Heure fabrication'}</label>
-        <button type="button" class="time-btn" onclick="S['_e34tmp']=S['_e34tmp']||{};S['_e34tmp'].draft=S['_e34tmp'].draft||{};S['_e34tmp'].draft.h=e34d().heure_fab||nowT();openTW('h','_e34tmp','Heure fabrication');window._twCloseCb=()=>{const v=gd('h','_e34tmp');if(v)e34sR('heure_fab',v);}">
+        <button type="button" class="time-btn" onclick="S['_e34tmp']=S['_e34tmp']||{};S['_e34tmp'].draft=S['_e34tmp'].draft||{};S['_e34tmp'].draft.h=e34d().heure_fab||nowT();openTW('h','_e34tmp','Heure fabrication');window._twCloseCb=()=>{const v=gd('h','_e34tmp');if(v)(e34s('_hf_auto',''),e34sR('heure_fab',v));}">
           ${d.heure_fab?`<span>⏰</span><span class="tv">${d.heure_fab}</span>`:`<span>⏰</span><span class="tp2">Appuyer</span>`}
         </button>
       </div>
@@ -15211,7 +15276,7 @@ function e34OpenHeure(){
   openTW('heure_fab','_e34tmp','Heure fabrication');
   window._twCloseCb=()=>{
     const v=gd('heure_fab','_e34tmp');
-    if(v) e34sR('heure_fab',v);
+    if(v) (e34s('_hf_auto',''),e34sR('heure_fab',v));
   };
 }
 
@@ -15244,7 +15309,7 @@ function e34AddBatch(){
   // v495 : jamais d'étiquette « DLC: DDM » sans date — DLC (après ouverture pour un entamé) obligatoire
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.dlc||''))){toast(d.statut==='Entamé'?'⛔ Saisis la DLC après ouverture (date) avant de valider':'⛔ Saisis la date limite (DLC) avant de valider','warning');return;}
   const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
-  const batchEntry={...d, nb:_e34qty, _sel:_e34sel, cuisinier34:op, cuisinier:op, operateur:op};
+  const batchEntry={...d, nb:_e34qty, _sel:_e34sel, cuisinier34:op, cuisinier:op, operateur:op}; try{ delete batchEntry._hf_auto; }catch(e){}
   _e34batch.push(batchEntry);
   // Sauvegarder immédiatement dans l'historique (sans attendre l'impression)
   const rec=stampEntry({...batchEntry,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:_e34qty,_dans_lot:true});
@@ -15265,7 +15330,7 @@ function e34Save(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.dlc||''))){toast(d.statut==='Entamé'?'⛔ Saisis la DLC après ouverture (date) avant de valider':'⛔ Saisis la date limite (DLC) avant de valider','warning');return;}
   const nb=_e34qty;
   const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
-  const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb,cuisinier34:op,cuisinier:op,operateur:op};
+  const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb,cuisinier34:op,cuisinier:op,operateur:op}; try{ delete rec._hf_auto; }catch(e){}
   const sim=etiqSimule(nb+printAllTotal());
   function doSave(){
     S['enr34']=S['enr34']||{};

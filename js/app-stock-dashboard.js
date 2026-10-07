@@ -31,7 +31,7 @@ function _sdItems(site){
       (bl.lignes_bl||[]).forEach(function(l, i){
         if (!l || l.statut !== 'recu') return;
         var it = { id: (bl._ts||'')+'#'+i, site: site, rec_id: r.id, produit: l.produit||'', lot: l.lot||'', lot_auto: !!l.lot_auto, dlc: l.dlc||'', dlc_type: /^(DDM|DLUO)$/i.test(String(l.dlc_type||''))?'DDM':'DLC',
-          qte: Math.max(0, parseInt(l.qte,10)||0), fournisseur: bl.fournisseur||'', bl_numero: bl.numero||'', bl_date: bl.date||'', date_rec: bl.date_reception||bl.date||'',
+          qte: Math.max(0, parseInt(l.qte,10)||0), fournisseur: bl.fournisseur||'', bl_numero: bl.numero||'', bl_date: bl.date_bl||bl.date||'', date_rec: bl.date_reception||bl.date||'',
           ouverts: [], fin: 0, corr: 0, bloque: false, motif: '', lot_lu: '' };
         items.push(it); byId[it.id] = it;
       });
@@ -96,7 +96,7 @@ function renderStockHQ(){
       var d = r.data, ncs = _sdNcFor(site, d);
       return '<div style="border:1.5px solid #e2e8f0;border-radius:12px;padding:10px;margin-bottom:10px">'
         + '<div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap"><div style="flex:1;min-width:200px"><div style="font-weight:900">'+_sdE(d.fournisseur||'Fournisseur ?')+' — '+_sdE(d.numero||'?')+'</div>'
-        + '<div style="font-size:.75rem;color:#64748b">BL du '+_sdFr(d.date)+' · reçu le '+_sdFr(d.date_reception)+' '+_sdE(d.heure||'')+' par '+_sdE(d.cuisinier||'?')+'</div>'
+        + '<div style="font-size:.75rem;color:#64748b">BL du '+_sdFr(d.date_bl||d.date)+' · reçu le '+_sdFr(d.date_reception)+' '+_sdE(d.heure||'')+' par '+_sdE(d.cuisinier||'?')+'</div>'
         + '<div style="font-size:.78rem;font-weight:800;margin-top:3px">'+_sdE(d.resume||'')+'</div></div>'
         + '<div style="display:flex;gap:6px;flex-wrap:wrap">'+_sdPhotos(r)+'</div></div>'
         + '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:.78rem;font-weight:800;color:#1d4ed8">Lignes du BL ('+(d.lignes_bl||[]).length+')</summary>'

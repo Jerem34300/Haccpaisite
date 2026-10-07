@@ -62,7 +62,10 @@ Règles:
 9) "dlc_type" : "DLC" si "à consommer jusqu'au" / DLC ; "DDM" si "à consommer de préférence avant" / DDM / DLUO / BBD.
 11) "produit" : recopier la DÉSIGNATION MOT POUR MOT, telle qu'imprimée sur la ligne (ex: "OIGNON JAUNE", "BANANE CAT 1"). Ne JAMAIS normaliser, traduire, résumer ni remplacer par un produit proche (un oignon n'est pas une pomme). Chaque ligne a sa propre désignation : ne pas recopier celle de la ligne précédente.
 12) "conditionnement" : recopier tel quel calibre, catégorie, poids et format (ex: "cal. 40/60", "cat. I", "colis 10 kg") sans les arrondir ni les inventer ; vide si absent.
-10) Lot : recopier EXACTEMENT les caractères imprimés (lettres, chiffres, tirets, espaces), sans corriger ni compléter ; ne pas confondre avec un code article, un EAN ou une date.`;
+10) Lot : recopier EXACTEMENT les caractères imprimés (lettres, chiffres, tirets, espaces), sans corriger ni compléter ; ne pas confondre avec un code article, un EAN ou une date.
+13) EXHAUSTIF : extraire CHAQUE ligne produit de CHAQUE page, y compris celles sans lot ni DLC, en bas de page ou après un saut de page (ex : fromages, crèmerie en fin de BL). Ne jamais sauter une ligne parce qu'elle est peu lisible : la renvoyer avec les champs illisibles vides.
+14) Lot et DLC d'une ligne = ceux imprimés sur CETTE ligne (ou sa sous-ligne immédiate), jamais ceux de la ligne voisine. En cas de doute, laisser vide.
+15) Ajouter à la racine "nb_lignes_vues" : nombre total de lignes produit que tu vois sur toutes les pages (contrôle d'exhaustivité).`;
 
 function toInt(v) {
   if (v == null || v === '') return null;
@@ -104,8 +107,9 @@ function normalizeBlDoc(raw, pages) {
   lines.forEach(function (row) {
     try {
       const r = row && typeof row === 'object' ? row : {};
-      const produit = cleanStr(r.produit || r.designation || r.product || r.nom, 100);
-      if (!produit) return;
+      let produit = cleanStr(r.produit || r.designation || r.product || r.nom, 100);
+      // v496 : ne jamais perdre une ligne lue (lot / quantité présents) faute de désignation lisible
+      if (!produit) { if (!(r.lot || r.qte || r.qte_texte || r.dlc)) return; produit = '(désignation illisible)'; }
       const q = parseQteTexte(r.qte_texte || r.quantite || r.qte || '');
       const colis = toInt(r.colis) != null ? toInt(r.colis) : q.colis;
       let unites = toInt(r.unites) != null ? toInt(r.unites) : q.unites;
@@ -191,6 +195,7 @@ exports.handler = async function (event) {
   const body = {
     model: process.env.BL_OCR_MODEL || 'gpt-4o-mini',
     temperature: 0,
+    max_tokens: 8000,
     response_format: { type: 'json_object' },
     messages: [{ role: 'system', content: SYSTEM_BL }, { role: 'user', content: content }],
   };
@@ -211,6 +216,13 @@ exports.handler = async function (event) {
   let parsed;
   try { parsed = JSON.parse(stripJsonFence(txt)); } catch (e) { return json(502, { error: 'Réponse non exploitable' }); }
   const result = normalizeBlDoc(parsed, images.length);
+  try {
+    result.model = body.model; result.detail = DETAIL; // v496 : traçabilité pour la comparaison des modèles
+    const fin = data.choices[0].finish_reason;
+    if (fin === 'length') result.tronque = true;
+    const vues = toInt(parsed && parsed.nb_lignes_vues);
+    if (vues != null) { result.nb_lignes_vues = vues; if (vues > result.lignes.length) result.lignes_manquantes = vues - result.lignes.length; }
+  } catch (e) {}
   if (!result.lignes.length) return json(422, { error: 'Aucune ligne produit lue sur le BL', result: result });
   return json(200, result);
 };

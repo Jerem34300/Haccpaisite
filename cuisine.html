@@ -3,7 +3,7 @@
   <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-  <title>HACC.PRO — Cuisine v36.3 · haccpro-v495</title>
+  <title>HACC.PRO — Cuisine v36.3 · haccpro-v497</title>
   <meta name="application-name" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-title" content="HACC.PRO Cuisine">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -36,7 +36,7 @@
 
   <script>
     // Libellé visible = CACHE_NAME du SW (haccpro-v484). Ne pas laisser un build figé (un ancien build).
-    var HACC_CACHE = 'haccpro-v495';
+    var HACC_CACHE = 'haccpro-v497';
     function haccApplyBuild(name){
       try{
         var v = String(name || HACC_CACHE);
@@ -167,7 +167,7 @@
       <div class="fgrid">
         <div class="fg">
           <label>Heure</label>
-          <input class="fi" type="time" id="nett-modal-heure">
+          <input class="fi" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" oninput="_hhmmFmt(this)" onblur="_hhmmFmt(this,1)" id="nett-modal-heure">
         </div>
         <div class="fg">
           <label>Cuisinier</label>
@@ -263,7 +263,7 @@
       <div class="fgrid">
         <div class="fg">
           <label>Heure</label>
-          <input class="fi" type="time" id="nuis-modal-heure">
+          <input class="fi" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" autocomplete="off" oninput="_hhmmFmt(this)" onblur="_hhmmFmt(this,1)" id="nuis-modal-heure">
         </div>
         <div class="fg">
           <label>Cuisinier</label>
@@ -959,11 +959,11 @@
   <!-- Application Cuisine (ordre important: service avant app) -->
   <script src="js/supabaseservice.js?v=436"></script>
   <script src="js/printservice.js"></script>
-  <script src="js/app-cuisine.js?v=495"></script>
+  <script src="js/app-cuisine.js?v=497"></script>
   <!-- Module STOCK (v488) : scan BL, confirmation ligne par ligne, stock en unités -->
-  <script src="js/app-stock.js?v=495"></script>
+  <script src="js/app-stock.js?v=497"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
-  <script src="js/app-menu-cuisine.js?v=495"></script>
+  <script src="js/app-menu-cuisine.js?v=497"></script>
   <!-- Guide « Premiers pas » sur l'accueil (après inscription) -->
   <script src="js/tuto-premiers-pas.js?v=485"></script>
   <!-- Tracabilité HACCP bidirectionnelle + IA recettes -->
