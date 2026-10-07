@@ -21,6 +21,9 @@ const PROFILS = {
   REMISE_TC:     { ico:'🔥', label:'Remise T°C',     color:'#ea580c', enr:['enr23','enr02','enr_tc_distrib'] },
   SORTIE_DIRECTE:{ ico:'📦', label:'Sortie directe', color:'#0ea5e9', enr:['enr23'] },
   PREP_MINUTE:   { ico:'⚡', label:'Préparé minute', color:'#7c3aed', enr:['enr23'] },
+  // v498 : modes de plat — réutilisent les fiches existantes (ENR04 T°C à cœur ; ENR01 refroidissement puis ENR02 remise T°C)
+  CUISINE:       { ico:'🍳', label:'Cuisiné',        color:'#b45309', enr:['enr23','enr04','enr_tc_distrib'] },
+  CUIT_REFROIDI: { ico:'❄️', label:'Cuit-refroidi',  color:'#0369a1', enr:['enr23','enr01','enr02','enr_tc_distrib'] },
 };
 
 // Ordre IMPORTANT : patterns spécifiques (cuits) AVANT patterns bare (crus)
@@ -87,7 +90,7 @@ function detectComposants(nom){
 // BF Cru  = mixé froid (aliment cru/froid → mixé → servi froid)
 function mixeProfil(plat){
   try {
-    if(['BF_CUIT','REMISE_TC'].includes(plat.profil_haccp)) return 'BF_CUIT';
+    if(['BF_CUIT','REMISE_TC','CUISINE','CUIT_REFROIDI'].includes(plat.profil_haccp)) return 'BF_CUIT';
     // v495 : plat cuit par nature (potage, purée, viande…) même s'il est en « Préparé minute » / « Sortie directe » → mixé CUIT
     if(['PREP_MINUTE','SORTIE_DIRECTE'].includes(plat.profil_haccp) && typeof detectProfil === 'function' && detectProfil(plat.nom||'') === 'BF_CUIT') return 'BF_CUIT';
   } catch(e){}
@@ -239,7 +242,7 @@ function ensureMenuFor(date, service){
 }
 function computeDayCoverage(date){
   // v493 : aujourd'hui → même source que le widget Accueil (plat tracé = toutes ses fiches faites)
-  try { if(date === today()){ const tj = menuTraceJour(); if(tj.plats) return { total: tj.plats, expected: tj.plats, tracked: tj.platsComplets, steps: tj.steps, stepsDone: tj.stepsDone }; } } catch(e){}
+  try { if(date === today()){ const tj = menuTraceJour(); if(tj.plats) return { total: tj.plats, expected: tj.plats, tracked: tj.platsComplets, lies: tj.platsLies, steps: tj.steps, stepsDone: tj.stepsDone }; } } catch(e){}
   let total=0, tracked=0;
   try {
     SERVICES.forEach(s => {
@@ -259,7 +262,7 @@ function menuDayDotStatus(date){
   try {
     const cov = computeDayCoverage(date);
     if(!cov || !cov.total) return null;
-    const pct = cov.steps ? (cov.stepsDone / cov.steps) * 100 : (cov.expected === 0 ? 0 : (cov.tracked / cov.expected) * 100);
+    const pct = cov.expected === 0 ? 0 : (cov.tracked / cov.expected) * 100;
     if(pct >= 100) return 'done';
     const today_ = today();
     if(date < today_) return 'late';
@@ -811,7 +814,7 @@ window._menuOpenTraces = function(catId, idx, svcId){
 
 // Pastilles colorées du plat (v486) : Préparé minute / Sortie directe / Remise T°C (profil HACCP)
 // Le lien lot ↔ plat se fait depuis la fiche Traçabilité MP (ENR31), pas depuis le menu (v487).
-const PASTILLES_PLAT = ['PREP_MINUTE','SORTIE_DIRECTE','REMISE_TC'];
+const PASTILLES_PLAT = ['CUISINE','CUIT_REFROIDI','PREP_MINUTE','SORTIE_DIRECTE','REMISE_TC'];
 function renderPlatPastilles(catId, plat, idx, sid){
   try {
     const btns = PASTILLES_PLAT.map(k => {
@@ -884,15 +887,15 @@ function countEnrLinkedToPlat(platId, dateOpt){
 }
 
 function renderCoverageCard(cov){
-  // v496 : UN seul calcul (= widget Accueil) : fiches faites / fiches à faire
-  const pct = cov.steps ? Math.round(cov.stepsDone * 100 / cov.steps) : (cov.expected === 0 ? 0 : Math.round((cov.tracked / cov.expected) * 100));
+  // v498 : couverture = plats tracés complets (« ✔ Tout tracé » inclus) / plats du jour — même calcul que le widget Accueil
+  const pct = cov.expected === 0 ? 0 : Math.round((cov.tracked / cov.expected) * 100);
   const cls = pct >= 80 ? '' : (pct >= 40 ? 'warn' : 'bad');
   const ico = pct >= 80 ? '✅' : (pct >= 40 ? '⚠️' : '❗');
   return `
   <div class="mn-cov ${cls}">
     <div class="mn-cov-tit">${ico} Couverture HACCP du jour — ${pct}%</div>
     <div class="mn-cov-bar"><div class="mn-cov-fill" style="width:${pct}%"></div></div>
-    <div class="mn-cov-sub">${cov.tracked} / ${cov.total} plat${cov.total>1?'s':''} complet${cov.tracked>1?'s':''}${cov.steps?` • ${cov.stepsDone} / ${cov.steps} fiche${cov.steps>1?'s':''}`:''}</div>
+    <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''}${cov.lies!=null?` • ${cov.lies} plat${cov.lies>1?'s':''} avec lot`:''} • ${cov.tracked} tracé${cov.tracked>1?'s':''} complet${cov.tracked>1?'s':''}</div>
   </div>`;
 }
 
@@ -1188,6 +1191,30 @@ function _menuClearPending(enrId){
     try { if(menuBannerWanted(enrId)) refreshLinkBanner(enrId); } catch(e){}
   } catch(e){ console.warn('[menu] clear pending', e); }
 }
+// v498 : Cuit-refroidi — après enregistrement du refroidissement (ENR01), ouvrir la remise en T°C (ENR02) du même plat
+try {
+  if(typeof saveRow === 'function' && !saveRow._v498){
+    const _sr = saveRow;
+    saveRow = function(id){
+      let pend = null, n0 = 0;
+      try { if(id === 'enr01'){ pend = _menuLinkPending['enr01'] ? Object.assign({}, _menuLinkPending['enr01']) : null; n0 = ((S.enr01||{}).lignes||[]).length; } } catch(e){}
+      const r = _sr.apply(this, arguments);
+      try {
+        if(pend && pend.profil_haccp === 'CUIT_REFROIDI' && ((S.enr01||{}).lignes||[]).length > n0){
+          setTimeout(function(){ try {
+            const open02 = function(){ try { _menuLinkPending['enr02'] = pend; goTo('enr02'); } catch(e){ console.warn('[menu] chain enr02', e); } };
+            if(typeof _stkChoice === 'function') _stkChoice('🔥 Remise en température', escH(pend.nom||'')+' : refroidissement enregistré. La remise en T°C se fait au moment du service (le plat reste « à faire » dans le menu).',
+              [{ k:'now', html:'🔥 Ouvrir la remise en T°C maintenant', hl:true }, { k:'later', html:'⏳ Plus tard (depuis le menu)' }],
+              function(o){ if(o && o.k === 'now') open02(); }, null, 'Plus tard');
+            else open02();
+          } catch(e){ console.warn('[menu] chain enr02', e); } }, 400);
+        }
+      } catch(e){ console.warn('[menu] chain', e); }
+      return r;
+    };
+    saveRow._v498 = true;
+  }
+} catch(e){ console.warn('[menu] hook saveRow', e); }
 window._stkMenuApi = { todayMenuPlats: todayMenuPlats, pendingRefs: _menuPendingRefs, setLotPlat: _menuSetLotPlat, refsFromLigne: _menuPlatRefsFromLigne, clearPending: _menuClearPending };
 // Pastille Préparé minute / Sortie directe / Remise T°C : 2e clic = retour au profil de base
 window._menuSetPastille = function(catId, idx, key, svcId){
@@ -1209,6 +1236,11 @@ window._menuSetPastille = function(catId, idx, key, svcId){
     setMenu(_menuState.date, _menuState.service, menu);
     _menuSyncAfterEdit(menu);
     if(typeof toast === 'function') toast((PROFILS[plat.profil_haccp]?.ico||'') + ' ' + plat.nom + ' → ' + (PROFILS[plat.profil_haccp]?.label||'?'), 'info');
+    // v498 : Cuisiné → fiche cuisson à cœur ; Cuit-refroidi → fiche refroidissement (puis remise T°C après enregistrement)
+    try {
+      const first = plat.profil_haccp === 'CUISINE' ? 'enr04' : plat.profil_haccp === 'CUIT_REFROIDI' ? 'enr01' : '';
+      if(first && _menuState.date === today()){ window._menuOpenStep(null, first, _menuState.service, catId, idx); return; }
+    } catch(e){ console.warn('[menu] mode auto-open', e); }
     if(typeof renderMain === 'function') renderMain();
   } catch(e){ console.warn('[menu] set pastille', e); }
 };
@@ -1935,7 +1967,7 @@ function menuBannerWanted(id){
   } catch(e){ return false; }
 }
 
-const LINK_ENRS = ['enr01','enr02','enr03','enr07','enr08','enr09','enr10',
+const LINK_ENRS = ['enr01','enr02','enr03','enr04','enr07','enr08','enr09','enr10',
                    'enr11','enr12','enr13','enr14','enr15','enr16','enr23','enr31','enr33','enr34','enr36','enr_allergenes'];
 
 let _menuLinkPending = {};
@@ -2623,6 +2655,8 @@ function platTraceSteps(p){
   const steps = [{ enr:'enr33', ico:'🍱', label:'Témoin' }, { enr:'enr31', ico:'📋', label:'Lots MP' }];
   try {
     if(p && p.profil_haccp === 'REMISE_TC') steps.push({ enr:'enr02', ico:'🔥', label:'Remise T°C' });
+    if(p && p.profil_haccp === 'CUISINE') steps.push({ enr:'enr04', ico:'🍳', label:'Cuisson à cœur' });
+    if(p && p.profil_haccp === 'CUIT_REFROIDI'){ steps.push({ enr:'enr01', ico:'❄️', label:'Refroid.' }); steps.push({ enr:'enr02', ico:'🔥', label:'Remise T°C' }); }
     if(p && p.variants && p.variants.mixe){
       const mx = p.variants.mixe_profil || mixeProfil(p);
       if(mx === 'BF_CUIT') steps.push({ enr:'enr07', ico:'🥄', label:'Mixé cuit' });
@@ -2746,7 +2780,9 @@ function renderMenuHomeWidget(){
       + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px">'+cats+'</div></div>';
   }).join('');
 
-  const pct = stepsTotal ? Math.round(stepsDone * 100 / stepsTotal) : 0;
+  // v498 : même base que la couverture du Menu (plats tracés complets / plats)
+  let pct = stepsTotal ? Math.round(stepsDone * 100 / stepsTotal) : 0;
+  try { const _tj = menuTraceJour(); if(_tj.plats) pct = Math.round(_tj.platsComplets * 100 / _tj.plats); } catch(e){}
   const barCol = pct >= 100 ? '#16a34a' : (pct >= 50 ? '#f59e0b' : '#dc2626');
   let folded = true;
   try { folded = !(S.config && S.config.menuWgFolded === false); } catch(e){}
@@ -2762,7 +2798,7 @@ function renderMenuHomeWidget(){
     </div>
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;font-size:.66rem;font-weight:800;color:#5C1E5A;margin-bottom:3px">
-        <span>Traçabilité des plats</span><span>${(()=>{ try { const tj = menuTraceJour(); return tj.platsComplets+' / '+tj.plats+' plat'+(tj.plats>1?'s':'')+' complets · '+tj.platsLies+' avec lot · '; } catch(e){ return ''; } })()}${stepsDone} / ${stepsTotal} fiche${stepsTotal>1?'s':''} · ${pct}%</span>
+        <span>Traçabilité des plats</span><span>${(()=>{ try { const tj = menuTraceJour(); return tj.platsLies+' plat'+(tj.platsLies>1?'s':'')+' avec lot · '+tj.platsComplets+' tracé'+(tj.platsComplets>1?'s':'')+' complet'+(tj.platsComplets>1?'s':'')+' · '; } catch(e){ return ''; } })()}${pct}%</span>
       </div>
       <div style="height:8px;background:#f1e6f1;border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barCol};border-radius:999px"></div></div>
     </div>
@@ -2872,6 +2908,9 @@ let _menuPhotoDraft = null; // { type, days:[{date, services:{midi:[],gouter:[],
 /** Heuristique catégorie pour Midi/Soir (sans Pains). */
 function guessMenuCat(nom){
   const s = String(nom||'').toLowerCase();
+  // v498 : fromages / produits laitiers prioritaires (sauf « gratin au fromage », « sauce fromage »…)
+  if(/\b(plateaux? (de |des )?(produits? )?laitiers?|plateaux? (de |des )?fromages?|fromages?|produits? laitiers?|laitiers?|laitages?)\b/.test(s)
+     && !/\b(au|aux|à la|a la|sauce|gratin|croque|omelette|tarte) fromages?\b/.test(s)) return 'fromages';
   if(/\b(potage|soupe|velouté|veloute|consommé|consomme|bouillon)\b/.test(s)) return 'entrees';
   if(/\b(vinaigrette|crudité|crudite|salade|râpé|rape|mimosa|terrine|mousse de|oeuf|œuf|céleri|celeri|carotte|betterave|endive|concombre|macédoine|macedoine|piémontaise|piemontaise)\b/.test(s)) return 'entrees';
   if(/\b(fromage|laitage|produit laitier|plateaux? de produit)\b/.test(s)) return 'fromages';
@@ -3018,6 +3057,22 @@ async function _menuPhotoRunOcr(dataUrl){
         };
       }),
     };
+    // v498 : date du jour par défaut ; date lue différente → confirmation (garder la date lue / prendre aujourd'hui)
+    try {
+      const td = (typeof today==='function') ? today() : '';
+      if(_menuPhotoDraft.type === 'jour' && _menuPhotoDraft.days.length === 1 && td){
+        const D = _menuPhotoDraft.days[0];
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(D.date)) D.date = td;
+        else if(D.date !== td && typeof _stkChoice === 'function'){
+          const fr = x => { try { return new Date(x+'T12:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); } catch(e){ return x; } };
+          _stkChoice('📅 Date du menu', 'La photo indique le <b>'+escH(fr(D.date))+'</b>, aujourd\'hui nous sommes le <b>'+escH(fr(td))+'</b>.',
+            [{ k:'td', html:'📅 Prendre aujourd\'hui ('+escH(fr(td))+')', hl:true }, { k:'lue', html:'📷 Garder la date lue ('+escH(fr(D.date))+')' }],
+            function(o){ try { if(o && o.k === 'td') D.date = td; } catch(e){} _menuPhotoShowValidation(); },
+            function(){ _menuPhotoShowValidation(); }, 'Garder la date lue');
+          return;
+        }
+      }
+    } catch(e){ console.warn('[menu-ocr date]', e); }
     _menuPhotoShowValidation();
   } catch(e){
     console.warn('[menu-ocr fetch]', e);

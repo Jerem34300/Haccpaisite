@@ -1982,13 +1982,14 @@ function updWH(col,val,tot){
  *  « 1115 » → 11:15, « 915 » → 09:15 ; valeur toujours HH:MM (compatible avec les lecteurs .value). */
 function _hhmmFmt(inp, final){
   try {
+    if(!inp.dataset.ok && /^\d{2}:\d{2}$/.test(String(inp.defaultValue||''))) inp.dataset.ok=inp.defaultValue;
     const d=String(inp.value||'').replace(/\D/g,'').slice(0,4);
     if(!final){ inp.value = d.length>2 ? d.slice(0,d.length-2)+':'+d.slice(-2) : d; return; }
     if(!d){ inp.value=''; return; }
     let h, m;
     if(d.length<=2){ h=parseInt(d,10); m=0; } else { h=parseInt(d.slice(0,d.length-2),10); m=parseInt(d.slice(-2),10); }
-    if(isNaN(h)||h>23||isNaN(m)||m>59){ inp.value=''; try{ toast('⚠️ Heure invalide (HH:MM, 24 h)','warning'); }catch(e){} return; }
-    inp.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');
+    if(isNaN(h)||h>23||isNaN(m)||m>59){ inp.value=inp.dataset.ok||''; try{ toast('⚠️ Heure invalide','warning'); }catch(e){} return; }
+    inp.value=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); inp.dataset.ok=inp.value;
   } catch(e){}
 }
 window._hhmmFmt=_hhmmFmt;
@@ -2006,6 +2007,7 @@ function twDirectInput(col,inp){
         const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
         setWheel('m',mm,true); return;
       }
+      inp.value=raw; return; // invalide : rien appliqué, message au blur
     }
     if(col==='m' && raw.length>2){ inp.value=raw.slice(0,2); return twDirectInput('m',inp); }
   } catch(e){ console.warn('[tw] hhmm', e); }
@@ -2035,7 +2037,12 @@ function twDirectBlur(col,inp){
         const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
         setWheel('m',mm,true); return;
       }
+      // v498 : 2460 / 1275 → refusé, heure inchangée
+      try{ toast('⚠️ Heure invalide','warning'); }catch(e){}
+      inp.value=String(TW.h).padStart(2,'0'); return;
     }
+    const v0=parseInt(raw,10);
+    if(raw && !isNaN(v0) && v0>=tot){ try{ toast('⚠️ Heure invalide','warning'); }catch(e){} inp.value=String(TW[col]).padStart(2,'0'); return; }
   } catch(e){ console.warn('[tw] blur hhmm', e); }
   let v=parseInt(inp.value);
   if(isNaN(v)||v<0) v=0;
