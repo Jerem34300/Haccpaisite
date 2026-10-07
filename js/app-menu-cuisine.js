@@ -233,6 +233,8 @@ function ensureMenuFor(date, service){
   return menu;
 }
 function computeDayCoverage(date){
+  // v493 : aujourd'hui → même source que le widget Accueil (plat tracé = toutes ses fiches faites)
+  try { if(date === today()){ const tj = menuTraceJour(); if(tj.plats) return { total: tj.plats, expected: tj.plats, tracked: tj.platsComplets }; } } catch(e){}
   let total=0, tracked=0;
   try {
     SERVICES.forEach(s => {
@@ -666,7 +668,7 @@ function _mpLotUtilisable(l){
     if(!String(l.produit||'').trim()) return false;
     const t = today();
     const dlc = _mpIsoDate(l.dlc);
-    if(dlc && dlc < t) return false;
+    if(dlc && dlc < t && !/^(DDM|DLUO)$/i.test(String(l.dlc_type||''))) return false; // v493 : DDM dépassée = avertissement seulement
     const d = _mpIsoDate(l.date) || String(l._ts||'').slice(0,10);
     if(d && d < addDays(t, -MP_LOT_RECENT_JOURS)) return false;
     return true;
@@ -1170,7 +1172,15 @@ function _menuSyncAfterEdit(menu){
 }
 window._menuSyncAfterEdit = _menuSyncAfterEdit;
 // Module Stock (v489) : accès lecture aux plats du jour / plats cochés et au lien lot ↔ plat existant
-window._stkMenuApi = { todayMenuPlats: todayMenuPlats, pendingRefs: _menuPendingRefs, setLotPlat: _menuSetLotPlat, refsFromLigne: _menuPlatRefsFromLigne };
+// v493 : décoche TOUS les plats du bandeau « Menu du jour » (après chaque enregistrement de lot)
+function _menuClearPending(enrId){
+  try {
+    _menuLinkPendingMulti[enrId] = [];
+    if(typeof _menuLinkPending !== 'undefined') delete _menuLinkPending[enrId];
+    try { if(menuBannerWanted(enrId)) refreshLinkBanner(enrId); } catch(e){}
+  } catch(e){ console.warn('[menu] clear pending', e); }
+}
+window._stkMenuApi = { todayMenuPlats: todayMenuPlats, pendingRefs: _menuPendingRefs, setLotPlat: _menuSetLotPlat, refsFromLigne: _menuPlatRefsFromLigne, clearPending: _menuClearPending };
 // Pastille Préparé minute / Sortie directe / Remise T°C : 2e clic = retour au profil de base
 window._menuSetPastille = function(catId, idx, key, svcId){
   try {
@@ -2441,13 +2451,17 @@ function hookSaveRow(){
         try {
           const last = S[id].lignes[0];
           const refs = _menuPendingRefs('enr31');
-          if(refs.length){
+          // v493 : lot bloqué / DLC dépassée → aucun lien plat (alerte affichée)
+          let refuse = false;
+          try { refuse = refs.length > 0 && typeof window.stkLotBlockCheck === 'function' && window.stkLotBlockCheck(last); } catch(e){}
+          if(refs.length && !refuse){
             _menuWritePlatLiens(last, _menuPlatRefsFromLigne(last).concat(refs));
             save();
             try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue(id, last); } catch(e){}
-            _menuLinkPendingMulti['enr31'] = [];
-            delete _menuLinkPending['enr31'];
           }
+          // Toujours décocher après enregistrement : le lot suivant ne doit pas hériter des plats cochés
+          _menuLinkPendingMulti['enr31'] = [];
+          delete _menuLinkPending['enr31'];
         } catch(e){ console.warn('[menu] enr31 liens', e); }
       } else if(!(ref && ref.plat_id)){
         autoLinkLigne(id, S[id].lignes[0]);
@@ -2543,9 +2557,26 @@ function platMpComplet(p){ return !!(p && p.mp_complet === true) && platMpLie(p)
 function platStepDone(enrId, p){
   return enrId === 'enr31' ? platMpComplet(p) : platDejaSaisi(enrId, p);
 }
+/** v493 — SOURCE UNIQUE des compteurs du jour (badge Traça MP, widget Accueil, couverture Menu). */
+function menuTraceJour(){
+  const out = { plats:0, platsLies:0, sansLot:0, platsComplets:0, steps:0, stepsDone:0 };
+  try {
+    todayMenuPlats().forEach(x => {
+      const p = x && x.p; if(!p) return;
+      out.plats++;
+      const lie = platMpLie(p);
+      if(lie) out.platsLies++; else out.sansLot++;
+      let all = true;
+      platTraceSteps(p).forEach(st => { out.steps++; let d = false; try { d = platStepDone(st.enr, p); } catch(e){} if(d) out.stepsDone++; else all = false; });
+      if(all) out.platsComplets++;
+    });
+  } catch(e){ console.warn('[menu] traceJour', e); }
+  return out;
+}
+window.menuTraceJour = menuTraceJour;
 // Pastille de l'onglet Traçabilité MP : plats du menu du jour pas encore complets
 window._menuMpManquants = function(){
-  try { return todayMenuPlats().filter(x => x && x.p && !platMpComplet(x.p)).length; }
+  try { return menuTraceJour().sansLot; } // v493 : même source que le widget (plats sans AUCUN lot lié)
   catch(e){ return 0; }
 };
 // Bouton « ✔ Tout tracé » / « ↺ Rouvrir » du widget d'accueil
@@ -2716,7 +2747,7 @@ function renderMenuHomeWidget(){
     </div>
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;font-size:.66rem;font-weight:800;color:#5C1E5A;margin-bottom:3px">
-        <span>Traçabilité des plats</span><span>${stepsDone} / ${stepsTotal} fiche${stepsTotal>1?'s':''} · ${pct}%</span>
+        <span>Traçabilité des plats</span><span>${(()=>{ try { const tj = menuTraceJour(); return tj.platsComplets+' / '+tj.plats+' plat'+(tj.plats>1?'s':'')+' complets · '+tj.platsLies+' avec lot · '; } catch(e){ return ''; } })()}${stepsDone} / ${stepsTotal} fiche${stepsTotal>1?'s':''} · ${pct}%</span>
       </div>
       <div style="height:8px;background:#f1e6f1;border-radius:999px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${barCol};border-radius:999px"></div></div>
     </div>
@@ -2829,6 +2860,7 @@ function guessMenuCat(nom){
   if(/\b(potage|soupe|velouté|veloute|consommé|consomme|bouillon)\b/.test(s)) return 'entrees';
   if(/\b(vinaigrette|crudité|crudite|salade|râpé|rape|mimosa|terrine|mousse de|oeuf|œuf|céleri|celeri|carotte|betterave|endive|concombre|macédoine|macedoine|piémontaise|piemontaise)\b/.test(s)) return 'entrees';
   if(/\b(fromage|laitage|produit laitier|plateaux? de produit)\b/.test(s)) return 'fromages';
+  if(/\b(fruits? frais|fruits? de saison|corbeille de fruits?|fruits?)\b/.test(s) && !/\b(fruits? de mer)\b/.test(s)) return 'desserts';
   if(/\b(dessert|yaourt|compote|fruit|farandole|éclair|eclair|entremets|liégeois|liegeois|cake|riz au lait|semoule au lait|spécialité|specialite|salade de fruits)\b/.test(s)) return 'desserts';
   if(/\b(riz|pâtes?|pates?|frites|semoule|légume|legume|haricot|chou|carotte|pomme de terre|garniture|purée|puree|polenta|boulgour|quinoa|courgette|brocoli|épinard|epinard|romanesco)\b/.test(s)
      && !/\b(rôti|roti|escalope|filet|steak|poulet|porc|veau|agneau|poisson|saumon|colin|jambon|curry|bourguignon|blanquette|kefta|tourte|poêlée|poelee|sauté|saute)\b/.test(s)){

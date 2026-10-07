@@ -3010,8 +3010,8 @@ function renderHistoCard(secId,fieldDefs,opts){
             if(SKIP.includes(k)||IS_NC_RAISON(k)||!r[k]||!String(r[k]).trim()) return false;
             if(_histoSkipText(k, r[k])) return false;
             if(k==='signature') return false;
-            // ENR31 : champs techniques (_plat_liens, _created…) masqués, les plats liés sont affichés en boutons
-            if(secId==='enr31'&&k.charAt(0)==='_') return false;
+            // v493 : champs techniques (_from_stock, _plat_liens, _created…) masqués partout
+            if(k.charAt(0)==='_') return false;
             return true;
           }catch(e){ return false; }
         });
@@ -3034,7 +3034,9 @@ function renderHistoCard(secId,fieldDefs,opts){
             ${raisonNC?'<div class="hdi-nc-raison">📋 '+escH(raisonNC)+'</div>':''}
           </div>`;
         };
-        const grid=[...dataItems.map(k=>mkItem(k,false)),...confItems.map(k=>mkItem(k,true))].join('');
+        let platsLies='';
+        try{ const pl=(typeof window._stkPlatsOf==='function')?window._stkPlatsOf(r):[]; if(pl.length) platsLies=`<div class="hdi"><div class="hdi-label">Plat${pl.length>1?'s':''} lié${pl.length>1?'s':''}</div><div class="hdi-val">${pl.map(n=>'🍽️ '+escH(n)).join('<br>')}</div></div>`; }catch(e){ platsLies=''; }
+        const grid=[...dataItems.map(k=>mkItem(k,false)),...confItems.map(k=>mkItem(k,true))].join('')+platsLies;
         let photoCompact='', photoFull='';
         try{ photoCompact=_histoPhotosHtml(r,true); photoFull=_histoPhotosHtml(r,false); }catch(e){ photoCompact=''; photoFull=''; }
         // Badge auto-NC à compléter
@@ -3749,7 +3751,7 @@ function renderENR01Histo(){
     // Data grid pour le détail
     const dataKeys=Object.keys(r).filter(k=>{
       try{
-        if(['_ts','_sec','_orig','_statut','_enr01_idx','_enr01_ts'].includes(k)) return false;
+        if(k.charAt(0)==='_') return false; // v493 : champs techniques masqués
         if(!r[k]||!String(r[k]).trim()) return false;
         if(_histoSkipText(k,r[k])) return false;
         return true;
@@ -6586,7 +6588,7 @@ function doSearch(){
       const cuisinier=r.cuisinier||r.operateur||r.cuisinier34||r.visa||'';
       const confBadges=CONF_FIDS.filter(f=>r[f]==='OUI'||r[f]==='NON').slice(0,4)
         .map(f=>`<span class="bo ${r[f]==='OUI'?'oui':'non'}">${FLAB[f]||f}: ${r[f]}</span>`).join(' ');
-      const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&f!=='signature'&&r[f]&&String(r[f]).trim()&&!_histoSkipText(f,r[f]);}catch{return false;}});
+      const dataKeys=Object.keys(r).filter(f=>{try{return!SKIP.includes(f)&&f!=='signature'&&f.charAt(0)!=='_'&&r[f]&&String(r[f]).trim()&&!_histoSkipText(f,r[f]);}catch{return false;}});
       const dataGrid=dataKeys.map(f=>{
         try{
         const lbl=FLAB[f]||f;const val=String(r[f]);
@@ -13361,26 +13363,38 @@ function exportMP_PDF(period){
   let totalLignes = 0;
 
   if(!filtered.length){
-    tableBody = '<tr><td colspan="6" style="text-align:center;color:#999;font-style:italic;padding:16px">Aucune saisie pour cette période</td></tr>';
+    tableBody = '<tr><td colspan="7" style="text-align:center;color:#999;font-style:italic;padding:16px">Aucune saisie pour cette période</td></tr>';
   } else {
     Object.entries(byDay).forEach(([date, rows])=>{
       // Ligne de date (séparateur)
       tableBody += `<tr style="background:#f5edf5">
-        <td colspan="6" style="font-weight:900;color:#5C1E5A;font-size:12px;padding:6px 8px">
+        <td colspan="7" style="font-weight:900;color:#5C1E5A;font-size:12px;padding:6px 8px">
           📅 ${fmtDate(date)} — ${rows.length} produit${rows.length>1?'s':''}
         </td></tr>`;
       rows.forEach(r=>{
         totalLignes++;
-        const dlc = r.dlc ? new Date(r.dlc+'T12:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-        const dlcOk = r.dlc ? r.dlc >= todayStr : null;
+        // v493 : DLC normalisée (ISO ou JJ/MM/AAAA, champs alternatifs, DLC du stock si fiche issue du Stock)
+        let dIso = '';
+        try {
+          const raw = r.dlc || r.ddm || r.dluo || r.dlc_lue || '';
+          const m1 = String(raw).match(/^(\d{4})-(\d{2})-(\d{2})/), m2 = String(raw).match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})$/);
+          dIso = m1 ? m1[1]+'-'+m1[2]+'-'+m1[3] : m2 ? ((m2[3].length===2?'20'+m2[3]:m2[3])+'-'+('0'+m2[2]).slice(-2)+'-'+('0'+m2[1]).slice(-2)) : '';
+          if(!dIso && r._stock_item_id && typeof stkItems==='function'){ const it=stkItems().find(x=>x.id===r._stock_item_id); if(it) dIso = it.dlc_lue || it.dlc || ''; }
+        } catch(e){ dIso = ''; }
+        const dTyp = /^(DDM|DLUO)$/i.test(String(r.dlc_type||'')) ? 'DDM ' : '';
+        const dlc = dIso ? dTyp + new Date(dIso+'T12:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+        const dlcOk = dIso ? dIso >= todayStr : null;
+        let plats = '—';
+        try { const pl = (typeof window._stkPlatsOf==='function') ? window._stkPlatsOf(r) : []; if(pl.length) plats = pl.map(escH).join('<br>'); } catch(e){}
         tableBody += `<tr>
           <td>${escH(r.produit||'—')}</td>
-          <td>${escH(r.lot||'—')}</td>
+          <td style="white-space:normal;word-break:break-all">${escH(r.lot||'—')}</td>
           <td style="${dlcOk===false?'color:#b71c1c;font-weight:800':dlcOk===true?'color:#1b5e20':''}">
             ${dlc}${dlcOk===false?' ⚠️ PÉRIMÉ':''}
           </td>
           <td>${escH(r.estampille||'—')}</td>
           <td>${escH(r.cuisinier||'—')}</td>
+          <td>${plats}</td>
         </tr>`;
       });
     });
@@ -13420,11 +13434,12 @@ function exportMP_PDF(period){
 <table>
   <thead>
     <tr>
-      <th style="width:28%">Produit</th>
-      <th style="width:18%">N° de lot</th>
-      <th style="width:16%">DLC / DDM</th>
-      <th style="width:20%">Estampille sanitaire</th>
-      <th style="width:18%">Cuisinier / Visa</th>
+      <th style="width:20%">Produit</th>
+      <th style="width:20%">N° de lot</th>
+      <th style="width:13%">DLC / DDM</th>
+      <th style="width:15%">Estampille sanitaire</th>
+      <th style="width:12%">Cuisinier / Visa</th>
+      <th style="width:20%">Plat(s)</th>
     </tr>
   </thead>
   <tbody>${tableBody}</tbody>
@@ -15083,7 +15098,7 @@ function renderENR34(){
         </div>
       </div>
       <div class="fg">
-        <label>Date fabrication</label>
+        <label>${d.statut==='Entamé'?"Date d'ouverture":'Date fabrication'}</label>
         <button class="dp-trigger" onclick="openDP('${d.date_fab||today()}',v=>{e34sR('date_fab',v);e34AutoDlc();},{max:'${today()}'})">
           <span class="dp-ico">📅</span>
           <span class="dp-val ${!d.date_fab?'empty':''}">${dateFabDisp}</span>
@@ -15091,7 +15106,7 @@ function renderENR34(){
         </button>
       </div>
       <div class="fg">
-        <label>Heure fabrication</label>
+        <label>${d.statut==='Entamé'?"Heure d'ouverture":'Heure fabrication'}</label>
         <button type="button" class="time-btn" onclick="S['_e34tmp']=S['_e34tmp']||{};S['_e34tmp'].draft=S['_e34tmp'].draft||{};S['_e34tmp'].draft.h=e34d().heure_fab||nowT();openTW('h','_e34tmp','Heure fabrication');window._twCloseCb=()=>{const v=gd('h','_e34tmp');if(v)e34sR('heure_fab',v);}">
           ${d.heure_fab?`<span>⏰</span><span class="tv">${d.heure_fab}</span>`:`<span>⏰</span><span class="tp2">Appuyer</span>`}
         </button>

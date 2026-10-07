@@ -25,6 +25,7 @@ Schéma strict:
   "days": [
     {
       "date": "YYYY-MM-DD",
+      "date_texte": "date telle qu'imprimée, ex: 06/10 ou lundi 6 octobre",
       "services": {
         "midi": ["plat1", "plat2"],
         "gouter": ["..."],
@@ -47,7 +48,9 @@ Règles de mapping:
 4) Ne garde que le texte imprimé des plats. Pas de titres de section (Déjeuner, Dîner, Midi…).
 5) dates au format ISO YYYY-MM-DD. Si l'année manque, déduire depuis le contexte visible.
 6) Si un service est vide, renvoyer [].
-7) Pas de doublons inutiles. Noms de plats nettoyés (trim).`;
+7) Pas de doublons inutiles. Noms de plats nettoyés (trim).
+8) Les dates imprimées sont TOUJOURS au format français JOUR/MOIS (JJ/MM ou JJ/MM/AAAA) : "06/10" = 6 octobre, jamais 10 juin. Recopie aussi la date imprimée dans "date_texte".
+9) Recopie les mots exactement : "selon arrivage" (et non "arrivée"), "fruits frais", "de saison".`;
 
 function json(status, body) {
   return { statusCode: status, headers: CORS, body: JSON.stringify(body) };
@@ -73,6 +76,23 @@ function stripJsonFence(text) {
   return t;
 }
 
+/** Date imprimée française (JJ/MM[/AAAA]) → ISO ; null si illisible */
+function frDateToIso(txt, fallbackIso) {
+  const m = String(txt || '').match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})(?:\s*[\/.\-]\s*(\d{2,4}))?/);
+  if (!m) return null;
+  const d = parseInt(m[1], 10), mo = parseInt(m[2], 10);
+  if (!(d >= 1 && d <= 31 && mo >= 1 && mo <= 12)) return null;
+  let y = m[3] ? parseInt(m[3], 10) : NaN;
+  if (m[3] && m[3].length === 2) y = 2000 + y;
+  if (!y) y = parseInt(String(fallbackIso || '').slice(0, 4), 10) || new Date().getFullYear();
+  return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+/** Corrections de lecture fréquentes */
+function fixDishText(s) {
+  return String(s || '')
+    .replace(/\b(selon|suivant)\s+(l')?arriv[ée]e\b/gi, '$1 arrivage')
+    .replace(/\bd'arriv[ée]e\b/gi, "d'arrivage");
+}
 function normalizeOcrResult(raw) {
   const out = { type: 'jour', days: [] };
   if (!raw || typeof raw !== 'object') return out;
@@ -83,12 +103,15 @@ function normalizeOcrResult(raw) {
     function list(v) {
       if (!Array.isArray(v)) return [];
       return v
-        .map(function (x) { return String(x || '').replace(/\s+/g, ' ').trim(); })
+        .map(function (x) { return fixDishText(String(x || '').replace(/\s+/g, ' ').trim()); })
         .filter(Boolean)
         .slice(0, 40);
     }
+    // Date imprimée française prioritaire sur l'ISO du modèle (évite 06/10 → 10 juin)
+    let iso = String((d && d.date) || '').slice(0, 10);
+    try { const fr = frDateToIso(d && d.date_texte, iso); if (fr) iso = fr; } catch (e) { /* garde iso */ }
     return {
-      date: String((d && d.date) || '').slice(0, 10),
+      date: iso,
       services: {
         midi: list(services.midi),
         gouter: list(services.gouter || services.goûter),
