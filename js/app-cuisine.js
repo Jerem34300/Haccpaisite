@@ -17856,15 +17856,16 @@ function _setPinLabels(){
   const m = _pinCtx.mode;
   const isChef = _pinCtx.target?.startsWith('chef:');
   const name = isChef ? _pinCtx.target.slice(5) : 'admin';
+  const _first = isChef ? (String(name||'').trim().split(' ')[0] || name) : '';
   const titles = {
-    check: isChef ? 'Session cuisinier' : 'Code administrateur',
+    check: isChef ? 'Code de '+_first : 'Code administrateur',
     set1:  isChef ? 'Créer votre code PIN' : 'Définir le code admin',
     set2:  'Confirmez le code',
     recovery: isChef ? 'Code oublié ?' : 'Récupération admin'
   };
   let _who = ''; try { _who = isChef ? String(name||'').trim().split(' ')[0] : ''; } catch(e){}
   const subs = {
-    check: isChef ? 'Code de '+(_who||name) : 'Code administrateur',
+    check: isChef ? 'Code personnel de '+(_who||name)+' (4 chiffres)' : 'Code administrateur',
     set1:  'Choisissez un code à 4 chiffres',
     set2:  'Retapez le même code',
     recovery: ''
