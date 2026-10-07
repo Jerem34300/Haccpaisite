@@ -1104,24 +1104,49 @@ function stkRecallSearch(v){
 function stkBloquer(idx, on){
   try {
     var who = _stkNeedWho(); if (!who) return;
-    var L = stkRecall(_stk.rq).lots[idx]; if (!L) return;
-    var doIt = function(){
-      showPrompt(on ? '⛔ Bloquer le lot '+(L.lot||'') : '↩️ Débloquer le lot '+(L.lot||''), 'Motif obligatoire — tracé avec ton nom et l\'heure', on ? 'Ex : rappel fournisseur, alerte DGAL…' : 'Ex : levée du rappel', function(m){
+    var lots = stkRecall(_stk.rq).lots;
+    var L = lots[idx]; if (!L) return;
+    var apply = function(sel){
+      showPrompt(on ? '⛔ Bloquer '+sel.length+' lot'+(sel.length>1?'s':'') : '↩️ Débloquer le lot '+(L.lot||''), 'Motif obligatoire — tracé avec ton nom et l\'heure', on ? 'Ex : rappel fournisseur, alerte DGAL…' : 'Ex : levée du rappel', function(m){
         try {
           m = String(m||'').trim();
           if (!m) { toast('⚠️ Motif obligatoire','warning'); return; }
-          L.items.forEach(function(it){ stkMvt(on ? 'bloque' : 'debloque', it, { motif: m }); });
-          toast(on ? '⛔ Lot '+L.lot+' bloqué — ne plus utiliser' : '↩️ Lot '+L.lot+' débloqué', on ? 'warning' : 'success');
+          sel.forEach(function(X){ X.items.forEach(function(it){ stkMvt(on ? 'bloque' : 'debloque', it, { motif: m }); }); });
+          toast(on ? '⛔ Bloqué : '+sel.map(function(X){ return X.lot; }).join(', ')+' — ne plus utiliser' : '↩️ Lot '+L.lot+' débloqué', on ? 'warning' : 'success');
           stkRecallSearch(_stk.rq);
         } catch(e){ console.warn('[stock] bloquer2', e); }
       }, on ? 'Bloquer' : 'Débloquer');
     };
-    if (on) doIt();
-    else {
-      // Fail closed : sans contrôle du code admin, pas de déblocage
-      if (typeof nettAdminGuard !== 'function') { toast('⛔ Déblocage impossible : code admin indisponible','error'); return; }
-      try { nettAdminGuard(doIt); } catch(e){ console.warn('[stock] admin guard', e); toast('⛔ Déblocage refusé (code admin non vérifié)','error'); }
+    if (on) {
+      // Confirmation : liste exacte des lots qui seront bloqués (recherche partielle → plusieurs possibles), décochables
+      var cand = lots.filter(function(X){ return !X.bloque && X.items.length; });
+      var ov = document.createElement('div');
+      ov.className = 'hacc-wait-ov'; ov.id = 'stk-block-ov';
+      ov.innerHTML = '<div class="hacc-wait-card" style="text-align:left;padding:16px;max-width:400px">'
+        + '<div class="stk-h">⛔ Lots à bloquer</div><div class="stk-sub" style="margin-bottom:8px">Vérifie la liste : seuls les lots cochés seront bloqués.</div>'
+        + cand.map(function(X, j){ var same = _stkNorm(X.lot) === _stkNorm(L.lot);
+            return '<label class="stk-line" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" data-bi="'+j+'" '+(same?'checked':'')+' style="width:20px;height:20px;accent-color:#dc2626;margin-top:2px">'
+              + '<span><b>'+_stkE(X.lot||'—')+'</b> — '+_stkE(X.produit)+'<br><small>'+X.entames+' entamé(s) · '+X.neufs+' neuf(s) · '+X.bls.length+' BL</small></span></label>'; }).join('')
+        + '<button class="stk-btn big" data-ok="1" style="margin-top:8px;background:#dc2626;border-color:#dc2626;color:#fff">Bloquer la sélection</button>'
+        + '<button class="stk-btn big" data-no="1" style="margin-top:6px">Annuler</button></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click', function(ev){
+        try {
+          if (ev.target === ov || ev.target.closest('[data-no]')) { ov.remove(); return; }
+          if (!ev.target.closest('[data-ok]')) return;
+          var sel = [];
+          ov.querySelectorAll('input[data-bi]:checked').forEach(function(c){ sel.push(cand[parseInt(c.getAttribute('data-bi'),10)]); });
+          if (!sel.length) { toast('Coche au moins un lot','warning'); return; }
+          ov.remove(); apply(sel);
+        } catch(e){ console.warn('[stock] block ov', e); }
+      });
+      return;
     }
+    // Déblocage : fail closed — code admin EXISTANT obligatoire (jamais de création à la volée)
+    if (!S.adminPin) { toast('⛔ Déblocage impossible : définis d\'abord un code admin dans ⚙️ Réglages','error'); return; }
+    if (typeof openPinModal !== 'function') { toast('⛔ Déblocage refusé (code admin non vérifiable)','error'); return; }
+    try { openPinModal({ mode: 'check', target: 'admin', onSuccess: function(){ apply([L]); } }); }
+    catch(e){ console.warn('[stock] admin pin', e); toast('⛔ Déblocage refusé (code admin non vérifié)','error'); }
   } catch(e){ console.warn('[stock] bloquer', e); }
 }
 function _stkRecallPdfSection(R){
