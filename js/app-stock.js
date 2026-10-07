@@ -1063,6 +1063,9 @@ function stkRecallHtml(q){
     }).join('') + '<button class="stk-btn big" style="margin-top:8px" onclick="stkRecallPdf()">📄 Export PDF inspecteur</button>';
   } catch(e){ console.warn('[stock] recallHtml', e); return ''; }
 }
+function stkRecallFocus(){
+  try { var c = document.getElementById('stk-recall'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); var q = document.getElementById('stk-recall-q'); if (q) setTimeout(function(){ try { q.focus(); } catch(e){} }, 350); } catch(e){ console.warn('[stock] recallFocus', e); }
+}
 function stkRecallSearch(v){
   try { _stk.rq = String(v||''); var el = document.getElementById('stk-recall-res'); if (el) el.innerHTML = stkRecallHtml(_stk.rq); } catch(e){ console.warn('[stock] recallSearch', e); }
 }
@@ -1082,7 +1085,12 @@ function stkBloquer(idx, on){
         } catch(e){ console.warn('[stock] bloquer2', e); }
       }, on ? 'Bloquer' : 'Débloquer');
     };
-    if (on) doIt(); else { try { nettAdminGuard(doIt); } catch(e){ doIt(); } }
+    if (on) doIt();
+    else {
+      // Fail closed : sans contrôle du code admin, pas de déblocage
+      if (typeof nettAdminGuard !== 'function') { toast('⛔ Déblocage impossible : code admin indisponible','error'); return; }
+      try { nettAdminGuard(doIt); } catch(e){ console.warn('[stock] admin guard', e); toast('⛔ Déblocage refusé (code admin non vérifié)','error'); }
+    }
   } catch(e){ console.warn('[stock] bloquer', e); }
 }
 function _stkRecallPdfSection(R){
@@ -1135,7 +1143,8 @@ function _stkExportSection(from, to){
     stkRender = function(){
       var h = _rs.apply(this, arguments);
       if (_stk.draft) return h;
-      return h + '<div class="card" id="stk-recall"><div class="stk-h">🔎 Rappel de lot</div>'
+      var top = '<div style="display:flex;justify-content:flex-end;margin:0 0 8px"><button class="stk-btn" onclick="stkRecallFocus()">🔎 Rappel de lot</button></div>';
+      return top + h + '<div class="card" id="stk-recall" style="margin-bottom:96px"><div class="stk-h">🔎 Rappel de lot</div>'
         + '<input class="stk-in" id="stk-recall-q" placeholder="N° de lot…" value="'+_stkA(_stk.rq)+'" oninput="stkRecallSearch(this.value)">'
         + '<div id="stk-recall-res" style="margin-top:8px">'+stkRecallHtml(_stk.rq)+'</div></div>';
     };
