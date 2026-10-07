@@ -10,7 +10,7 @@
  * ════════════════════════════════════════════════════════════════════ */
 var STK_SEC = 'stock';
 var STK_MVT = 'stock_mvt';
-var _stk = { pages: [], draft: null, q: '', busy: false };
+var _stk = { pages: [], draft: null, q: '', busy: false, view: [], resume: null, resumeChecked: false };
 
 (function stkInit(){
   try {
@@ -77,7 +77,86 @@ function _stkNeedWho(){
 }
 function _stkBls(){ try { return ((S[STK_SEC]||{}).lignes||[]).filter(function(r){ return r && !r._deleted; }); } catch(e){ return []; } }
 function _stkMvts(){ try { return ((S[STK_MVT]||{}).lignes||[]).filter(function(r){ return r && !r._deleted; }); } catch(e){ return []; } }
-function _stkRefresh(){ try { if (typeof cur !== 'undefined' && cur === 'stock') renderMain(); } catch(e){ console.warn('[stock] refresh', e); } }
+function _stkRefresh(){ stkPersist(); try { if (typeof cur !== 'undefined' && cur === 'stock') renderMain(); } catch(e){ console.warn('[stock] refresh', e); } }
+// ── Brouillon de réception persistant (IndexedDB : photos trop lourdes pour localStorage) ──
+// Survit à un rechargement, à la fermeture iOS ou à une mise à jour du service worker.
+var STK_IDB = 'haccpro_stock', STK_IDB_KEY = 'bl_draft';
+function _stkIdb(){
+  return new Promise(function(res, rej){
+    try {
+      var rq = indexedDB.open(STK_IDB, 1);
+      rq.onupgradeneeded = function(){ try { rq.result.createObjectStore('kv'); } catch(e){} };
+      rq.onsuccess = function(){ res(rq.result); };
+      rq.onerror = function(){ rej(rq.error); };
+    } catch(e){ rej(e); }
+  });
+}
+function _stkSiteKey(){ try { var c = JSON.parse(localStorage.getItem('haccpro_supa_cfg')||localStorage.getItem('haccp_supa_cfg_v1')||'{}'); return String(c.siteId||c.site_id||''); } catch(e){ return ''; } }
+var _stkPersistT = null;
+function stkPersist(){
+  try {
+    if (_stkPersistT) clearTimeout(_stkPersistT);
+    if (_stk.resume) return; // brouillon en attente de « Reprendre / Abandonner » : ne pas l'écraser
+    _stkPersistT = setTimeout(function(){
+      _stkIdb().then(function(db){
+        try {
+          var tx = db.transaction('kv', 'readwrite'), st = tx.objectStore('kv');
+          if (!_stk.draft && !_stk.pages.length) st.delete(STK_IDB_KEY);
+          else st.put({ draft: _stk.draft, pages: _stk.pages, site: _stkSiteKey(), who: _stkWho()||'', ts: new Date().toISOString() }, STK_IDB_KEY);
+        } catch(e){ console.warn('[stock] persist', e); }
+      }).catch(function(e){ console.warn('[stock] idb', e); });
+    }, 250);
+  } catch(e){ console.warn('[stock] persist', e); }
+}
+function _stkLoadPersisted(){
+  return _stkIdb().then(function(db){
+    return new Promise(function(res){
+      try { var rq = db.transaction('kv','readonly').objectStore('kv').get(STK_IDB_KEY); rq.onsuccess = function(){ res(rq.result||null); }; rq.onerror = function(){ res(null); }; }
+      catch(e){ res(null); }
+    });
+  }).catch(function(){ return null; });
+}
+function _stkCheckResume(){
+  try {
+    if (_stk.resumeChecked || _stk.draft || _stk.pages.length) return;
+    _stk.resumeChecked = true;
+    _stkLoadPersisted().then(function(d){
+      try {
+        if (!d || (!d.draft && !(d.pages||[]).length)) return;
+        if (d.site && _stkSiteKey() && d.site !== _stkSiteKey()) return; // jamais d'un site à l'autre
+        _stk.resume = d;
+        if (typeof cur !== 'undefined' && cur === 'stock') renderMain();
+      } catch(e){ console.warn('[stock] resume', e); }
+    });
+  } catch(e){ console.warn('[stock] checkResume', e); }
+}
+function stkResume(){
+  try {
+    var d = _stk.resume; if (!d) return;
+    _stk.draft = d.draft || null; _stk.pages = d.pages || []; _stk.resume = null;
+    _stkRefresh(); window.scrollTo(0,0);
+  } catch(e){ console.warn('[stock] resume', e); }
+}
+/** Abandon d'une réception en cours : rien en stock, mais trace (qui / quand / quoi). */
+function _stkTraceAbandon(d, pages, motif){
+  try {
+    var now = new Date();
+    var row = { _ts: now.toISOString(), _sec: STK_MVT, date: _stkToday(), heure: _stkHM(now), type: 'abandon_bl', item_id: '',
+      fournisseur: (d && d.fournisseur) || '', bl_numero: (d && d.numero) || '', nb_lignes: d && d.lignes ? d.lignes.length : 0,
+      pages: pages || 0, motif: motif || 'Réception abandonnée avant validation', cuisinier: _stkWho() || '' };
+    _stkPush(STK_MVT, row);
+  } catch(e){ console.warn('[stock] trace abandon', e); }
+}
+function stkAbandonResume(){
+  try {
+    var d = _stk.resume; if (!d) return;
+    if (!_stkNeedWho()) return;
+    showConfirm('Abandonner la réception en cours ?', 'Rien n\'entrera en stock. L\'abandon est tracé à ton nom.', 'Abandonner', function(){
+      try { _stkTraceAbandon(d.draft, (d.draft && d.draft.pages ? d.draft.pages.length : (d.pages||[]).length)); _stk.resume = null; _stk.draft = null; _stk.pages = []; _stkRefresh(); toast('Réception abandonnée (tracée)','success'); }
+      catch(e){ console.warn('[stock] abandonResume', e); }
+    });
+  } catch(e){ console.warn('[stock] abandonResume', e); }
+}
 function _stkPush(sec, row){
   try {
     S[sec] = S[sec] || {};
@@ -116,6 +195,7 @@ function stkItems(){
       var n = Math.max(1, parseInt(m.n,10)||1);
       if (m.type === 'entame') { for (var k=0;k<n;k++) it.ouverts.push(m.date||String(m._ts||'').slice(0,10)); if (m.lot_lu && !it.lot_lu) it.lot_lu = m.lot_lu; if (m.dlc_lue) it.dlc_lue = m.dlc_lue; }
       else if (m.type === 'fini') { if (m.from === 'neuf') it.fin_neuf += n; else { it.fin_ent += n; it.ouverts.splice(0, n); } }
+      else if (m.type === 'lecture_etiquette') { if (m.lot_lu) it.lot_lu = m.lot_lu; if (m.dlc_lue) it.dlc_lue = m.dlc_lue; }
       else if (m.type === 'correction') { it.corr += (parseInt(m.delta,10)||0); }
       else if (m.type === 'bloque') { it.bloque = true; it.bloque_motif = m.motif||''; }
       else if (m.type === 'debloque') { it.bloque = false; }
@@ -174,7 +254,15 @@ function _stkDlcChip(dlc){
 // ── Rendu principal ─────────────────────────────────────────────────
 function stkRender(){
   if (_stk.draft) return stkRenderConfirm();
+  _stkCheckResume();
   var h = '';
+  if (_stk.resume) {
+    var rd = _stk.resume.draft, np = rd ? (rd.pages||[]).length : (_stk.resume.pages||[]).length;
+    h += '<div class="card" style="border:2px solid #f59e0b;background:#fffbeb"><div class="stk-h">⏸️ Réception en cours non validée</div>'
+      + '<div class="stk-sub">'+(rd ? ('BL '+_stkE(rd.fournisseur||'…')+' '+_stkE(rd.numero||'')+' · '+(rd.lignes||[]).length+' ligne(s) · ') : '')+np+' page(s) · '+_stkE(_stk.resume.who||'')+' '+_stkFr(String(_stk.resume.ts||'').slice(0,10))+'</div>'
+      + '<button class="stk-btn ok big" style="margin-top:8px" onclick="stkResume()">▶️ Reprendre la réception en cours</button>'
+      + '<button class="stk-btn big" style="margin-top:6px" onclick="stkAbandonResume()">Abandonner</button></div>';
+  }
   // Scan BL
   h += '<div class="card"><div class="stk-h">📄 Nouvelle réception</div>'
     + '<div class="stk-sub">Photographie le bon de livraison (plusieurs pages possibles, gardées dans l\'ordre).</div>'
@@ -200,7 +288,7 @@ function stkRender(){
   var bls = _stkBls().slice(0, 8);
   if (bls.length) {
     h += '<div class="card"><div class="stk-h">🧾 Dernières réceptions</div>' + bls.map(function(bl){
-      var ph = ['photo','photo2','photo3'].map(function(k){ try { return bl[k] ? photoThumb(bl[k], '', true) : ''; } catch(e){ return ''; } }).join('');
+      var ph = ['photo','photo2','photo3','photo4','photo5','photo6'].map(function(k){ try { return bl[k] ? photoThumb(bl[k], '', true) : ''; } catch(e){ return ''; } }).join('');
       var refus = (bl.lignes_bl||[]).filter(function(l){ return l.statut==='refuse'; }).map(function(l){ return '⛔ '+_stkE(l.produit)+' — refusé'; });
       var manq = (bl.lignes_bl||[]).filter(function(l){ return l.statut==='manquant'; }).map(function(l){ return '✗ '+_stkE(l.produit)+' — manquant sur BL n° '+_stkE(bl.numero||'?'); });
       return '<div class="stk-line"><div class="nm">'+_stkE(bl.fournisseur||'Fournisseur ?')+' — BL '+_stkE(bl.numero||'?')+'</div>'
@@ -214,26 +302,37 @@ function stkRender(){
 }
 function stkListHtml(groups){
   try {
+    _stk.view = groups; // handlers par index (jamais de texte OCR/saisi dans un onclick)
     if (!groups.length) return '<div class="empty-s">Aucun produit en stock.<br><small>Scanne un bon de livraison pour commencer.</small></div>';
-    return groups.map(function(G){
+    return groups.map(function(G, gi){
       var recs = G.items.map(function(i){ return _stkFr(i.date_rec); }).filter(function(v,i,a){ return a.indexOf(v)===i; });
       var src = G.lot_auto ? (_stkE(G.items[0].fournisseur)+' · sans lot (BL du '+_stkFr(G.items[0].bl_date)+')')
         : ('Lot '+_stkE(G.lot||'—')+' · reçu le '+recs.join(' et le '));
       var chips = '';
       if (G.entames) chips += '<span class="stk-chip ent">🟠 '+G.entames+' entamé'+(G.entames>1?'s':'')+(G.ouvert_le?' (ouvert le '+_stkFr(G.ouvert_le)+')':'')+'</span>';
       if (G.neufs) chips += '<span class="stk-chip neuf">'+G.neufs+' neuf'+(G.neufs>1?'s':'')+'</span>';
-      chips += _stkDlcChip(G.dlc);
+      var dchip = _stkDlcChip(G.dlc);
+      chips += dchip;
       if (G.bloque) chips += '<span class="stk-chip blk">⛔ Lot bloqué</span>';
-      var k = _stkA(G.key);
       return '<div class="stk-line"'+(G.bloque?' style="border-color:#fca5a5;background:#fff5f5"':'')+'><div class="nm">'+_stkE(G.produit)+'</div>'
-        + '<div class="mt">'+src+(G.dlc?' · '+(G.items[0].dlc_type||'DLC')+' '+_stkFr(G.dlc):'')+'</div><div>'+chips+'</div>'
+        + '<div class="mt">'+src+((G.dlc && !dchip)?' · DLC '+_stkFr(G.dlc):'')+(G.items.some(function(i){ return i.lot_lu && _stkNorm(i.lot_lu)!==_stkNorm(i.lot); })?' · lot étiquette '+_stkE(G.items.find(function(i){ return i.lot_lu; }).lot_lu):'')+'</div><div>'+chips+'</div>'
         + '<div class="stk-act">'
-        + '<button onclick="stkEntamer(\''+k+'\')">J\'entame</button>'
-        + '<button onclick="stkFini(\''+k+'\')">Fini</button>'
-        + '<button onclick="stkCorriger(\''+k+'\')">✏️ Corriger</button>'
+        + '<button onclick="stkGroupAct(\'entamer\','+gi+')">J\'entame</button>'
+        + '<button onclick="stkGroupAct(\'fini\','+gi+')">Fini</button>'
+        + '<button onclick="stkGroupAct(\'menu\','+gi+')" aria-label="Plus d\'actions" style="margin-left:auto">⋯</button>'
         + '</div></div>';
     }).join('');
   } catch(e){ console.warn('[stock] list', e); return ''; }
+}
+/** Actions de la liste par index (G.key n'apparaît jamais dans le HTML). */
+var stkEntamerUI = function(key){ stkEntamer(key); };
+function stkGroupAct(act, i){
+  try {
+    var G = (_stk.view||[])[i]; if (!G) return;
+    if (act === 'entamer') stkEntamerUI(G.key);
+    else if (act === 'fini') stkFini(G.key);
+    else if (act === 'menu') _stkChoice(G.produit, '', [{ k: 'corr', html: '✏️ Corriger le stock (motif obligatoire)' }], function(o){ if (o.k === 'corr') stkCorriger(G.key); });
+  } catch(e){ console.warn('[stock] groupAct', e); }
 }
 function stkSearch(v){
   try {
@@ -284,6 +383,48 @@ function stkAddFiles(files){
 }
 function stkDelPage(i){ try { _stk.pages.splice(i,1); _stkRefresh(); } catch(e){ console.warn('[stock] delPage', e); } }
 
+/** Comme photoSave : { ref: JSON miniature 640 px, full: JPEG 2000 px q0.88 } */
+function _stkPhotoPair(dataUrl){
+  return new Promise(function(resolve){
+    try {
+      var img = new Image();
+      img.onload = function(){
+        try {
+          var draw = function(maxW, maxH, q){
+            var w = img.naturalWidth, h = img.naturalHeight;
+            if (w > maxW) { h = Math.round(h*maxW/w); w = maxW; }
+            if (maxH && h > maxH) { w = Math.round(w*maxH/h); h = maxH; }
+            var c = document.createElement('canvas'); c.width = w; c.height = h;
+            var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,w,h); g.drawImage(img,0,0,w,h);
+            var out = c.toDataURL('image/jpeg', q); try { c.width = c.height = 0; } catch(e){}
+            return out;
+          };
+          resolve({ ref: JSON.stringify({ thumb: draw(640, 0, 0.72), file: '', date: _stkToday() }), full: draw(2000, 1500, 0.88) });
+        } catch(e){ resolve(null); }
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = dataUrl;
+    } catch(e){ resolve(null); }
+  });
+}
+/** Enqueue avec pleine résolution : _pendingPhotos prêté le temps de l'appel (enqueue est synchrone), puis restauré. */
+function _stkPushWithPhotos(sec, row, fulls){
+  var saved = {}, pend = (typeof _pendingPhotos !== 'undefined') ? _pendingPhotos : null;
+  try {
+    S[sec] = S[sec] || {};
+    S[sec].lignes = Array.isArray(S[sec].lignes) ? S[sec].lignes : [];
+    S[sec].lignes.unshift(stampEntry(row));
+    save();
+    try {
+      if (pend && fulls) Object.keys(fulls).forEach(function(k){ saved[k] = pend[k]; pend[k] = fulls[k]; });
+      SupaEngine.enqueue(sec, row);
+    } catch(e){ console.warn('[stock] sync photos', e); }
+    finally {
+      try { if (pend && fulls) Object.keys(fulls).forEach(function(k){ if (saved[k] === undefined) delete pend[k]; else pend[k] = saved[k]; }); } catch(e){}
+    }
+    return row;
+  } catch(e){ console.warn('[stock] pushPhotos', e); return null; }
+}
 /** Miniature lisible pour la preuve (même format que photoSave : JSON {thumb,file,date}). */
 function _stkThumbRef(dataUrl, maxW){
   return new Promise(function(resolve){
@@ -327,13 +468,14 @@ async function stkAnalyse(){
 function stkManual(){ stkOpenDraft({ fournisseur:'', numero:'', date:_stkToday(), lignes:[] }); }
 function stkOpenDraft(res){
   try {
+    _stk.resume = null;
     _stk.draft = {
       fournisseur: res.fournisseur||'', numero: res.numero||'', date: res.date||_stkToday(),
       pages: _stk.pages.slice(),
       lignes: (res.lignes||[]).map(function(l){ return {
         produit: l.produit||'', conditionnement: l.conditionnement||'', qte_texte: l.qte_texte||'',
         qte: Math.max(1, parseInt(l.qte,10)||1), unite: l.unite||'', lot: l.lot||'', dlc: l.dlc||'', dlc_type: l.dlc_type||'',
-        statut: '', hors_bl: false, edit: false }; })
+        statut: '', hors_bl: false, edit: false, sans_etiquette: !l.lot }; })
     };
     _stk.pages = [];
     // Fournisseur connu ? (calendrier fournisseurs) → nom canonique
@@ -364,14 +506,15 @@ function stkRenderConfirm(){
     var meta = [l.conditionnement, (l.qte_texte||(l.qte+' u.')), l.lot?('lot '+l.lot):'sans lot', l.dlc?((l.dlc_type||'DLC')+' '+_stkFrY(l.dlc)):''].filter(Boolean).map(_stkE).join(' · ');
     var extra = '';
     if (l.statut === 'manquant') extra = '<div class="mt" style="color:#4b5563">Trace : manquant sur BL n° '+_stkE(d.numero||'?')+'</div>';
-    if (l.statut === 'refuse') extra = '<div class="mt" style="color:#991b1b">Refusé — non-conformité ENR30 pré-remplie à la validation</div>';
+    if (l.statut === 'refuse') extra = '<div class="mt" style="color:#991b1b">Refusé — fiche non-conformité pré-remplie à la validation</div>';
     var edit = l.edit ? ('<div class="stk-grid">'
       + '<input class="stk-in" value="'+_stkA(l.produit)+'" placeholder="Produit" onchange="stkLineSet('+i+',\'produit\',this.value)">'
       + '<input class="stk-in" type="number" min="1" value="'+_stkA(l.qte)+'" placeholder="Unités" onchange="stkLineSet('+i+',\'qte\',this.value)">'
       + '<input class="stk-in" value="'+_stkA(l.lot)+'" placeholder="Lot" onchange="stkLineSet('+i+',\'lot\',this.value)">'
       + '<input class="stk-in" type="date" value="'+_stkA(l.dlc)+'" onchange="stkLineSet('+i+',\'dlc\',this.value)"></div>') : '';
     return '<div class="stk-line'+(l.statut?'':' todo')+'"><div style="display:flex;gap:6px"><div style="flex:1"><div class="nm">'+_stkE(l.produit||'(sans nom)')+(l.hors_bl?' <span class="stk-chip dlc">hors BL</span>':'')+'</div>'
-      + '<div class="mt">'+meta+' · <b>'+l.qte+' unité'+(l.qte>1?'s':'')+' en stock</b></div></div>'
+      + '<div class="mt">'+meta+' · <b>'+l.qte+' unité'+(l.qte>1?'s':'')+' sur le BL</b></div>'
+      + '<label class="mt" style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" '+(l.sans_etiquette?'checked':'')+' onchange="stkLineSet('+i+',\'sans_etiquette\',this.checked)" style="width:18px;height:18px;accent-color:#5C1E5A"> Sans étiquette (pas de photo à l\'ouverture)</label></div>'
       + '<button class="stk-btn" style="padding:4px 8px;align-self:flex-start" onclick="stkLineEdit('+i+')" aria-label="Modifier">✏️</button></div>'
       + extra + edit
       + '<div class="stk-3"><button class="'+(l.statut==='recu'?'on-r':'')+'" onclick="stkLineStat('+i+',\'recu\')">✓ Reçu</button>'
@@ -384,12 +527,17 @@ function stkRenderConfirm(){
     + '<button class="stk-btn big" style="margin-top:6px" onclick="stkAbandon()">Annuler</button></div>';
   return h;
 }
-function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); } } catch(e){ console.warn('[stock] draftSet', e); } }
+function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); stkPersist(); } } catch(e){ console.warn('[stock] draftSet', e); } }
 function stkLineSet(i, k, v){
   try {
     var l = _stk.draft && _stk.draft.lignes[i]; if (!l) return;
-    if (k === 'qte') l.qte = Math.max(1, parseInt(v,10)||1); else l[k] = String(v||'').trim();
-    if (k === 'qte') _stkRefresh();
+    if (k === 'qte') l.qte = Math.max(1, parseInt(v,10)||1);
+    else if (k === 'sans_etiquette') l.sans_etiquette = !!v;
+    else l[k] = String(v||'').trim();
+    if (k === 'lot' && l.lot && !l._se_touche) l.sans_etiquette = false;
+    if (k === 'sans_etiquette') l._se_touche = true;
+    stkPersist();
+    if (k === 'qte' || k === 'lot' || k === 'sans_etiquette') _stkRefresh();
   } catch(e){ console.warn('[stock] lineSet', e); }
 }
 function stkLineEdit(i){ try { var l = _stk.draft.lignes[i]; l.edit = !l.edit; _stkRefresh(); } catch(e){ console.warn('[stock] lineEdit', e); } }
@@ -397,14 +545,18 @@ function stkLineStat(i, st){ try { var l = _stk.draft.lignes[i]; l.statut = (l.s
 function stkToutRecu(){ try { _stk.draft.lignes.forEach(function(l){ if (!l.statut) l.statut = 'recu'; }); _stkRefresh(); } catch(e){ console.warn('[stock] toutRecu', e); } }
 function stkHorsBl(){
   try {
-    _stk.draft.lignes.push({ produit:'', conditionnement:'', qte_texte:'', qte:1, unite:'', lot:'', dlc:'', dlc_type:'', statut:'recu', hors_bl:true, edit:true });
+    _stk.draft.lignes.push({ produit:'', conditionnement:'', qte_texte:'', qte:1, unite:'', lot:'', dlc:'', dlc_type:'', statut:'recu', hors_bl:true, edit:true, sans_etiquette:true });
     _stkRefresh();
   } catch(e){ console.warn('[stock] horsBl', e); }
 }
 function stkAbandon(){
   try {
-    showConfirm('Abandonner ce BL ?', 'Rien n\'a été enregistré. Les photos seront perdues.', 'Abandonner', function(){ _stk.draft = null; _stkRefresh(); });
-  } catch(e){ _stk.draft = null; _stkRefresh(); }
+    if (!_stkNeedWho()) return;
+    showConfirm('Abandonner ce BL ?', 'Rien n\'entrera en stock. L\'abandon est tracé à ton nom.', 'Abandonner', function(){
+      try { _stkTraceAbandon(_stk.draft, (_stk.draft.pages||[]).length); } catch(e){}
+      _stk.draft = null; _stkRefresh();
+    });
+  } catch(e){ console.warn('[stock] abandon', e); }
 }
 async function stkValider(){
   var d = _stk.draft; if (!d || _stk.busy) return;
@@ -426,6 +578,7 @@ async function stkValider(){
           unite: l.unite, lot: lot, lot_auto: auto, dlc: l.dlc, dlc_type: l.dlc_type, statut: l.statut, hors_bl: !!l.hors_bl };
         if (l.statut === 'manquant') o.trace = 'manquant sur BL n° '+(d.numero||'?');
         if (l.statut === 'refuse') o.trace = 'refusé à la réception';
+        o.sans_etiquette = !!l.sans_etiquette;
         return o;
       })
     };
@@ -434,16 +587,19 @@ async function stkValider(){
         nX = rec.lignes_bl.filter(function(l){ return l.statut==='refuse'; }).length;
     rec.nb_recu = nR; rec.nb_manquant = nM; rec.nb_refuse = nX;
     rec.resume = nR+' reçu'+(nR>1?'s':'')+' · '+nM+' manquant'+(nM>1?'s':'')+' · '+nX+' refusé'+(nX>1?'s':'');
-    // Photos du BL : même format que photoSave (miniature lisible), champs photo/photo2/photo3 (+ photos_extra)
+    // Photos du BL : même chaîne que photoSave — miniature 640 px {thumb,file,date} dans le dossier (S),
+    // pleine résolution (2000 px) confiée à SupaEngine via _pendingPhotos → Supabase Storage (bucket privé) → siège.
+    var fulls = {};
     try {
       for (var i = 0; i < d.pages.length; i++) {
-        var ref = await _stkThumbRef(d.pages[i], 900);
-        if (!ref) continue;
-        if (i === 0) rec.photo = ref; else if (i === 1) rec.photo2 = ref; else if (i === 2) rec.photo3 = ref;
-        else { rec.photos_extra = rec.photos_extra || []; rec.photos_extra.push(ref); }
+        var pair = await _stkPhotoPair(d.pages[i]);
+        if (!pair || !pair.ref) continue;
+        var fld = i === 0 ? 'photo' : ('photo' + (i + 1));
+        rec[fld] = pair.ref;
+        if (pair.full && i < 3) fulls[i === 0 ? 'enr31' : ('enr31_' + (i + 1))] = pair.full; // préfixes connus de SupaEngine (photo/photo2/photo3)
       }
     } catch(e){ console.warn('[stock] photos', e); }
-    _stkPush(STK_SEC, rec);
+    _stkPushWithPhotos(STK_SEC, rec, fulls);
     _stk.draft = null; _stk.busy = false;
     toast('✅ Réception enregistrée — '+rec.resume,'success');
     // Refusés → NC ENR30 pré-remplie via le flux existant (nc_auto_pending + ncAutoFill)
@@ -502,7 +658,8 @@ function _stkChoice(title, sub, opts, cb){
     document.body.appendChild(ov);
   } catch(e){ console.warn('[stock] choice', e); }
 }
-function stkEntamer(key, after){
+/** defer=true : rien n'est écrit ici, after(it, 'ent'|'neuf') écrit mouvement + fiche ensemble. */
+function stkEntamer(key, after, defer){
   try {
     if (!_stkNeedWho()) return;
     var G = _stkGroup(key); if (!G) return;
@@ -517,8 +674,9 @@ function stkEntamer(key, after){
     if (!opts.length) { toast('Plus rien en stock pour ce produit','warning'); return; }
     var go = function(o){
       try {
-        if (o.kind === 'ent') { toast('🟠 On continue le '+(o.it.unite||'produit')+' entamé','success'); if (after) after(o.it, null); return; }
+        if (o.kind === 'ent') { toast('🟠 On continue le '+(o.it.unite||'produit')+' entamé','success'); if (after) after(o.it, defer ? 'ent' : null); return; }
         if (G.entames > 0) toast('⚠️ Attention : il reste un entamé de ce lot — à utiliser en priorité','warning');
+        if (defer) { if (after) after(o.it, 'neuf'); return; }
         var row = stkMvt('entame', o.it, { from: 'neuf' });
         if (after) after(o.it, row); else { toast('✅ '+o.it.produit+' entamé','success'); _stkRefresh(); }
       } catch(e){ console.warn('[stock] entamer go', e); }
