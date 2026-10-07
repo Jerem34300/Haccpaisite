@@ -1582,13 +1582,22 @@ function stkPlatsLiesApply(l, keepKeys, add, motif, by){
   var avantLiens = JSON.parse(JSON.stringify(Array.isArray(l._plat_liens) ? l._plat_liens : []));
   var avantAnciens = { _plat_ids: l._plat_ids ? l._plat_ids.slice() : undefined, _plat_id: l._plat_id, _plat_nom: l._plat_nom };
   var avant = groups.map(function(g){ return g.nom; });
-  var after = [];
-  groups.forEach(function(g){ if (keepKeys.indexOf(g.k) >= 0) g.refs.forEach(function(r){ if (r.plat_id) after.push(r); }); });
+  // v501 : ajout de plat → contrôle lot bloqué / DLC dépassée (même avec le code admin, refus)
+  var addNew = (add||[]).filter(function(r){ return r && r.plat_id && !groups.some(function(g){ return g.refs.some(function(x){ return x.plat_id === String(r.plat_id); }); }); });
+  if (addNew.length) { try { if (typeof window.stkLotBlockCheck === 'function' && window.stkLotBlockCheck(l)) return { ok: false, err: 'bloque' }; } catch(e){ console.warn('[stock] corr block', e); return { ok: false, err: 'bloque' }; } }
+  var after = [], menuAll = null;
+  groups.forEach(function(g){ if (keepKeys.indexOf(g.k) >= 0) g.refs.forEach(function(r){
+    if (r.plat_id) { after.push(r); return; }
+    // Ancien lien par nom seul : retrouver l'id dans le menu (nom normalisé), sinon garder le lien par son nom
+    try { if (!menuAll) menuAll = _stkMenuPlatsOfDate(''); } catch(e){ menuAll = []; }
+    var m = (menuAll||[]).filter(function(p){ return _stkNorm(p.nom) === _stkNorm(r.nom); }).pop();
+    after.push(m ? { plat_id: m.plat_id, nom: m.nom, menu_id: m.menu_id||'', profil: m.profil||'' } : { plat_id: '', nom: r.nom||g.nom, menu_id: '', profil: '' });
+  }); });
   (add||[]).forEach(function(r){ if (r && r.plat_id && !after.some(function(x){ return x.plat_id === String(r.plat_id); })) after.push({ plat_id: String(r.plat_id), nom: r.nom||'', menu_id: r.menu_id||'', profil: r.profil||'' }); });
   l._plat_liens = after;
-  l._plat_ids = after.map(function(x){ return x.plat_id; });
+  l._plat_ids = after.filter(function(x){ return x.plat_id; }).map(function(x){ return x.plat_id; });
   var ids = l._plat_ids;
-  if (l._plat_id && ids.indexOf(String(l._plat_id)) < 0) { if (after[0]) { l._plat_id = after[0].plat_id; l._menu_id = after[0].menu_id || l._menu_id; } else { delete l._plat_id; delete l._menu_id; delete l._plat_profil; } }
+  if (!l._plat_id || ids.indexOf(String(l._plat_id)) < 0) { var f0 = after.find(function(x){ return x.plat_id; }); if (f0) { l._plat_id = f0.plat_id; l._menu_id = f0.menu_id || l._menu_id; if (f0.profil) l._plat_profil = f0.profil; else delete l._plat_profil; } else { delete l._plat_id; delete l._menu_id; delete l._plat_profil; } }
   var apresNoms = _stkPlatsOf(l);
   if (l._plat_nom && !apresNoms.some(function(n){ return _stkNorm(n) === _stkNorm(l._plat_nom); })) { if (after[0]) l._plat_nom = _stkPlatNomActuel(after[0].plat_id) || after[0].nom; else delete l._plat_nom; }
   var now = new Date();
@@ -1612,7 +1621,8 @@ function stkPlatsLiesEdit(ts){
         var groups = _stkPlatGroups(l);
         var linked = {}; groups.forEach(function(g){ g.refs.forEach(function(r){ linked[r.plat_id] = 1; }); });
         var cand = _stkMenuPlatsOfDate(l.date || ''); if (!cand.length) cand = _stkMenuPlatsOfDate(today());
-        cand = cand.filter(function(p){ return !linked[p.plat_id]; });
+        var linkedN = {}; groups.forEach(function(g){ linkedN[g.k] = 1; });
+        var seenN = {}; cand = cand.filter(function(p){ var n = _stkNorm(p.nom); if (linked[p.plat_id] || linkedN[n] || seenN[n]) return false; seenN[n] = 1; return true; });
         window._stkPlCand = cand;
         var who = (typeof _stkWho === 'function' && _stkWho()) || '';
         var ov = document.createElement('div'); ov.className = 'hacc-wait-ov'; ov.id = 'stk-pl-ov';
@@ -1632,7 +1642,7 @@ function stkPlatsLiesEdit(ts){
             var motif = (ov.querySelector('#stk-pl-motif')||{}).value || '';
             var by = who || (ov.querySelector('#stk-pl-who')||{}).value || '';
             var res = stkPlatsLiesApply(l, keep, add, motif, by);
-            if (!res.ok) { toast(res.err === 'motif' ? '⛔ Motif obligatoire' : res.err === 'auteur' ? '⛔ Nom obligatoire' : 'Erreur', 'warning'); return; }
+            if (!res.ok) { toast(res.err === 'bloque' ? '⛔ Ajout refusé : lot bloqué ou DLC dépassée (même avec le code admin)' : res.err === 'motif' ? '⛔ Motif obligatoire' : res.err === 'auteur' ? '⛔ Nom obligatoire' : 'Erreur', 'warning'); return; }
             ov.remove();
             toast('✅ Plats liés corrigés : '+(res.ev.apres.join(', ')||'aucun'), 'success');
             try { if (_stk && _stk.rq) stkRecallSearch(_stk.rq); } catch(e){}
