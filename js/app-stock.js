@@ -88,6 +88,8 @@ function _stkCheckLine(l, dateRec){
 }
 /** « 20×250 g » / « 6 x 1 L » → 20 / 6 (nb d'unités par colis) ; null sinon */
 function _stkMulti(txt){ try { var m = String(txt||'').match(/(\d+)\s*[x×*]\s*\d/i); return m ? parseInt(m[1],10) : null; } catch(e){ return null; } }
+/** v493 : 'dlc' = DLC dépassée (inutilisable), 'ddm' = DDM dépassée (avertissement), '' sinon */
+function _stkPerime(dlc, typ){ try { if (!dlc || String(dlc) >= _stkToday()) return ''; return _stkDType(typ) === 'DDM' ? 'ddm' : 'dlc'; } catch(e){ return ''; } }
 function _stkNorm(s){ try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return String(s||'').toLowerCase().trim(); } }
 function _stkWho(){ try { return (typeof getActiveSession === 'function') ? getActiveSession() : null; } catch(e){ return null; } }
 function _stkNeedWho(){
@@ -701,7 +703,9 @@ function _stkChoice(title, sub, opts, cb, onCancel, cancelLbl){
     ov.className = 'hacc-wait-ov'; ov.id = 'stk-choice-ov';
     ov.innerHTML = '<div class="hacc-wait-card" style="text-align:left;padding:16px;max-width:380px">'
       + '<div class="stk-h">'+_stkE(title)+'</div>' + (sub ? '<div class="stk-sub" style="margin-bottom:8px">'+sub+'</div>' : '')
-      + opts.map(function(o, i){ return '<button class="stk-btn big" style="text-align:left;margin:5px 0;'+(o.hl?'border-color:#f59e0b;background:#fffbeb':'')+'" data-i="'+i+'">'+o.html+'</button>'; }).join('')
+      + opts.map(function(o, i){ return o.disabled
+          ? '<div class="stk-btn big" aria-disabled="true" style="text-align:left;margin:5px 0;opacity:.5;background:#f3f4f6;border-color:#d1d5db;color:#6b7280;cursor:not-allowed">'+o.html+'</div>'
+          : '<button class="stk-btn big" style="text-align:left;margin:5px 0;'+(o.hl?'border-color:#f59e0b;background:#fffbeb':'')+'" data-i="'+i+'">'+o.html+'</button>'; }).join('')
       + (cancelLbl === false ? '' : '<button class="stk-btn big" style="margin-top:8px;color:#7a6378" data-i="-1">'+_stkE(cancelLbl||'Annuler')+'</button>') + '</div>';
     ov.addEventListener('click', function(ev){
       try {
@@ -728,14 +732,19 @@ function stkEntamer(key, after, defer){
     G.items.sort(function(a,b){ return String(a.date_rec).localeCompare(String(b.date_rec)) || String(a.bl_ts).localeCompare(String(b.bl_ts)); });
     var opts = [];
     G.items.forEach(function(it){
-      if (it.entames > 0) opts.push({ kind: 'ent', it: it, hl: true, html: '🟠 Continuer l\'entamé ('+_stkE(_stkUnitSg(it.unite))+') — reçu le '+_stkFr(it.date_rec)+'<br><small>ouvert le '+_stkFr(it.ouverts[0])+' · à finir en priorité</small>' });
+      var pe = _stkPerime(it.dlc, it.dlc_type);
+      if (pe === 'dlc' && (it.entames > 0 || it.neufs > 0)) { opts.push({ kind: 'x', it: it, disabled: true, html: '⛔ DLC dépassée ('+_stkFrY(it.dlc)+') — reçu le '+_stkFr(it.date_rec)+' (BL '+_stkE(it.bl_numero||'?')+')<br><small>Ne pas utiliser — isoler / NC</small>' }); return; }
+      if (it.entames > 0) opts.push({ kind: 'ent', it: it, hl: true, html: (pe==='ddm'?'⚠️ DDM dépassée · ':'')+'🟠 Continuer l\'entamé ('+_stkE(_stkUnitSg(it.unite))+') — reçu le '+_stkFr(it.date_rec)+'<br><small>ouvert le '+_stkFr(it.ouverts[0])+' · à finir en priorité</small>' });
     });
     G.items.forEach(function(it, j){
-      if (it.neufs > 0) opts.push({ kind: 'neuf', it: it, html: '🟢 Ouvrir un neuf — reçu le '+_stkFr(it.date_rec)+' (BL '+_stkE(it.bl_numero||'?')+')<br><small>'+it.neufs+' neuf'+(it.neufs>1?'s':'')+(it.dlc?' · '+_stkDType(it.dlc_type)+' '+_stkFrY(it.dlc):'')+(G.entames?' · ⚠️ il reste un entamé':'')+'</small>' });
+      var pe = _stkPerime(it.dlc, it.dlc_type);
+      if (pe === 'dlc') return;
+      if (it.neufs > 0) opts.push({ kind: 'neuf', it: it, html: (pe==='ddm'?'⚠️ DDM dépassée · ':'')+'🟢 Ouvrir un neuf — reçu le '+_stkFr(it.date_rec)+' (BL '+_stkE(it.bl_numero||'?')+')<br><small>'+it.neufs+' neuf'+(it.neufs>1?'s':'')+(it.dlc?' · '+_stkDType(it.dlc_type)+' '+_stkFrY(it.dlc):'')+(G.entames?' · ⚠️ il reste un entamé':'')+'</small>' });
     });
     // Le neuf le plus ancien est mis en avant quand il n'y a pas d'entamé
     try { if (!G.entames) { var fn = opts.find(function(o){ return o.kind === 'neuf'; }); if (fn) fn.hl = true; } } catch(e){}
     if (!opts.length) { toast('Plus rien en stock pour ce produit','warning'); return; }
+    if (!opts.some(function(o){ return !o.disabled; })) { _stkChoice(G.produit, 'Aucune unité utilisable :', opts, function(){}, null, 'Fermer'); return; }
     var go = function(o){
       try {
         if (o.kind === 'ent') { toast('🟠 On continue l\'entamé ('+_stkUnitSg(o.it.unite)+')','success'); if (after) after(o.it, defer ? 'ent' : null); return; }
@@ -747,8 +756,9 @@ function stkEntamer(key, after, defer){
     };
     // Choix seulement si entamé ET neuf, ou plusieurs entamés ; sinon prise directe (entamé unique / neuf le plus ancien)
     var oE = opts.filter(function(o){ return o.kind === 'ent'; }), oN = opts.filter(function(o){ return o.kind === 'neuf'; });
-    if (oE.length === 1 && !oN.length) { go(oE[0]); return; }
-    if (!oE.length && oN.length) { go(oN[0]); return; }
+    var hasX = opts.some(function(o){ return o.disabled; });
+    if (!hasX && oE.length === 1 && !oN.length) { go(oE[0]); return; }
+    if (!hasX && !oE.length && oN.length) { go(oN[0]); return; }
     var multi = G.items.length > 1 ? ('Lot '+_stkE(G.lot)+' reçu sur '+G.items.length+' livraisons — la plus ancienne d\'abord (FIFO)') : (G.entames ? 'Un entamé existe déjà — on le continue ou on ouvre un neuf ?' : 'Lequel ouvres-tu ?');
     _stkChoice(G.produit, multi, opts, go);
   } catch(e){ console.warn('[stock] entamer', e); }
@@ -1036,9 +1046,13 @@ function stkPickForDish(ref, ctx){
       + '<div class="stk-h">📦 Produits du stock</div>' + platSel
       + (groups.length ? groups.map(function(G, i){
           var src = G.lot_auto ? ('BL '+_stkE(G.items[0].fournisseur)+' '+_stkFr(G.items[0].bl_date)) : _stkE(G.lot);
+          var pe = _stkPerime(G.dlc, G.dlc_type);
+          if (pe === 'dlc') return '<div class="stk-line" aria-disabled="true" style="display:flex;align-items:center;gap:8px;padding:8px;opacity:.55;background:#f3f4f6;border-color:#d1d5db">'
+            + '<input type="checkbox" disabled style="width:20px;height:20px">'
+            + '<div style="flex:1;min-width:0"><div class="nm" style="color:#6b7280">'+_stkE(G.produit)+'</div><div class="mt">'+src+' · <b style="color:#991b1b">⛔ DLC dépassée ('+_stkFrY(G.dlc)+')</b></div></div></div>';
           return '<div class="stk-line" style="display:flex;align-items:center;gap:8px;padding:8px">'
             + '<input type="checkbox" data-gi="'+i+'" style="width:20px;height:20px;accent-color:#16a34a">'
-            + '<div style="flex:1;min-width:0"><div class="nm">'+_stkE(G.produit)+'</div><div class="mt">'+src+(G.entames?' · entamé '+_stkFr(G.ouvert_le):' · neuf')+'</div></div>'
+            + '<div style="flex:1;min-width:0"><div class="nm">'+_stkE(G.produit)+'</div><div class="mt">'+src+(G.entames?' · entamé '+_stkFr(G.ouvert_le):' · neuf')+(pe==='ddm'?' · <b style="color:#c2410c">⚠️ DDM dépassée ('+_stkFrY(G.dlc)+')</b>':'')+'</div></div>'
             + '<div style="display:none;border:1.5px solid #d9c6dc;border-radius:9px;overflow:hidden" data-sw="'+i+'">'
             + '<button type="button" data-v="entame" style="border:none;padding:6px 9px;font-weight:800;font-size:.74rem;background:#f59e0b;color:#fff;font-family:inherit">Entamé</button>'
             + '<button type="button" data-v="fini" style="border:none;padding:6px 9px;font-weight:800;font-size:.74rem;background:#fff;color:#5C1E5A;font-family:inherit">Fini</button></div></div>';
