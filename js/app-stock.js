@@ -776,10 +776,10 @@ function stkEntamerFlow(key, done){
       if (kind === 'ent') { done(it, stkCommitEntame(it, 'ent', {})); return; }
       if (it.sans_etiquette) { done(it, stkCommitEntame(it, 'neuf', {})); return; }
       _stkChoice(it.produit, '📷 Prends l\'étiquette en photo (lot et date remplis automatiquement)', [
-        { k: 'camera', html: '📷 Caméra', hl: true }, { k: 'gallery', html: '🖼️ Galerie (1 ou 2 photos)' }, { k: 'none', html: '🚫 Pas d\'étiquette sur ce produit' }
+        { k: 'camera', html: '📷 Caméra', hl: true }, { k: 'gallery', html: '🖼️ Galerie (1 ou 2 photos)' }, { k: 'none', html: '🚫 Pas d\'étiquette sur ce produit' }, { k: 'nophoto', html: '➡️ Continuer sans photo (fiche traçabilité sans photo)' }
       ], function(o){
         try {
-          if (o.k === 'none') { done(it, stkCommitEntame(it, 'neuf', {})); return; }
+          if (o.k === 'none' || o.k === 'nophoto') { done(it, stkCommitEntame(it, 'neuf', {})); return; }
           var handled = false;
           var finish = function(files){
             if (handled) return; handled = true;
@@ -798,7 +798,7 @@ function stkEntamerFlow(key, done){
           setTimeout(function(){ try { window.addEventListener('focus', onFocus); } catch(e){} }, 400);
           document.body.appendChild(inp); inp.click();
         } catch(e){ console.warn('[stock] label pick', e); done(it, stkCommitEntame(it, 'neuf', {})); }
-      }, function(){ done(it, stkCommitEntame(it, 'neuf', {})); });
+      }, function(){ toast('Ouverture annulée — rien n\'a été enregistré','success'); done(null, null); }); // « Annuler » = vrai abandon
     } catch(e){ console.warn('[stock] entamerFlow', e); }
   }, true);
 }
@@ -952,7 +952,7 @@ function stkUseForDish(it, rec, refs, etat, ctx){
       } catch(e){ console.warn('[stock] lien plat', e); }
     });
     if (etat === 'fini') stkMvt('fini', it, { from: 'entame', plat: refs.map(function(z){ return z.nom; }).join(', ') });
-    stkMvt('usage', it, { plat_id: refs.map(function(z){ return z.plat_id; }).join(','), plat: refs.map(function(z){ return z.nom; }).join(', '),
+    if (refs.length) stkMvt('usage', it, { plat_id: refs.map(function(z){ return z.plat_id; }).join(','), plat: refs.map(function(z){ return z.nom; }).join(', '),
       service: (ctx && ctx.service) || '', date_service: (ctx && ctx.date) || _stkToday(), etat: etat, enr31_uuid: rec ? rec._uuid : '' });
     return linked;
   } catch(e){ console.warn('[stock] useForDish', e); return 0; }
