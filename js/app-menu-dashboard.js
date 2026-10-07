@@ -175,6 +175,7 @@ function getEnrLinkedToPlat(platId, siteCode, menuDate, platNom){
     if(r.enr_type === 'enr03') return false;
     // Match par plat_id (priorité)
     try { if(typeof haccRecordLinksPlat === 'function' && haccRecordLinksPlat(r, platId)) return true; } catch(e){}
+    if(Array.isArray(r.data && r.data._plat_liens)) return r.data._plat_liens.some(x => x && String(x.plat_id) === String(platId)); // v499 : seule source
     if(r.data?._plat_id === platId) return true;
     try {
       const liens = r.data && r.data._plat_liens;
@@ -460,6 +461,7 @@ function _dashLinksPlat(r, platId){
   } catch(e){}
   try {
     const d = (r && r.data) || {};
+    if(Array.isArray(d._plat_liens)) return d._plat_liens.some(x => x && String(x.plat_id) === String(platId)); // v499 : seule source
     if(d._plat_id != null && String(d._plat_id) === String(platId)) return true;
     if(Array.isArray(d._plat_ids) && d._plat_ids.some(x => String(x) === String(platId))) return true;
     if(Array.isArray(d._plat_liens) && d._plat_liens.some(x => x && String(x.plat_id) === String(platId))) return true;

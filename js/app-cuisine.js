@@ -1273,6 +1273,7 @@ function renderSP(){
     if(selEtiq) selEtiq.value = getEtiqA4FmtId();
   },50);
   // Rendre la liste des exports CSV par section
+  try{ renderTasksOffSettings(); }catch(e){}
   const expEl=document.getElementById('sp-exports');
   if(expEl){
     const ALL_EXP=[
@@ -1883,6 +1884,7 @@ const TP_ALL=[-20,-18,0,3,10,63,65,75,100];
 
 function tpHtml(id,sec,presets,label){
   presets=presets||TP_ALL;
+  try{ window._tpRenderT=Date.now(); }catch(e){}
   const stored=gd(id,sec);
   const numV=(stored!==undefined&&stored!==''&&!isNaN(parseFloat(stored)))?parseFloat(stored):null;
   // Plage slider adaptée aux presets (+marge 20%)
@@ -1921,24 +1923,28 @@ function tpSet(id,sec,vn){
   // 1. Store
   sd(id,String(vn),sec);
   // 2. Display
-  const disp=document.getElementById(`td-${id}-${sec}`);
-  if(disp)disp.innerHTML=`${vn%1===0?vn.toFixed(0):vn.toFixed(1)}<sub>°C</sub>`;
-  // 3. Slider (direct by id)
-  const sl=document.getElementById(`ts-${id}-${sec}`);
-  if(sl)sl.value=Math.max(TMin,Math.min(TMax,vn));
+  // v499 : TOUS les exemplaires (après un enregistrement, la fiche peut être rendue deux fois → le 1er id était caché)
+  const _all=k=>{ try { return Array.from(document.querySelectorAll(`[id="${k}-${id}-${sec}"]`)); } catch(e){ const x=document.getElementById(`${k}-${id}-${sec}`); return x?[x]:[]; } };
+  _all('td').forEach(disp=>{ disp.innerHTML=`${vn%1===0?vn.toFixed(0):vn.toFixed(1)}<sub>°C</sub>`; });
+  // 3. Slider
+  _all('ts').forEach(sl=>{ sl.value=Math.max(TMin,Math.min(TMax,vn)); });
   // 4. Fake-input div
-  const mi=document.getElementById(`tm-${id}-${sec}`);
-  if(mi) mi.textContent=vn%1===0?vn.toFixed(0):vn.toFixed(1);
+  _all('tm').forEach(mi=>{ mi.textContent=vn%1===0?vn.toFixed(0):vn.toFixed(1); });
   // 5. Presets
-  const tp=document.getElementById(`tp-${id}-${sec}`);
-  if(tp)tp.querySelectorAll('.tp-pre').forEach(b=>{
+  _all('tp').forEach(tp=>tp.querySelectorAll('.tp-pre').forEach(b=>{
     const pv=parseFloat(b.textContent);
     b.classList.toggle('on',pv===vn);
-  });
+  }));
   // 6. Auto-calc
   doAutoCalc(sec);
 }
-function onTS(id,sec,val){tpSet(id,sec,parseFloat(val));}
+// v499 : un tap fantôme (double tap sur « Cuisiné », ouverture de fiche) ne pose jamais une valeur au curseur
+function onTS(id,sec,val){
+  try {
+    if(Date.now()-(window._tpRenderT||0)<800) { const sl=document.getElementById(`ts-${id}-${sec}`); const st=gd(id,sec); if(sl&&(st===undefined||st==='')) { sl.value=sl.defaultValue; } return; }
+  } catch(e){}
+  tpSet(id,sec,parseFloat(val));
+}
 function onTM(id,sec,val){const v=parseFloat(val);if(!isNaN(v))tpSet(id,sec,v);}
 function onTP(id,sec,vn){tpSet(id,sec,vn);}
 
@@ -1980,6 +1986,16 @@ function updWH(col,val,tot){
 // Saisie directe dans les champs HH/MM
 /** v496 : champ heure 24 h forcé (le type="time" natif suit le réglage AM/PM de l'appareil).
  *  « 1115 » → 11:15, « 915 » → 09:15 ; valeur toujours HH:MM (compatible avec les lecteurs .value). */
+/** v499 : formateur commun jj/mm/aaaa (le type="date" natif suit la langue de la tablette, ex. mm/jj). */
+function frDate(ymd){ try { const m=String(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3]+'/'+m[2]+'/'+m[1] : ''; } catch(e){ return ''; } }
+window.frDate=frDate;
+/** Étiquette française affichée à côté d'un champ date natif (mise à jour automatiquement). */
+function frDateTag(ymd){ return '<span class="fr-date" style="font-size:.8rem;font-weight:800;color:#5C1E5A;margin-left:6px;white-space:nowrap">'+(frDate(ymd)||'jj/mm/aaaa')+'</span>'; }
+window.frDateTag=frDateTag;
+try {
+  document.addEventListener('input', function(e){ try { const t=e.target; if(t && t.type==='date'){ const n=t.nextElementSibling; if(n && n.classList && n.classList.contains('fr-date')) n.textContent=frDate(t.value)||'jj/mm/aaaa'; } } catch(_e){} }, true);
+  document.addEventListener('change', function(e){ try { const t=e.target; if(t && t.type==='date'){ const n=t.nextElementSibling; if(n && n.classList && n.classList.contains('fr-date')) n.textContent=frDate(t.value)||'jj/mm/aaaa'; } } catch(_e){} }, true);
+} catch(e){}
 function _hhmmFmt(inp, final){
   try {
     if(!inp.dataset.ok && /^\d{2}:\d{2}$/.test(String(inp.defaultValue||''))) inp.dataset.ok=inp.defaultValue;
@@ -2196,6 +2212,9 @@ const AR={
   enr02:sec=>{const d=(S[sec]||{}).draft||{},dur=tdiff(d.h_deb,d.h_fin),td=gtv('t_deb',sec),tf=gtv('t_fin',sec);return{duree:fmtD(dur),conf_deb:cv(td!==null&&td<=10,td!==null),conforme:cv(dur!==null&&dur<=60&&tf!==null&&tf>=63&&td!==null&&td<=10,dur!==null&&tf!==null&&td!==null)};},
   enr03:sec=>{const d=(S[sec]||{}).draft||{},dR=tdiff(d.h1,d.h2),t2=gtv('t2',sec),dRT=tdiff(d.h3,d.h4),t3=gtv('t3',sec),t4=gtv('t4',sec);return{duree_r:fmtD(dR),conf_r:cv(dR!==null&&dR<=120&&t2!==null&&t2<=10,dR!==null&&t2!==null),duree_rt:fmtD(dRT),conf_t3:cv(t3!==null&&t3<=10,t3!==null),conf_rt:cv(dRT!==null&&dRT<=60&&t4!==null&&t4>=63&&t3!==null&&t3<=10,dRT!==null&&t4!==null&&t3!==null)};},
   enr04:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t>=65,t!==null)};},
+  // v499 : friture — NC seulement si utilisations > consigne (défaut 8) ; « huile changée ? NON » n'est pas une NC
+  enr05:sec=>{const d=(S[sec]||{}).draft||{};const n=parseInt(d.nb_util,10),c=parseInt(d.consigne_util,10)||8;return{conforme:cv(!isNaN(n)&&n<=c,!isNaN(n))};},
+  enr06:sec=>{const d=(S[sec]||{}).draft||{};const n=parseInt(d.nb_util,10),c=parseInt(d.consigne_util,10)||8;return{conforme:cv(!isNaN(n)&&n<=c,!isNaN(n))};},
   enr07:sec=>{
     const d=(S[sec]||{}).draft||{};
     const mode=d.mode_mixage||'froid';
@@ -3504,7 +3523,7 @@ function saveRow(id){
   }
 
   // ── Auto-NC si non-conformité détectée ──────────────────
-  const _ncFields=Object.entries(draftFinal).filter(([k,v])=>CONF_FIDS.includes(k)&&v==='NON');
+  const _ncFields=Object.entries(draftFinal).filter(([k,v])=>CONF_FIDS.includes(k)&&v==='NON'&&!((id==='enr05'||id==='enr06')&&k==='change')); // v499 : « huile changée ? NON » = info, pas NC
   if(_ncFields.length>0){
     const _sLabel=ALL.find(s=>s.id===id)?.label||id.toUpperCase();
     const _sLabelShort=_sLabel.replace(/^ENR\d+ – /,'');
@@ -4035,6 +4054,7 @@ const FDEFS={
     regle:'T°C cible : <strong>≥ +65°C à cœur.</strong> Si &lt;+65°C : continuer la cuisson ou jeter.',
     fields:[
       {id:'date',label:'Date',inputType:'date',autoDate:true},
+      {id:'produit',label:'Produit / plat',type:'prod',ph:'Plat du menu…'},
       {id:'h',label:'Heure fin cuisson',type:'time',autoTime:true},
       {id:'tc',label:'T°C à cœur',type:'temp',presets:[60,63,65,70,75,80]},
       {id:'conforme',label:'T°C ≥ +65°C ? (auto)',type:'conf',auto:true},
@@ -4043,12 +4063,15 @@ const FDEFS={
   enr05:{id:'enr05',title:'🍟 Huiles de friture (sans testeur)',tag:'PrPo',tagCat:'prpo',
     regle:"Filtrer après chaque utilisation. Changer après pané/poisson ou après <strong>8 utilisations.</strong>",
     fields:[{id:'date',label:'Date',inputType:'date',autoDate:true},{id:'friteuse',label:'Friteuse n°',inputType:'number',ph:'1'},
+      {id:'produit',label:'Produit / plat frit',type:'prod',ph:'Plat du menu…'},{id:'nb_util',label:"Nombre d'utilisations de l'huile",inputType:'number',ph:'1'},{id:'consigne_util',label:'Consigne (max utilisations)',inputType:'number',default:'8'},
       {id:'filtre',label:'Huile filtrée ?',type:'conf'},{id:'change',label:'Huile changée ?',type:'conf'},
+      {id:'conforme',label:'Utilisations ≤ consigne ? (auto)',type:'conf',auto:true},
       {id:'cuisinier',label:'Cuisinier / Visa',type:'chef'}]},
   enr06:{id:'enr06',title:'🍟 Huiles de friture (avec testeur)',tag:'PrPo',tagCat:'prpo',
     regle:"Filtrer et tester après chaque utilisation.",
     fields:[{id:'date',label:'Date',inputType:'date',autoDate:true},{id:'friteuse',label:'Friteuse n°',inputType:'number',ph:'1'},
-      {id:'conf_test',label:'Test conforme ?',type:'conf'},{id:'filtre',label:'Filtrée ?',type:'conf'},{id:'change',label:'Changée ?',type:'conf'},
+      {id:'produit',label:'Produit / plat frit',type:'prod',ph:'Plat du menu…'},{id:'nb_util',label:"Nombre d'utilisations de l'huile",inputType:'number',ph:'1'},{id:'consigne_util',label:'Consigne (max utilisations)',inputType:'number',default:'8'},
+      {id:'conf_test',label:'Test polaire conforme ?',type:'conf'},{id:'conforme',label:'Utilisations ≤ consigne ? (auto)',type:'conf',auto:true},{id:'filtre',label:'Filtrée ?',type:'conf'},{id:'change',label:'Changée ?',type:'conf'},
       {id:'cuisinier',label:'Cuisinier / Visa',type:'chef'}]},
   enr07:{id:'enr07',title:'🥘 Bien Faits – avec cuisson',tag:'PrPo',tagCat:'prpo',
     regle:'<strong>Froid :</strong> Mixage ≤+3°C, max 10 min, cuisson ≥+75°C. <strong>Chaud :</strong> Mixage ≥+63°C début et fin, cuisson ≥+75°C.',
@@ -4693,6 +4716,7 @@ function saveEncSaisie(){
   const temp=(S['enc_modal']?.draft?.enc_temp)||'';
   const chef=(S['enc_modal']?.draft?.enc_chef)||getActiveSession()||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
+  if(_encSaisie.moment==='ferm' && _plageGuard('ferm', ()=>saveEncSaisie())) return;
   const _hRel=_encHeureVal();
   if(_hRel===null){ toast('⛔ Heure dans le futur refusée — il est '+nowT(),'warning'); return; }
   const ok=encConforme(temp,_encSaisie.consigne);
@@ -5931,6 +5955,24 @@ function nettDelRef(i){
     });
   });
 }
+// v499 : validation hors plage horaire (soir avant 17 h, fermeture le matin) → refus clair ; le code admin permet de forcer
+function _plageH(){ try { const n=new Date(); return n.getHours()+n.getMinutes()/60; } catch(e){ return 12; } }
+function _plageGuard(kind, retry){
+  try {
+    if(window._plageForce){ window._plageForce=false; return false; }
+    const cfg=(S.config&&S.config.plages)||{};
+    const soirMin=parseFloat(cfg.soir_min)||17, fermMin=parseFloat(cfg.ferm_min)||12;
+    let msg='';
+    const h=_plageH();
+    if(kind==='soir' && h<soirMin) msg='Service du soir : validation possible à partir de '+soirMin+' h (il est '+nowT()+').';
+    if(kind==='ferm' && h<fermMin) msg='Relevé de fermeture : possible à partir de '+fermMin+' h (il est '+nowT()+'). Le matin, fais le relevé d\'ouverture.';
+    if(!msg) return false;
+    const force=()=>{ try { nettAdminGuard(()=>{ window._plageForce=true; try{ retry(); }catch(e){ console.warn('[plage] retry', e); } }); } catch(e){ console.warn('[plage] force', e); } };
+    if(typeof _stkChoice==='function') _stkChoice('⏰ Hors plage horaire', escH(msg), [{ k:'force', html:'🔐 Forcer avec le code admin' }], function(o){ if(o&&o.k==='force') force(); }, null, 'Annuler');
+    else { toast('⛔ '+msg,'warning'); }
+    return true;
+  } catch(e){ console.warn('[plage]', e); return false; }
+}
 // ── Guard admin pour le référentiel nettoyage ────────
 function nettAdminGuard(action){
   if(S.adminPin){
@@ -7071,6 +7113,11 @@ function accueilTaches(){
     });
   }
 
+  // v499 : tâches désassignées pour cette cuisine (Réglages admin) → ni affichées ni comptées dans le score
+  try {
+    const off=(S.config&&S.config.tasksOff)||{};
+    if(Object.keys(off).length){ for(let i=tasks.length-1;i>=0;i--){ if(off[_taskKey(tasks[i].html)]) tasks.splice(i,1); } }
+  } catch(e){ console.warn('[accueil] tasksOff', e); }
   // Trier : alertes d'abord, puis par priorité décroissante
   tasks.sort((a,b)=>b.priority-a.priority);
 
@@ -7143,6 +7190,43 @@ function accueilTaches(){
 function accueilCloseTaskList(){
   try{ const el=document.getElementById('acc-tasks-ov'); if(el) el.remove(); }catch(e){ console.warn('[accueil] fermer liste:', e); }
 }
+/** v499 : clé stable d'une tâche = libellé normalisé (sans chiffres de compteur). */
+function _taskLabel(html){ try { const m=String(html||'').match(/class="task-label">([\s\S]*?)<\/div>/); const t=document.createElement('div'); t.innerHTML=m?m[1]:''; return (t.textContent||'').trim(); } catch(e){ return ''; } }
+function _taskKey(html){ try { return _taskLabel(html).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return ''; } }
+window._taskKey=_taskKey;
+function taskUnassign(key, label){
+  try {
+    nettAdminGuard(()=>{
+      S.config=S.config||{}; S.config.tasksOff=Object.assign({}, S.config.tasksOff||{}); S.config.tasksOff[key]=label||key;
+      save(); try{ _saveConfigToSupabase(); }catch(e){}
+      toast('🚫 « '+(label||key)+' » désassignée pour cette cuisine (hors score)','success');
+      try{ accueilCloseTaskList(); }catch(e){} renderMain(); try{ renderTasksOffSettings(); }catch(e){}
+    });
+  } catch(e){ console.warn('[tasks] unassign', e); }
+}
+function taskReassign(key){
+  try {
+    nettAdminGuard(()=>{
+      S.config=S.config||{}; const o=Object.assign({}, S.config.tasksOff||{}); delete o[key]; S.config.tasksOff=o;
+      save(); try{ _saveConfigToSupabase(); }catch(e){}
+      toast('✅ Tâche réassignée','success'); renderMain(); try{ renderTasksOffSettings(); }catch(e){}
+    });
+  } catch(e){ console.warn('[tasks] reassign', e); }
+}
+/** Bloc Réglages admin : tâches / services désassignés de cette cuisine. */
+function renderTasksOffSettings(){
+  try {
+    const el=document.getElementById('sp-tasks-off'); if(!el) return;
+    const off=(S.config&&S.config.tasksOff)||{}, ks=Object.keys(off);
+    const cur=(Array.isArray(window._accTasksLast)?window._accTasksLast:[]).map(t=>({k:_taskKey(t.html), l:_taskLabel(t.html)})).filter(x=>x.k);
+    window._tasksOffCur=cur; window._tasksOffKeys=ks;
+    el.innerHTML='<div style="font-size:.78rem;font-weight:900;color:var(--plum);margin:4px 0 6px">🧹 Tâches assignées à cette cuisine</div>'
+      +'<div style="font-size:.68rem;color:#7A6579;margin-bottom:6px">Une tâche désassignée (ex. service ou étage inexistant) n\'apparaît plus et ne compte plus dans le score.</div>'
+      +cur.map((x,i)=>'<div style="display:flex;gap:6px;align-items:center;padding:4px 0;border-bottom:1px solid #f0e4f0"><span style="flex:1;font-size:.76rem;font-weight:700">'+escH(x.l)+'</span><button type="button" style="font-family:inherit;font-size:.68rem;font-weight:800;border:1px solid #fca5a5;background:#fff;color:#b91c1c;border-radius:8px;padding:3px 8px;cursor:pointer" onclick="taskUnassign(window._tasksOffCur['+i+'].k,window._tasksOffCur['+i+'].l)">🚫 Désassigner</button></div>').join('')
+      +(ks.length?'<div style="font-size:.72rem;font-weight:900;color:#7A6579;margin:8px 0 4px">Désassignées</div>'+ks.map((k,j)=>'<div style="display:flex;gap:6px;align-items:center;padding:4px 0"><span style="flex:1;font-size:.76rem;color:#7A6579;text-decoration:line-through">'+escH(off[k]===true?k:off[k])+'</span><button type="button" style="font-family:inherit;font-size:.68rem;font-weight:800;border:1px solid #86efac;background:#fff;color:#166534;border-radius:8px;padding:3px 8px;cursor:pointer" onclick="taskReassign(window._tasksOffKeys['+j+'])">↺ Réassigner</button></div>').join(''):'');
+  } catch(e){ console.warn('[tasks] settings', e); }
+}
+window.renderTasksOffSettings=renderTasksOffSettings;
 function accueilOpenTaskList(){
   try{
     accueilCloseTaskList();
@@ -7999,6 +8083,7 @@ function distribDirect(svc, type, val){
 
 function distribSaveService(svc){
   if(roCheck())return;
+  if(svc==='soir' && _plageGuard('soir', ()=>distribSaveService(svc))) return;
   const draft=distribDraft();
   const platFroid=(draft[`${svc}_froid_plat`]||'').trim();
   const platChaud=(draft[`${svc}_chaud_plat`]||'').trim();
@@ -8363,6 +8448,7 @@ async function distribSvcSaveRow(svcId, slot){
 async function distribSvcValidate(svcId, slot){
   try {
     if(roCheck()) return;
+    if(slot==='soir' && _plageGuard('soir', ()=>distribSvcValidate(svcId, slot))) return;
     const d = distribSvcDraft(svcId);
     if(!distribSvcHasTemp(d[slot+'_froid_temp']) && !distribSvcHasTemp(d[slot+'_chaud_temp'])){ toast('⚠️ Saisissez au moins une T°C','warning'); return; }
     distribSvcSD(svcId,slot+'_valide','OUI');

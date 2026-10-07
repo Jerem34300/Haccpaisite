@@ -556,6 +556,7 @@ async function stkAnalyse(){
     else if (res && res.tronque) toast('⚠️ BL très long : lecture peut-être incomplète — vérifie les dernières lignes','warning',{ force: true });
   } catch(e){}
   stkOpenDraft(res);
+  try { setTimeout(_stkDupCheckEarly, 300); } catch(e){}
   try { if (_stk.draft && res) { _stk.draft.ocr_model = res.model || ''; _stk.draft.ocr_detail = res.detail || ''; _stk.draft.ocr_lignes_vues = res.nb_lignes_vues != null ? res.nb_lignes_vues : ''; } } catch(e){}
 }
 function stkManual(){ stkOpenDraft({ fournisseur:'', numero:'', date:_stkToday(), lignes:[] }); }
@@ -600,7 +601,7 @@ function stkRenderConfirm(){
     + '<div class="stk-h">BL '+_stkE(d.fournisseur||'…')+' — '+_stkFr(d.date)+' · '+(d.pages.length||0)+' page'+(d.pages.length>1?'s':'')+'</div>'
     + '<div class="stk-grid"><input class="stk-in" placeholder="Fournisseur" value="'+_stkA(d.fournisseur)+'" onchange="stkDraftSet(\'fournisseur\',this.value)">'
     + '<input class="stk-in" placeholder="N° BL" value="'+_stkA(d.numero)+'" onchange="stkDraftSet(\'numero\',this.value)"></div>'
-    + '<div class="stk-grid"><input class="stk-in" type="date" value="'+_stkA(d.date)+'" onchange="stkDraftSet(\'date\',this.value)"><div class="stk-sub" style="align-self:center">Date du BL</div></div>'
+    + '<div class="stk-grid"><input class="stk-in" type="date" lang="fr-FR" value="'+_stkA(d.date)+'" onchange="stkDraftSet(\'date\',this.value)">'+(typeof frDateTag==='function'?frDateTag(d.date):'')+'<div class="stk-sub" style="align-self:center">Date du BL</div></div>'
     + (d.pages.length ? '<div class="stk-pages">'+d.pages.map(function(p,i){ return '<div class="stk-pg"><img src="'+_stkA(p)+'" onclick="try{photoFullscreen(this.src)}catch(e){}"><b>p.'+(i+1)+'</b></div>'; }).join('')+'</div>' : '')
     + '<div class="stk-lock">🔒 Rien n\'entre en stock avant validation</div>'
     + '<button class="stk-btn big" onclick="stkToutRecu()">✓ Tout reçu</button>';
@@ -616,7 +617,7 @@ function stkRenderConfirm(){
       + '<input class="stk-in" value="'+_stkA(l.conditionnement)+'" placeholder="Conditionnement (ex : sac 10 kg, cal. 40/50)" oninput="stkLineSet('+i+',\'conditionnement\',this.value,1)" onchange="stkLineSet('+i+',\'conditionnement\',this.value)">'
       + '<input class="stk-in" type="number" min="1" value="'+_stkA(l.qte)+'" placeholder="Unités" onchange="stkLineSet('+i+',\'qte\',this.value)">'
       + '<input class="stk-in" value="'+_stkA(l.lot)+'" placeholder="Lot" oninput="stkLineSet('+i+',\'lot\',this.value,1)" onchange="stkLineSet('+i+',\'lot\',this.value)">'
-      + '<input class="stk-in" type="date" value="'+_stkA(l.dlc)+'" onchange="stkLineSet('+i+',\'dlc\',this.value)">'
+      + '<input class="stk-in" type="date" lang="fr-FR" value="'+_stkA(l.dlc)+'" onchange="stkLineSet('+i+',\'dlc\',this.value)">'+(typeof frDateTag==='function'?frDateTag(l.dlc):'')
       + '<select class="stk-in" onchange="stkLineSet('+i+',\'dlc_type\',this.value)"><option value="DLC"'+(_stkDType(l.dlc_type)==='DLC'?' selected':'')+'>DLC (à consommer jusqu\'au)</option><option value="DDM"'+(_stkDType(l.dlc_type)==='DDM'?' selected':'')+'>DDM (de préférence avant)</option></select></div>') : '';
     return '<div class="stk-line'+(l.statut?'':' todo')+'"><div style="display:flex;gap:6px"><div style="flex:1"><div class="nm">'+_stkE(l.produit||'(sans nom)')+(l.hors_bl?' <span class="stk-chip dlc">hors BL</span>':'')+'</div>'
       + '<div class="mt">'+meta+' · <b>'+l.qte+' unité'+(l.qte>1?'s':'')+' sur le BL</b></div>'
@@ -633,7 +634,32 @@ function stkRenderConfirm(){
     + '<button class="stk-btn big" style="margin-top:6px" onclick="stkAbandon()">Annuler</button></div>';
   return h;
 }
-function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); stkPersist(); } } catch(e){ console.warn('[stock] draftSet', e); } }
+function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); stkPersist(); if (k === 'numero' || k === 'fournisseur') { _stk.draft._dup_ok = false; _stkDupCheckEarly(); } } } catch(e){ console.warn('[stock] draftSet', e); } }
+/** v499 : alerte « BL déjà reçu » dès que le n° est lu (OCR) ou saisi — même règle que la validation. */
+function _stkDupFind(d){
+  try {
+    var nn = _stkNorm(d && d.numero).replace(/^bl\s*/,''); if (!nn) return null;
+    return _stkBls().find(function(b){ return _stkNorm(b.numero).replace(/^bl\s*/,'') === nn && (!d.fournisseur || !b.fournisseur || _stkClose(String(d.fournisseur).split(' ')[0], String(b.fournisseur).split(' ')[0]) || _stkNorm(d.fournisseur) === _stkNorm(b.fournisseur)); }) || null;
+  } catch(e){ return null; }
+}
+function _stkDupCheckEarly(){
+  try {
+    var d = _stk.draft; if (!d || d._dup_ok) return;
+    var dup = _stkDupFind(d); if (!dup) return;
+    var key = _stkNorm(d.numero)+'|'+_stkNorm(d.fournisseur); if (d._dup_warned === key) return; d._dup_warned = key;
+    _stkChoice('⚠️ BL déjà reçu', 'Le BL n° <b>'+_stkE(dup.numero)+'</b> ('+_stkE(dup.fournisseur||'?')+') a déjà été reçu le '+_stkFrY(dup.date_reception||dup.date)+' '+_stkE(dup.heure||'')+' par '+_stkE(dup.cuisinier||'?')+' — '+_stkE(dup.resume||'')+'.', [
+      { k: 'see', html: '📄 Voir la réception existante', hl: true },
+      { k: 'go', html: '➡️ Continuer quand même (2e livraison sur ce BL)' }
+    ], function(o){
+      try {
+        if (o.k === 'go') { d._dup_ok = true; stkPersist(); return; }
+        var ph = ''; try { ph = JSON.parse(dup.photo||'{}').thumb || ''; } catch(e){}
+        if (ph && typeof photoFullscreen === 'function') photoFullscreen(ph);
+        else toast('Réception existante : '+(dup.resume||'')+' — voir « Dernières réceptions »','warning');
+      } catch(e){ console.warn('[stock] dup early', e); }
+    }, null, 'Fermer');
+  } catch(e){ console.warn('[stock] dupEarly', e); }
+}
 function stkLineSet(i, k, v, silent){
   try {
     var l = _stk.draft && _stk.draft.lignes[i]; if (!l) return;
@@ -1466,7 +1492,7 @@ function stkRecall(q){
       };
       // v496 : source unique = liste de plats de la fiche ENR31 (comme ✅) ; les anciens libellés
       // m.plat des mouvements (sélection non vidée) ne servent qu'en secours si aucune fiche n'est liée.
-      var _e31Plats = 0; L.e31.forEach(function(l){ try { _e31Plats += _stkPlatsOf(l).length; } catch(e){} });
+      var _e31Plats = 0; L.e31.forEach(function(l){ try { _e31Plats += _stkPlatsOf(l).length + (Array.isArray(l._plat_liens) ? 1 : 0); } catch(e){} }); // v499 : champ présent (même vide) = pas d'anciens liens
       mv.filter(function(m){ return !_e31Plats && ids[m.item_id] && m.type === 'usage' && m.plat; }).forEach(function(m){
         String(m.plat).split(', ').forEach(function(n){ addPlat(n, m.date_service || m.date, m.service || '', m.cuisinier || ''); });
       });
@@ -1504,7 +1530,8 @@ function _stkPlatsOf(l){
   try {
     var add = function(n){ n = String(n||'').trim(); if (n && !out.some(function(x){ return _stkNorm(x) === _stkNorm(n); })) out.push(n); };
     // v498 : nom ACTUEL du plat dans le menu (par id), anciens noms regroupés ; sinon nom normalisé (dédoublonné par add)
-    (Array.isArray(l && l._plat_liens) ? l._plat_liens : []).forEach(function(p){ if (p) add(_stkPlatNomActuel(p.plat_id) || p.nom); });
+    // v499 : la fiche a son champ plats (_plat_liens), même vide → SEULE source ; _plat_ids / _plat_nom (anciens) ignorés
+    if (l && Array.isArray(l._plat_liens)) { l._plat_liens.forEach(function(p){ if (p) add(_stkPlatNomActuel(p.plat_id) || p.nom); }); return out; }
     (Array.isArray(l && l._plat_ids) ? l._plat_ids : []).forEach(function(id){ var n = _stkPlatNomActuel(id); if (n) add(n); });
     if (l && l._plat_nom) add(l._plat_nom);
   } catch(e){}

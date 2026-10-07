@@ -5627,6 +5627,8 @@ function haccRecordLinksPlat(rec, platId){
     if(!rec || platId == null || String(platId) === '') return false;
     const d = (rec.data && typeof rec.data === 'object') ? rec.data : rec;
     const id = String(platId);
+    // v499 : champ plats présent (même vide) = seule source
+    if(Array.isArray(d._plat_liens)) return d._plat_liens.some(function(x){ return x && String(x.plat_id) === id; });
     if(d._plat_id != null && String(d._plat_id) === id) return true;
     if(Array.isArray(d._plat_ids) && d._plat_ids.some(function(x){ return String(x) === id; })) return true;
     if(Array.isArray(d._plat_liens) && d._plat_liens.some(function(x){ return x && String(x.plat_id) === id; })) return true;
