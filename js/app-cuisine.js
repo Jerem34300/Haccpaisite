@@ -757,7 +757,7 @@ const ALL=[
   {id:'enr01',short:'❄️ Refroidissement',label:'ENR01 – Refroidissement',cat:'ccp',tag:'CCP'},
   {id:'enr02',short:'🔥 Remise en T°C',label:'ENR02 – Remise en T°C',cat:'ccp',tag:'CCP'},
   {id:'enr03',short:'🔄 Refroid.+Remise',label:'ENR03 – Refroid.+Remise',cat:'ccp',tag:'CCP'},
-  {id:'enr04',short:'🥩 Steaks hachés',label:'ENR04 – Cuisson steaks hachés',cat:'prpo',tag:'PrPo'},
+  {id:'enr04',short:'🌡️ Cuisson à cœur',label:'ENR04 – Cuisson à cœur (≥ 65 °C)',cat:'prpo',tag:'PrPo'},
   {id:'enr05',short:'🍟 Fritures',label:'ENR05 – Fritures',cat:'prpo',tag:'PrPo'},
   {id:'enr06',short:'🍟 Fritures+test',label:'ENR06 – Fritures testeur',cat:'prpo',tag:'PrPo'},
   {id:'enr07',short:'🥘 Bien Faits cuit',label:'ENR07 – Bien Faits cuit',cat:'prpo',tag:'PrPo'},
@@ -1277,7 +1277,7 @@ function renderSP(){
   if(expEl){
     const ALL_EXP=[
       {id:'enr01',l:'❄️ Refroidissement'},{id:'enr02',l:'🔥 Remise T°C'},
-      {id:'enr03',l:'🔄 Refroid.+Remise'},{id:'enr04',l:'🥩 Steaks hachés'},
+      {id:'enr03',l:'🔄 Refroid.+Remise'},{id:'enr04',l:'🌡️ Cuisson à cœur'},
       {id:'enr05',l:'🍟 Fritures'},{id:'enr06',l:'🍟 Fritures testeur'},
       {id:'enr07',l:'🥘 Bien Faits cuit'},{id:'enr08',l:'🥗 TM/BF'},
       {id:'enr09',l:'♨️ Cond. chaud'},{id:'enr10',l:'🧊 Cond. froid'},
@@ -1993,6 +1993,18 @@ function _hhmmFmt(inp, final){
   } catch(e){}
 }
 window._hhmmFmt=_hhmmFmt;
+/** v498 : instantané de la roue à l'entrée dans un champ direct — restauré tel quel si la saisie est refusée. */
+function _twSnapTake(){ try { window._twSnap = { h: TW.h, m: TW.m }; } catch(e){} }
+function _twSnapRestore(){
+  try {
+    const sn = window._twSnap; if(!sn) return;
+    setWheel('h', sn.h, true); setWheel('m', sn.m, true);
+    const ih=document.getElementById('tw-inp-h'), im=document.getElementById('tw-inp-m');
+    if(ih) ih.value=String(sn.h).padStart(2,'0');
+    if(im) im.value=String(sn.m).padStart(2,'0');
+  } catch(e){ console.warn('[tw] restore', e); }
+}
+window._twSnapTake=_twSnapTake;
 function twDirectInput(col,inp){
   const tot=col==='h'?24:60;
   const raw=inp.value.replace(/\D/g,'');
@@ -2039,10 +2051,10 @@ function twDirectBlur(col,inp){
       }
       // v498 : 2460 / 1275 → refusé, heure inchangée
       try{ toast('⚠️ Heure invalide','warning'); }catch(e){}
-      inp.value=String(TW.h).padStart(2,'0'); return;
+      _twSnapRestore(); return;
     }
     const v0=parseInt(raw,10);
-    if(raw && !isNaN(v0) && v0>=tot){ try{ toast('⚠️ Heure invalide','warning'); }catch(e){} inp.value=String(TW[col]).padStart(2,'0'); return; }
+    if(raw && !isNaN(v0) && v0>=tot){ try{ toast('⚠️ Heure invalide','warning'); }catch(e){} _twSnapRestore(); return; }
   } catch(e){ console.warn('[tw] blur hhmm', e); }
   let v=parseInt(inp.value);
   if(isNaN(v)||v<0) v=0;
@@ -2082,6 +2094,7 @@ function openTW(fid,sec,label){
     const im=document.getElementById('tw-inp-m');
     if(ih) ih.value=String(h).padStart(2,'0');
     if(im) im.value=String(m).padStart(2,'0');
+    _twSnapTake();
   },40);
 }
 function twBg(e){if(e.target===document.getElementById('tw-ov'))twClose();}
@@ -4017,7 +4030,7 @@ const FDEFS={
       {id:'duree_rt',label:'Durée remise (auto)',computed:true},{id:'conf_rt',label:'Remise T°C conforme ?',type:'conf',auto:true},
       {id:'cuisinier',label:'Cuisinier / Visa',type:'chef'},
     ]},
-  enr04:{id:'enr04',title:'🥩 Cuisson – Steaks hachés',tag:'PrPo',tagCat:'prpo',
+  enr04:{id:'enr04',title:'🌡️ Cuisson à cœur (≥ 65 °C)',tag:'PrPo',tagCat:'prpo',
     regle:'T°C cible : <strong>≥ +65°C à cœur.</strong> Si &lt;+65°C : continuer la cuisson ou jeter.',
     fields:[
       {id:'date',label:'Date',inputType:'date',autoDate:true},
@@ -11133,7 +11146,7 @@ function generatePDF(type){
   <h2>📦 Contrôles à réception — ${_pLabel}</h2>
   ${recepTable}
 
-  ${enr04Mois.length?`<h2>🥩 Steaks hachés — ${_pLabel}</h2>${pdfTable(enr04Mois,FDEFS['enr04']?.fields)}`:''}
+  ${enr04Mois.length?`<h2>🌡️ Cuisson à cœur (≥ 65 °C) — ${_pLabel}</h2>${pdfTable(enr04Mois,FDEFS['enr04']?.fields)}`:''}
   ${enr05Mois.length?`<h2>🍟 Fritures — ${_pLabel}</h2>${pdfTable(enr05Mois)}`:''}
   ${enr33Mois.length?`<h2>🍱 Plats témoins — ${_pLabel}</h2>${pdfTable(enr33Mois)}`:''}
   ${nettMois.length?`<h2>🧹 Nettoyage — ${_pLabel}</h2>${pdfTable(nettMois)}`:''}
@@ -11340,7 +11353,7 @@ function buildGeneralPDF(site,code,mois,moisLabel,dateGen,respName,respRole,sigD
   // Résumé activité par section
   const ALL_SECS=[
     {id:'enr01',lbl:'❄️ Refroidissements'},{id:'enr02',lbl:'🔥 Remises T°C'},{id:'enr03',lbl:'🔄 Refroid.+Remise'},
-    {id:'enr04',lbl:'🥩 Steaks hachés'},{id:'enr05',lbl:'🍟 Fritures'},{id:'enr23',lbl:'📦 Réceptions'},
+    {id:'enr04',lbl:'🌡️ Cuisson à cœur'},{id:'enr05',lbl:'🍟 Fritures'},{id:'enr23',lbl:'📦 Réceptions'},
     {id:'enr26',lbl:'🌡️ Thermomètres'},{id:'enr29',lbl:'👥 Sensibilisation'},{id:'enr30',lbl:'🚨 NC'},
     {id:'enr31',lbl:'📋 Traçabilité'},{id:'enr33',lbl:'🍱 Plats témoins'},{id:'enr34',lbl:'🏷️ Étiq. prod.'},
     {id:'enr35',lbl:'🥩 Origine viandes'},{id:'enr36',lbl:'♻️ Excédents'},
@@ -11420,7 +11433,7 @@ function buildHaccpPDF(site,code,mois,moisLabel,dateGen,respName,respRole,sigDat
     {lbl:'Refroidissements CCP', ok:refNC===0&&ligEnr01.length>0, det:ligEnr01.length+' fiche(s)'+( refNC>0?' · '+refNC+' NC':'')},
     {lbl:'Remises en T°C', ok:ligEnr02.length>0, det:ligEnr02.length+' fiche(s)'},
     {lbl:'Réceptions', ok:recepNC===0&&recepLig.length>0, det:recepLig.length+' réc.'+( recepNC>0?' · '+recepNC+' NC':'')},
-    {lbl:'Steaks hachés', ok:enr04Mois.length>0, det:enr04Mois.length+' fiche(s)'},
+    {lbl:'Cuisson à cœur', ok:enr04Mois.length>0, det:enr04Mois.length+' fiche(s)'},
     {lbl:'Fritures', ok:enr05Mois.length>0, det:enr05Mois.length+' fiche(s)'},
     {lbl:'Plats témoins', ok:enr33Mois.length>0, det:enr33Mois.length+' fiche(s)'},
   ];
@@ -11459,7 +11472,7 @@ function buildHaccpPDF(site,code,mois,moisLabel,dateGen,respName,respRole,sigDat
   <h2 style="color:#c62828;border-color:#ffcdd2">📦 Réceptions — ${moisLabel}</h2>
   ${recepTable}
 
-  ${enr04Mois.length?'<h2 style="color:#c62828;border-color:#ffcdd2">🥩 Steaks hachés — '+moisLabel+'</h2>'+pdfTable(enr04Mois):''}
+  ${enr04Mois.length?'<h2 style="color:#c62828;border-color:#ffcdd2">🌡️ Cuisson à cœur (≥ 65 °C) — '+moisLabel+'</h2>'+pdfTable(enr04Mois):''}
   ${enr05Mois.length?'<h2 style="color:#c62828;border-color:#ffcdd2">🍟 Fritures — '+moisLabel+'</h2>'+pdfTable(enr05Mois):''}
   ${enr33Mois.length?'<h2 style="color:#c62828;border-color:#ffcdd2">🍱 Plats témoins — '+moisLabel+'</h2>'+pdfTable(enr33Mois):''}
 
@@ -15822,7 +15835,7 @@ const BUILTIN_DUPLICABLE = [
      {id:'conf_r',label:'Refroid. conforme ?',type:'conf'},{id:'cuisinier',label:'Cuisinier',type:'chef'}
    ],
    regle:'CCP — +63°C → +10°C en moins de 2h.'},
-  {id:'enr04', label:'🥩 Cuisson steaks', desc:'PrPo — T°C cœur ≥ +65°C', emoji:'🥩', cat:'prpo',
+  {id:'enr04', label:'🌡️ Cuisson à cœur (≥ 65 °C)', desc:'PrPo — T°C cœur ≥ +65°C', emoji:'🥩', cat:'prpo',
    fields:[
      {id:'date',label:'Date',inputType:'date',autoDate:true},{id:'h',label:'Heure',type:'time',autoTime:true},
      {id:'produit',label:'Produit',type:'prod'},{id:'tc',label:'T°C à cœur',type:'temp',presets:[63,65,70,75]},
@@ -15976,7 +15989,7 @@ REND['enr03']=()=>{
 // ════════════════════════════════════════════════════
 const SYNC_SECTIONS_DEF = [
   {id:'enr01',label:'❄️ Refroid. CCP'},{id:'enr02',label:'🔥 Remise T°C CCP'},
-  {id:'enr03',label:'🔄 Refroid.+Remise'},{id:'enr04',label:'🥩 Steaks hachés'},
+  {id:'enr03',label:'🔄 Refroid.+Remise'},{id:'enr04',label:'🌡️ Cuisson à cœur'},
   {id:'enr05',label:'🍟 Fritures'},{id:'enr06',label:'🍟 Fritures+test'},
   {id:'enr07',label:'🥘 Bien Faits cuit'},{id:'enr08',label:'🥗 TM/BF'},
   {id:'enr09',label:'♨️ Cond. chaud'},{id:'enr10',label:'🧊 Cond. froid'},

@@ -2909,11 +2909,11 @@ let _menuPhotoDraft = null; // { type, days:[{date, services:{midi:[],gouter:[],
 function guessMenuCat(nom){
   const s = String(nom||'').toLowerCase();
   // v498 : fromages / produits laitiers prioritaires (sauf « gratin au fromage », « sauce fromage »…)
-  if(/\b(plateaux? (de |des )?(produits? )?laitiers?|plateaux? (de |des )?fromages?|fromages?|produits? laitiers?|laitiers?|laitages?)\b/.test(s)
-     && !/\b(au|aux|à la|a la|sauce|gratin|croque|omelette|tarte) fromages?\b/.test(s)) return 'fromages';
+  const _platFromage = /\b(au|aux|à la|a la|sauce|gratin|croque|omelette|tarte|quiche|pizza|feuillet[ée]|soufflé|souffle|cake|burger|croquettes?|galette|crêpe|crepe|pâtes|pates|risotto) (au |aux |de |du )?fromages?\b/.test(s);
+  if(!_platFromage && /\b(plateaux? (de |des )?(produits? )?laitiers?|plateaux? (de |des )?fromages?|fromages?|produits? laitiers?|laitiers?|laitages?|camembert|brie|emmental|comté|comte|gruyère|gruyere|mimolette|tomme|roquefort|reblochon|munster|coulommiers|saint[- ]nectaire|cantal)\b/.test(s)) return 'fromages';
   if(/\b(potage|soupe|velouté|veloute|consommé|consomme|bouillon)\b/.test(s)) return 'entrees';
   if(/\b(vinaigrette|crudité|crudite|salade|râpé|rape|mimosa|terrine|mousse de|oeuf|œuf|céleri|celeri|carotte|betterave|endive|concombre|macédoine|macedoine|piémontaise|piemontaise)\b/.test(s)) return 'entrees';
-  if(/\b(fromage|laitage|produit laitier|plateaux? de produit)\b/.test(s)) return 'fromages';
+  if(!_platFromage && /\b(fromage|laitage|produit laitier|plateaux? de produit)\b/.test(s)) return 'fromages';
   if(/\b(fruits? frais|fruits? de saison|corbeille de fruits?|fruits?)\b/.test(s) && !/\b(fruits? de mer)\b/.test(s)) return 'desserts';
   if(/\b(dessert|yaourt|compote|fruit|farandole|éclair|eclair|entremets|liégeois|liegeois|cake|riz au lait|semoule au lait|spécialité|specialite|salade de fruits)\b/.test(s)) return 'desserts';
   if(/\b(riz|pâtes?|pates?|frites|semoule|légume|legume|haricot|chou|carotte|pomme de terre|garniture|purée|puree|polenta|boulgour|quinoa|courgette|brocoli|épinard|epinard|romanesco)\b/.test(s)

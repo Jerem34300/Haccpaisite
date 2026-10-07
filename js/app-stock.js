@@ -1306,20 +1306,21 @@ function _stkDlcOuvJ(produit){
 /** v498 : durées par défaut APRÈS OUVERTURE par famille (jours) — proposées, toujours confirmées ;
  *  modifiables par site via S.config.stk_dlc_ouv_fam = { vinaigrette: 5, … } (clé = famille ci-dessous). */
 var STK_OUV_FAM = [
+  // mots entiers + exclusions (v498) : « carottes râpées », « fond de tarte », « jus d'orange », « pâté », « pâte à tartiner » ne sont pas attrapés
   { k: 'vinaigrette', re: /\b(vinaigrette|sauce salade)\b/, j: 7 },
-  { k: 'mayonnaise', re: /\b(mayonnaise|mayo|aioli|tartare|remoulade)\b/, j: 3 },
-  { k: 'sauce', re: /\b(sauce|coulis|fond|jus|bechamel|veloute)\b/, j: 3 },
-  { k: 'compote', re: /\b(compote|puree de fruits?|fruits? au sirop)\b/, j: 3 },
-  { k: 'pate', re: /\b(pate (feuilletee|brisee|sablee|a pizza|fraiche)|pates fraiches|pate)\b/, j: 2 },
-  { k: 'creme', re: /\b(creme|lait|yaourt|fromage blanc)\b/, j: 3 },
+  { k: 'mayonnaise', re: /\b(mayonnaise|mayo|aioli|sauce tartare|remoulade)\b/, j: 3 },
+  { k: 'sauce', re: /\b(sauces?|coulis|fond (brun|blanc|de veau|de volaille|de sauce)|jus (de viande|de roti|de veau|de volaille)|bechamel)\b/, ex: /\b(sauce salade|fond de tarte|jus d'?\s?(orange|pomme|raisin|fruits?|ananas|citron))\b/, j: 3 },
+  { k: 'compote', re: /\b(compotes?|puree de fruits?|fruits? au sirop)\b/, j: 3 },
+  { k: 'pate', re: /\b(pate (feuilletee|brisee|sablee|a pizza|fraiche)|pates fraiches)\b/, ex: /\b(pate a tartiner|fond de tarte)\b/, j: 2 },
+  { k: 'creme', re: /\b(creme (fraiche|liquide|epaisse|entiere|legere)|lait|yaourts?|fromage blanc)\b/, j: 3 },
   { k: 'charcuterie', re: /\b(jambon|lardons?|bacon|saucisson|chorizo|charcuterie|cervelas)\b/, j: 3 },
-  { k: 'fromage', re: /\b(fromage|emmental|comte|camembert|brie|mozzarella|rape)\b/, j: 5 },
-  { k: 'conserve', re: /\b(conserve|boite|macedoine|mais|thon|haricots?|petits pois|tomate concassee|concentre)\b/, j: 3 },
+  { k: 'fromage', re: /\b(fromages?|emmental|comte|camembert|brie|mozzarella|fromage rape|emmental rape)\b/, ex: /\b(fromage blanc)\b/, j: 5 },
+  { k: 'conserve', re: /\b(conserve|en boite|macedoine|mais doux|thon|haricots? (verts|blancs|rouges)|petits pois|tomates? concassees?|concentre de tomates?)\b/, j: 3 },
   { k: 'condiment', re: /\b(ketchup|moutarde|cornichons?|capres|olives)\b/, j: 30 }
 ];
 function _stkFamOuvJ(produit){
   try {
-    var n = _stkNorm(produit), f = STK_OUV_FAM.find(function(x){ return x.re.test(n); });
+    var n = _stkNorm(produit).replace(/[’']/g,"'"), f = STK_OUV_FAM.find(function(x){ return x.re.test(n) && !(x.ex && x.ex.test(n)); });
     if (!f) return null;
     var ov = ((S.config||{}).stk_dlc_ouv_fam||{})[f.k];
     return (ov != null && !isNaN(parseInt(ov,10))) ? parseInt(ov,10) : f.j;

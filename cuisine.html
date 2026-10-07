@@ -558,7 +558,7 @@
         <input class="tw-dinp" id="tw-inp-h" type="number" min="0" max="23" placeholder="HH"
           oninput="twDirectInput('h',this)"
           onblur="twDirectBlur('h',this)"
-          onfocus="this.select()">
+          onfocus="this.select();try{_twSnapTake()}catch(e){}">
         <div class="tw-dinp-lbl">Heures</div>
       </div>
       <div class="tw-direct-sep">:</div>
@@ -566,7 +566,7 @@
         <input class="tw-dinp" id="tw-inp-m" type="number" min="0" max="59" placeholder="MM"
           oninput="twDirectInput('m',this)"
           onblur="twDirectBlur('m',this)"
-          onfocus="this.select()">
+          onfocus="this.select();try{_twSnapTake()}catch(e){}">
         <div class="tw-dinp-lbl">Minutes</div>
       </div>
     </div>
