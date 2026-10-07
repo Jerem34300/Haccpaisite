@@ -10,7 +10,7 @@
  * ════════════════════════════════════════════════════════════════════ */
 var STK_SEC = 'stock';
 var STK_MVT = 'stock_mvt';
-var _stk = { pages: [], draft: null, q: '', busy: false };
+var _stk = { pages: [], draft: null, q: '', busy: false, view: [], resume: null, resumeChecked: false };
 
 (function stkInit(){
   try {
@@ -77,7 +77,86 @@ function _stkNeedWho(){
 }
 function _stkBls(){ try { return ((S[STK_SEC]||{}).lignes||[]).filter(function(r){ return r && !r._deleted; }); } catch(e){ return []; } }
 function _stkMvts(){ try { return ((S[STK_MVT]||{}).lignes||[]).filter(function(r){ return r && !r._deleted; }); } catch(e){ return []; } }
-function _stkRefresh(){ try { if (typeof cur !== 'undefined' && cur === 'stock') renderMain(); } catch(e){ console.warn('[stock] refresh', e); } }
+function _stkRefresh(){ stkPersist(); try { if (typeof cur !== 'undefined' && cur === 'stock') renderMain(); } catch(e){ console.warn('[stock] refresh', e); } }
+// ── Brouillon de réception persistant (IndexedDB : photos trop lourdes pour localStorage) ──
+// Survit à un rechargement, à la fermeture iOS ou à une mise à jour du service worker.
+var STK_IDB = 'haccpro_stock', STK_IDB_KEY = 'bl_draft';
+function _stkIdb(){
+  return new Promise(function(res, rej){
+    try {
+      var rq = indexedDB.open(STK_IDB, 1);
+      rq.onupgradeneeded = function(){ try { rq.result.createObjectStore('kv'); } catch(e){} };
+      rq.onsuccess = function(){ res(rq.result); };
+      rq.onerror = function(){ rej(rq.error); };
+    } catch(e){ rej(e); }
+  });
+}
+function _stkSiteKey(){ try { var c = JSON.parse(localStorage.getItem('haccpro_supa_cfg')||localStorage.getItem('haccp_supa_cfg_v1')||'{}'); return String(c.siteId||c.site_id||''); } catch(e){ return ''; } }
+var _stkPersistT = null;
+function stkPersist(){
+  try {
+    if (_stkPersistT) clearTimeout(_stkPersistT);
+    if (_stk.resume) return; // brouillon en attente de « Reprendre / Abandonner » : ne pas l'écraser
+    _stkPersistT = setTimeout(function(){
+      _stkIdb().then(function(db){
+        try {
+          var tx = db.transaction('kv', 'readwrite'), st = tx.objectStore('kv');
+          if (!_stk.draft && !_stk.pages.length) st.delete(STK_IDB_KEY);
+          else st.put({ draft: _stk.draft, pages: _stk.pages, site: _stkSiteKey(), who: _stkWho()||'', ts: new Date().toISOString() }, STK_IDB_KEY);
+        } catch(e){ console.warn('[stock] persist', e); }
+      }).catch(function(e){ console.warn('[stock] idb', e); });
+    }, 250);
+  } catch(e){ console.warn('[stock] persist', e); }
+}
+function _stkLoadPersisted(){
+  return _stkIdb().then(function(db){
+    return new Promise(function(res){
+      try { var rq = db.transaction('kv','readonly').objectStore('kv').get(STK_IDB_KEY); rq.onsuccess = function(){ res(rq.result||null); }; rq.onerror = function(){ res(null); }; }
+      catch(e){ res(null); }
+    });
+  }).catch(function(){ return null; });
+}
+function _stkCheckResume(){
+  try {
+    if (_stk.resumeChecked || _stk.draft || _stk.pages.length) return;
+    _stk.resumeChecked = true;
+    _stkLoadPersisted().then(function(d){
+      try {
+        if (!d || (!d.draft && !(d.pages||[]).length)) return;
+        if (d.site && _stkSiteKey() && d.site !== _stkSiteKey()) return; // jamais d'un site à l'autre
+        _stk.resume = d;
+        if (typeof cur !== 'undefined' && cur === 'stock') renderMain();
+      } catch(e){ console.warn('[stock] resume', e); }
+    });
+  } catch(e){ console.warn('[stock] checkResume', e); }
+}
+function stkResume(){
+  try {
+    var d = _stk.resume; if (!d) return;
+    _stk.draft = d.draft || null; _stk.pages = d.pages || []; _stk.resume = null;
+    _stkRefresh(); window.scrollTo(0,0);
+  } catch(e){ console.warn('[stock] resume', e); }
+}
+/** Abandon d'une réception en cours : rien en stock, mais trace (qui / quand / quoi). */
+function _stkTraceAbandon(d, pages, motif){
+  try {
+    var now = new Date();
+    var row = { _ts: now.toISOString(), _sec: STK_MVT, date: _stkToday(), heure: _stkHM(now), type: 'abandon_bl', item_id: '',
+      fournisseur: (d && d.fournisseur) || '', bl_numero: (d && d.numero) || '', nb_lignes: d && d.lignes ? d.lignes.length : 0,
+      pages: pages || 0, motif: motif || 'Réception abandonnée avant validation', cuisinier: _stkWho() || '' };
+    _stkPush(STK_MVT, row);
+  } catch(e){ console.warn('[stock] trace abandon', e); }
+}
+function stkAbandonResume(){
+  try {
+    var d = _stk.resume; if (!d) return;
+    if (!_stkNeedWho()) return;
+    showConfirm('Abandonner la réception en cours ?', 'Rien n\'entrera en stock. L\'abandon est tracé à ton nom.', 'Abandonner', function(){
+      try { _stkTraceAbandon(d.draft, (d.draft && d.draft.pages ? d.draft.pages.length : (d.pages||[]).length)); _stk.resume = null; _stk.draft = null; _stk.pages = []; _stkRefresh(); toast('Réception abandonnée (tracée)','success'); }
+      catch(e){ console.warn('[stock] abandonResume', e); }
+    });
+  } catch(e){ console.warn('[stock] abandonResume', e); }
+}
 function _stkPush(sec, row){
   try {
     S[sec] = S[sec] || {};
@@ -116,6 +195,7 @@ function stkItems(){
       var n = Math.max(1, parseInt(m.n,10)||1);
       if (m.type === 'entame') { for (var k=0;k<n;k++) it.ouverts.push(m.date||String(m._ts||'').slice(0,10)); if (m.lot_lu && !it.lot_lu) it.lot_lu = m.lot_lu; if (m.dlc_lue) it.dlc_lue = m.dlc_lue; }
       else if (m.type === 'fini') { if (m.from === 'neuf') it.fin_neuf += n; else { it.fin_ent += n; it.ouverts.splice(0, n); } }
+      else if (m.type === 'lecture_etiquette') { if (m.lot_lu) it.lot_lu = m.lot_lu; if (m.dlc_lue) it.dlc_lue = m.dlc_lue; }
       else if (m.type === 'correction') { it.corr += (parseInt(m.delta,10)||0); }
       else if (m.type === 'bloque') { it.bloque = true; it.bloque_motif = m.motif||''; }
       else if (m.type === 'debloque') { it.bloque = false; }
@@ -174,7 +254,15 @@ function _stkDlcChip(dlc){
 // ── Rendu principal ─────────────────────────────────────────────────
 function stkRender(){
   if (_stk.draft) return stkRenderConfirm();
+  _stkCheckResume();
   var h = '';
+  if (_stk.resume) {
+    var rd = _stk.resume.draft, np = rd ? (rd.pages||[]).length : (_stk.resume.pages||[]).length;
+    h += '<div class="card" style="border:2px solid #f59e0b;background:#fffbeb"><div class="stk-h">⏸️ Réception en cours non validée</div>'
+      + '<div class="stk-sub">'+(rd ? ('BL '+_stkE(rd.fournisseur||'…')+' '+_stkE(rd.numero||'')+' · '+(rd.lignes||[]).length+' ligne(s) · ') : '')+np+' page(s) · '+_stkE(_stk.resume.who||'')+' '+_stkFr(String(_stk.resume.ts||'').slice(0,10))+'</div>'
+      + '<button class="stk-btn ok big" style="margin-top:8px" onclick="stkResume()">▶️ Reprendre la réception en cours</button>'
+      + '<button class="stk-btn big" style="margin-top:6px" onclick="stkAbandonResume()">Abandonner</button></div>';
+  }
   // Scan BL
   h += '<div class="card"><div class="stk-h">📄 Nouvelle réception</div>'
     + '<div class="stk-sub">Photographie le bon de livraison (plusieurs pages possibles, gardées dans l\'ordre).</div>'
@@ -200,7 +288,7 @@ function stkRender(){
   var bls = _stkBls().slice(0, 8);
   if (bls.length) {
     h += '<div class="card"><div class="stk-h">🧾 Dernières réceptions</div>' + bls.map(function(bl){
-      var ph = ['photo','photo2','photo3'].map(function(k){ try { return bl[k] ? photoThumb(bl[k], '', true) : ''; } catch(e){ return ''; } }).join('');
+      var ph = ['photo','photo2','photo3','photo4','photo5','photo6'].map(function(k){ try { return bl[k] ? photoThumb(bl[k], '', true) : ''; } catch(e){ return ''; } }).join('');
       var refus = (bl.lignes_bl||[]).filter(function(l){ return l.statut==='refuse'; }).map(function(l){ return '⛔ '+_stkE(l.produit)+' — refusé'; });
       var manq = (bl.lignes_bl||[]).filter(function(l){ return l.statut==='manquant'; }).map(function(l){ return '✗ '+_stkE(l.produit)+' — manquant sur BL n° '+_stkE(bl.numero||'?'); });
       return '<div class="stk-line"><div class="nm">'+_stkE(bl.fournisseur||'Fournisseur ?')+' — '+_stkE(/^BL/i.test(bl.numero||'')?bl.numero:'BL '+(bl.numero||'?'))+'</div>'
@@ -214,26 +302,37 @@ function stkRender(){
 }
 function stkListHtml(groups){
   try {
+    _stk.view = groups; // handlers par index (jamais de texte OCR/saisi dans un onclick)
     if (!groups.length) return '<div class="empty-s">Aucun produit en stock.<br><small>Scanne un bon de livraison pour commencer.</small></div>';
-    return groups.map(function(G){
+    return groups.map(function(G, gi){
       var recs = G.items.map(function(i){ return _stkFr(i.date_rec); }).filter(function(v,i,a){ return a.indexOf(v)===i; });
       var src = G.lot_auto ? (_stkE(G.items[0].fournisseur)+' · sans lot (BL du '+_stkFr(G.items[0].bl_date)+')')
         : ('Lot '+_stkE(G.lot||'—')+' · reçu le '+recs.join(' et le '));
       var chips = '';
       if (G.entames) chips += '<span class="stk-chip ent">🟠 '+G.entames+' entamé'+(G.entames>1?'s':'')+(G.ouvert_le?' (ouvert le '+_stkFr(G.ouvert_le)+')':'')+'</span>';
       if (G.neufs) chips += '<span class="stk-chip neuf">'+G.neufs+' neuf'+(G.neufs>1?'s':'')+'</span>';
-      chips += _stkDlcChip(G.dlc);
+      var dchip = _stkDlcChip(G.dlc);
+      chips += dchip;
       if (G.bloque) chips += '<span class="stk-chip blk">⛔ Lot bloqué</span>';
-      var k = _stkA(G.key);
       return '<div class="stk-line"'+(G.bloque?' style="border-color:#fca5a5;background:#fff5f5"':'')+'><div class="nm">'+_stkE(G.produit)+'</div>'
-        + '<div class="mt">'+src+(G.dlc?' · '+(G.items[0].dlc_type||'DLC')+' '+_stkFr(G.dlc):'')+'</div><div>'+chips+'</div>'
+        + '<div class="mt">'+src+((G.dlc && !dchip)?' · DLC '+_stkFr(G.dlc):'')+(G.items.some(function(i){ return i.lot_lu && _stkNorm(i.lot_lu)!==_stkNorm(i.lot); })?' · lot étiquette '+_stkE(G.items.find(function(i){ return i.lot_lu; }).lot_lu):'')+'</div><div>'+chips+'</div>'
         + '<div class="stk-act">'
-        + '<button onclick="stkEntamer(\''+k+'\')">J\'entame</button>'
-        + '<button onclick="stkFini(\''+k+'\')">Fini</button>'
-        + '<button onclick="stkCorriger(\''+k+'\')">✏️ Corriger</button>'
+        + '<button onclick="stkGroupAct(\'entamer\','+gi+')">J\'entame</button>'
+        + '<button onclick="stkGroupAct(\'fini\','+gi+')">Fini</button>'
+        + '<button onclick="stkGroupAct(\'menu\','+gi+')" aria-label="Plus d\'actions" style="margin-left:auto">⋯</button>'
         + '</div></div>';
     }).join('');
   } catch(e){ console.warn('[stock] list', e); return ''; }
+}
+/** Actions de la liste par index (G.key n'apparaît jamais dans le HTML). */
+var stkEntamerUI = function(key){ stkEntamer(key); };
+function stkGroupAct(act, i){
+  try {
+    var G = (_stk.view||[])[i]; if (!G) return;
+    if (act === 'entamer') stkEntamerUI(G.key);
+    else if (act === 'fini') stkFini(G.key);
+    else if (act === 'menu') _stkChoice(G.produit, '', [{ k: 'corr', html: '✏️ Corriger le stock (motif obligatoire)' }], function(o){ if (o.k === 'corr') stkCorriger(G.key); });
+  } catch(e){ console.warn('[stock] groupAct', e); }
 }
 function stkSearch(v){
   try {
@@ -284,6 +383,48 @@ function stkAddFiles(files){
 }
 function stkDelPage(i){ try { _stk.pages.splice(i,1); _stkRefresh(); } catch(e){ console.warn('[stock] delPage', e); } }
 
+/** Comme photoSave : { ref: JSON miniature 640 px, full: JPEG 2000 px q0.88 } */
+function _stkPhotoPair(dataUrl){
+  return new Promise(function(resolve){
+    try {
+      var img = new Image();
+      img.onload = function(){
+        try {
+          var draw = function(maxW, maxH, q){
+            var w = img.naturalWidth, h = img.naturalHeight;
+            if (w > maxW) { h = Math.round(h*maxW/w); w = maxW; }
+            if (maxH && h > maxH) { w = Math.round(w*maxH/h); h = maxH; }
+            var c = document.createElement('canvas'); c.width = w; c.height = h;
+            var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0,0,w,h); g.drawImage(img,0,0,w,h);
+            var out = c.toDataURL('image/jpeg', q); try { c.width = c.height = 0; } catch(e){}
+            return out;
+          };
+          resolve({ ref: JSON.stringify({ thumb: draw(640, 0, 0.72), file: '', date: _stkToday() }), full: draw(2000, 1500, 0.88) });
+        } catch(e){ resolve(null); }
+      };
+      img.onerror = function(){ resolve(null); };
+      img.src = dataUrl;
+    } catch(e){ resolve(null); }
+  });
+}
+/** Enqueue avec pleine résolution : _pendingPhotos prêté le temps de l'appel (enqueue est synchrone), puis restauré. */
+function _stkPushWithPhotos(sec, row, fulls){
+  var saved = {}, pend = (typeof _pendingPhotos !== 'undefined') ? _pendingPhotos : null;
+  try {
+    S[sec] = S[sec] || {};
+    S[sec].lignes = Array.isArray(S[sec].lignes) ? S[sec].lignes : [];
+    S[sec].lignes.unshift(stampEntry(row));
+    save();
+    try {
+      if (pend && fulls) Object.keys(fulls).forEach(function(k){ saved[k] = pend[k]; pend[k] = fulls[k]; });
+      SupaEngine.enqueue(sec, row);
+    } catch(e){ console.warn('[stock] sync photos', e); }
+    finally {
+      try { if (pend && fulls) Object.keys(fulls).forEach(function(k){ if (saved[k] === undefined) delete pend[k]; else pend[k] = saved[k]; }); } catch(e){}
+    }
+    return row;
+  } catch(e){ console.warn('[stock] pushPhotos', e); return null; }
+}
 /** Miniature lisible pour la preuve (même format que photoSave : JSON {thumb,file,date}). */
 function _stkThumbRef(dataUrl, maxW){
   return new Promise(function(resolve){
@@ -327,13 +468,14 @@ async function stkAnalyse(){
 function stkManual(){ stkOpenDraft({ fournisseur:'', numero:'', date:_stkToday(), lignes:[] }); }
 function stkOpenDraft(res){
   try {
+    _stk.resume = null;
     _stk.draft = {
       fournisseur: res.fournisseur||'', numero: res.numero||'', date: res.date||_stkToday(),
       pages: _stk.pages.slice(),
       lignes: (res.lignes||[]).map(function(l){ return {
         produit: l.produit||'', conditionnement: l.conditionnement||'', qte_texte: l.qte_texte||'',
         qte: Math.max(1, parseInt(l.qte,10)||1), unite: l.unite||'', lot: l.lot||'', dlc: l.dlc||'', dlc_type: l.dlc_type||'',
-        statut: '', hors_bl: false, edit: false }; })
+        statut: '', hors_bl: false, edit: false, sans_etiquette: !l.lot }; })
     };
     _stk.pages = [];
     // Fournisseur connu ? (calendrier fournisseurs) → nom canonique
@@ -364,14 +506,15 @@ function stkRenderConfirm(){
     var meta = [l.conditionnement, (l.qte_texte||(l.qte+' u.')), l.lot?('lot '+l.lot):'sans lot', l.dlc?((l.dlc_type||'DLC')+' '+_stkFrY(l.dlc)):''].filter(Boolean).map(_stkE).join(' · ');
     var extra = '';
     if (l.statut === 'manquant') extra = '<div class="mt" style="color:#4b5563">Trace : manquant sur BL n° '+_stkE(d.numero||'?')+'</div>';
-    if (l.statut === 'refuse') extra = '<div class="mt" style="color:#991b1b">Refusé — non-conformité ENR30 pré-remplie à la validation</div>';
+    if (l.statut === 'refuse') extra = '<div class="mt" style="color:#991b1b">Refusé — fiche non-conformité pré-remplie à la validation</div>';
     var edit = l.edit ? ('<div class="stk-grid">'
       + '<input class="stk-in" value="'+_stkA(l.produit)+'" placeholder="Produit" onchange="stkLineSet('+i+',\'produit\',this.value)">'
       + '<input class="stk-in" type="number" min="1" value="'+_stkA(l.qte)+'" placeholder="Unités" onchange="stkLineSet('+i+',\'qte\',this.value)">'
       + '<input class="stk-in" value="'+_stkA(l.lot)+'" placeholder="Lot" onchange="stkLineSet('+i+',\'lot\',this.value)">'
       + '<input class="stk-in" type="date" value="'+_stkA(l.dlc)+'" onchange="stkLineSet('+i+',\'dlc\',this.value)"></div>') : '';
     return '<div class="stk-line'+(l.statut?'':' todo')+'"><div style="display:flex;gap:6px"><div style="flex:1"><div class="nm">'+_stkE(l.produit||'(sans nom)')+(l.hors_bl?' <span class="stk-chip dlc">hors BL</span>':'')+'</div>'
-      + '<div class="mt">'+meta+' · <b>'+l.qte+' unité'+(l.qte>1?'s':'')+' en stock</b></div></div>'
+      + '<div class="mt">'+meta+' · <b>'+l.qte+' unité'+(l.qte>1?'s':'')+' sur le BL</b></div>'
+      + '<label class="mt" style="display:flex;align-items:center;gap:6px;margin-top:4px"><input type="checkbox" '+(l.sans_etiquette?'checked':'')+' onchange="stkLineSet('+i+',\'sans_etiquette\',this.checked)" style="width:18px;height:18px;accent-color:#5C1E5A"> Sans étiquette (pas de photo à l\'ouverture)</label></div>'
       + '<button class="stk-btn" style="padding:4px 8px;align-self:flex-start" onclick="stkLineEdit('+i+')" aria-label="Modifier">✏️</button></div>'
       + extra + edit
       + '<div class="stk-3"><button class="'+(l.statut==='recu'?'on-r':'')+'" onclick="stkLineStat('+i+',\'recu\')">✓ Reçu</button>'
@@ -384,12 +527,17 @@ function stkRenderConfirm(){
     + '<button class="stk-btn big" style="margin-top:6px" onclick="stkAbandon()">Annuler</button></div>';
   return h;
 }
-function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); } } catch(e){ console.warn('[stock] draftSet', e); } }
+function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); stkPersist(); } } catch(e){ console.warn('[stock] draftSet', e); } }
 function stkLineSet(i, k, v){
   try {
     var l = _stk.draft && _stk.draft.lignes[i]; if (!l) return;
-    if (k === 'qte') l.qte = Math.max(1, parseInt(v,10)||1); else l[k] = String(v||'').trim();
-    if (k === 'qte') _stkRefresh();
+    if (k === 'qte') l.qte = Math.max(1, parseInt(v,10)||1);
+    else if (k === 'sans_etiquette') l.sans_etiquette = !!v;
+    else l[k] = String(v||'').trim();
+    if (k === 'lot' && l.lot && !l._se_touche) l.sans_etiquette = false;
+    if (k === 'sans_etiquette') l._se_touche = true;
+    stkPersist();
+    if (k === 'qte' || k === 'lot' || k === 'sans_etiquette') _stkRefresh();
   } catch(e){ console.warn('[stock] lineSet', e); }
 }
 function stkLineEdit(i){ try { var l = _stk.draft.lignes[i]; l.edit = !l.edit; _stkRefresh(); } catch(e){ console.warn('[stock] lineEdit', e); } }
@@ -397,14 +545,18 @@ function stkLineStat(i, st){ try { var l = _stk.draft.lignes[i]; l.statut = (l.s
 function stkToutRecu(){ try { _stk.draft.lignes.forEach(function(l){ if (!l.statut) l.statut = 'recu'; }); _stkRefresh(); } catch(e){ console.warn('[stock] toutRecu', e); } }
 function stkHorsBl(){
   try {
-    _stk.draft.lignes.push({ produit:'', conditionnement:'', qte_texte:'', qte:1, unite:'', lot:'', dlc:'', dlc_type:'', statut:'recu', hors_bl:true, edit:true });
+    _stk.draft.lignes.push({ produit:'', conditionnement:'', qte_texte:'', qte:1, unite:'', lot:'', dlc:'', dlc_type:'', statut:'recu', hors_bl:true, edit:true, sans_etiquette:true });
     _stkRefresh();
   } catch(e){ console.warn('[stock] horsBl', e); }
 }
 function stkAbandon(){
   try {
-    showConfirm('Abandonner ce BL ?', 'Rien n\'a été enregistré. Les photos seront perdues.', 'Abandonner', function(){ _stk.draft = null; _stkRefresh(); });
-  } catch(e){ _stk.draft = null; _stkRefresh(); }
+    if (!_stkNeedWho()) return;
+    showConfirm('Abandonner ce BL ?', 'Rien n\'entrera en stock. L\'abandon est tracé à ton nom.', 'Abandonner', function(){
+      try { _stkTraceAbandon(_stk.draft, (_stk.draft.pages||[]).length); } catch(e){}
+      _stk.draft = null; _stkRefresh();
+    });
+  } catch(e){ console.warn('[stock] abandon', e); }
 }
 async function stkValider(){
   var d = _stk.draft; if (!d || _stk.busy) return;
@@ -426,6 +578,7 @@ async function stkValider(){
           unite: l.unite, lot: lot, lot_auto: auto, dlc: l.dlc, dlc_type: l.dlc_type, statut: l.statut, hors_bl: !!l.hors_bl };
         if (l.statut === 'manquant') o.trace = 'manquant sur BL n° '+(d.numero||'?');
         if (l.statut === 'refuse') o.trace = 'refusé à la réception';
+        o.sans_etiquette = !!l.sans_etiquette;
         return o;
       })
     };
@@ -434,16 +587,19 @@ async function stkValider(){
         nX = rec.lignes_bl.filter(function(l){ return l.statut==='refuse'; }).length;
     rec.nb_recu = nR; rec.nb_manquant = nM; rec.nb_refuse = nX;
     rec.resume = nR+' reçu'+(nR>1?'s':'')+' · '+nM+' manquant'+(nM>1?'s':'')+' · '+nX+' refusé'+(nX>1?'s':'');
-    // Photos du BL : même format que photoSave (miniature lisible), champs photo/photo2/photo3 (+ photos_extra)
+    // Photos du BL : même chaîne que photoSave — miniature 640 px {thumb,file,date} dans le dossier (S),
+    // pleine résolution (2000 px) confiée à SupaEngine via _pendingPhotos → Supabase Storage (bucket privé) → siège.
+    var fulls = {};
     try {
       for (var i = 0; i < d.pages.length; i++) {
-        var ref = await _stkThumbRef(d.pages[i], 900);
-        if (!ref) continue;
-        if (i === 0) rec.photo = ref; else if (i === 1) rec.photo2 = ref; else if (i === 2) rec.photo3 = ref;
-        else { rec.photos_extra = rec.photos_extra || []; rec.photos_extra.push(ref); }
+        var pair = await _stkPhotoPair(d.pages[i]);
+        if (!pair || !pair.ref) continue;
+        var fld = i === 0 ? 'photo' : ('photo' + (i + 1));
+        rec[fld] = pair.ref;
+        if (pair.full && i < 3) fulls[i === 0 ? 'enr31' : ('enr31_' + (i + 1))] = pair.full; // préfixes connus de SupaEngine (photo/photo2/photo3)
       }
     } catch(e){ console.warn('[stock] photos', e); }
-    _stkPush(STK_SEC, rec);
+    _stkPushWithPhotos(STK_SEC, rec, fulls);
     _stk.draft = null; _stk.busy = false;
     toast('✅ Réception enregistrée — '+rec.resume,'success');
     // Refusés → NC ENR30 pré-remplie via le flux existant (nc_auto_pending + ncAutoFill)
@@ -482,7 +638,7 @@ function stkMvt(type, it, extra){
   return _stkPush(STK_MVT, row);
 }
 /** Choix de l'unité à ouvrir : sac entamé (continuer) ou neuf d'une livraison donnée. */
-function _stkChoice(title, sub, opts, cb){
+function _stkChoice(title, sub, opts, cb, onCancel){
   try {
     var ov = document.createElement('div');
     ov.className = 'hacc-wait-ov'; ov.id = 'stk-choice-ov';
@@ -496,13 +652,14 @@ function _stkChoice(title, sub, opts, cb){
         if (!b && ev.target !== ov) return;
         var i = b ? parseInt(b.getAttribute('data-i'),10) : -1;
         ov.remove();
-        if (i >= 0) cb(opts[i]);
+        if (i >= 0) cb(opts[i]); else if (onCancel) onCancel();
       } catch(e){ console.warn('[stock] choice', e); }
     });
     document.body.appendChild(ov);
   } catch(e){ console.warn('[stock] choice', e); }
 }
-function stkEntamer(key, after){
+/** defer=true : rien n'est écrit ici, after(it, 'ent'|'neuf') écrit mouvement + fiche ensemble. */
+function stkEntamer(key, after, defer){
   try {
     if (!_stkNeedWho()) return;
     var G = _stkGroup(key); if (!G) return;
@@ -517,8 +674,9 @@ function stkEntamer(key, after){
     if (!opts.length) { toast('Plus rien en stock pour ce produit','warning'); return; }
     var go = function(o){
       try {
-        if (o.kind === 'ent') { toast('🟠 On continue le '+(o.it.unite||'produit')+' entamé','success'); if (after) after(o.it, null); return; }
+        if (o.kind === 'ent') { toast('🟠 On continue le '+(o.it.unite||'produit')+' entamé','success'); if (after) after(o.it, defer ? 'ent' : null); return; }
         if (G.entames > 0) toast('⚠️ Attention : il reste un entamé de ce lot — à utiliser en priorité','warning');
+        if (defer) { if (after) after(o.it, 'neuf'); return; }
         var row = stkMvt('entame', o.it, { from: 'neuf' });
         if (after) after(o.it, row); else { toast('✅ '+o.it.produit+' entamé','success'); _stkRefresh(); }
       } catch(e){ console.warn('[stock] entamer go', e); }
@@ -570,14 +728,14 @@ function stkCorriger(key){
 }
 
 /* ════════════════════════════════════════════════════════════════════
- * PR B (v489) — « J'entame » avec photo d'étiquette → ENR31 auto,
- * « Choisir dans le stock » à côté de la saisie manuelle (traça plat).
- * Les formulaires existants restent inchangés et utilisables sans stock.
+ * PR B (v489) — « J'entame » avec photo d'étiquette → fiche traçabilité (ENR31) auto,
+ * « Choisir dans le stock » à côté de la saisie manuelle (traça plat), lots bloqués refusés.
+ * Règle : le mouvement « entame » et la ligne ENR31 sont TOUJOURS écrits ensemble.
  * ════════════════════════════════════════════════════════════════════ */
 function _stkEnr31For(itemId){
   try { return ((S.enr31||{}).lignes||[]).find(function(l){ return l && !l._deleted && l._stock_item_id === itemId; }) || null; } catch(e){ return null; }
 }
-/** Crée la ligne Traçabilité MP (ENR31) liée au BL et au stock. */
+/** Crée la ligne ENR31 liée au BL et au stock (photos : chaîne photoSave, pleine résolution vers Storage). */
 function stkCreateEnr31(it, o){
   try {
     o = o || {};
@@ -589,71 +747,118 @@ function stkCreateEnr31(it, o){
       _from_stock: true, _stock_item_id: it.id, _bl_ts: it.bl_ts, bl_numero: it.bl_numero, fournisseur: it.fournisseur,
       date_reception: it.date_rec
     };
-    if (o.photo) rec.photo = o.photo;
-    if (o.photo2) rec.photo2 = o.photo2;
+    var fulls = {};
+    if (o.p1) { rec.photo = o.p1.ref; if (o.p1.full) fulls.enr31 = o.p1.full; }
+    if (o.p2) { rec.photo2 = o.p2.ref; if (o.p2.full) fulls.enr31_2 = o.p2.full; }
     if (o.mvt_ts) rec._stock_mvt_ts = o.mvt_ts;
-    S.enr31 = S.enr31 || {};
-    S.enr31.lignes = Array.isArray(S.enr31.lignes) ? S.enr31.lignes : [];
-    S.enr31.lignes.unshift(stampEntry(rec));
-    save();
-    try { SupaEngine.enqueue('enr31', rec); } catch(e){ console.warn('[stock] sync enr31', e); }
-    return rec;
+    return _stkPushWithPhotos('enr31', rec, fulls);
   } catch(e){ console.warn('[stock] enr31', e); return null; }
 }
-/** « J'entame » depuis la liste : choix de l'unité, puis photo d'étiquette (sauf produit sans étiquette). */
-function stkEntamerPhoto(key){
-  stkEntamer(key, function(it, row){
+/** Écrit ENSEMBLE le mouvement « entame » (si neuf) et la fiche ENR31. kind = 'neuf' | 'ent'. */
+function stkCommitEntame(it, kind, o){
+  try {
+    o = o || {};
+    if (kind === 'ent') { var ex = _stkEnr31For(it.id); if (ex) return ex; return stkCreateEnr31(it, o); }
+    var row = stkMvt('entame', it, { from: 'neuf', lot_lu: o.lot_lu || '', dlc_lue: o.dlc_lue || '' });
+    o.mvt_ts = row ? row._ts : '';
+    return stkCreateEnr31(it, o);
+  } catch(e){ console.warn('[stock] commitEntame', e); return null; }
+}
+/**
+ * Parcours « J'entame » complet : choix entamé / neuf (+ alerte), photo d'étiquette sauf « sans étiquette ».
+ * done(it, enr31) appelé une fois tout écrit ; done(null) si annulé AVANT toute écriture.
+ * Sélecteur de fichier fermé sans photo → fiche créée quand même, sans photo (jamais de chaîne cassée).
+ */
+function stkEntamerFlow(key, done){
+  done = done || function(){};
+  stkEntamer(key, function(it, kind){
     try {
-      if (!row) return; // on continue un entamé : la ligne ENR31 existe déjà
-      if (it.sans_etiquette) { stkCreateEnr31(it, { mvt_ts: row._ts }); toast('✅ Entamé — fiche traçabilité MP remplie','success'); _stkRefresh(); return; }
-      _stkChoice(it.produit, '📷 Prends l\'étiquette en photo (lot / DLC remplis automatiquement)', [
+      if (kind === 'ent') { done(it, stkCommitEntame(it, 'ent', {})); return; }
+      if (it.sans_etiquette) { done(it, stkCommitEntame(it, 'neuf', {})); return; }
+      _stkChoice(it.produit, '📷 Prends l\'étiquette en photo (lot et date remplis automatiquement)', [
         { k: 'camera', html: '📷 Caméra', hl: true }, { k: 'gallery', html: '🖼️ Galerie (1 ou 2 photos)' }, { k: 'none', html: '🚫 Pas d\'étiquette sur ce produit' }
       ], function(o){
         try {
-          if (o.k === 'none') { stkCreateEnr31(it, { mvt_ts: row._ts }); toast('✅ Fiche traçabilité MP remplie (lot du BL)','success'); _stkRefresh(); return; }
+          if (o.k === 'none') { done(it, stkCommitEntame(it, 'neuf', {})); return; }
+          var handled = false;
+          var finish = function(files){
+            if (handled) return; handled = true;
+            try { window.removeEventListener('focus', onFocus); } catch(e){}
+            if (files && files.length) stkLabelFiles(it, files, done);
+            else { toast('Pas de photo — fiche traçabilité remplie avec le lot du BL','warning'); done(it, stkCommitEntame(it, 'neuf', {})); }
+          };
           var inp = document.createElement('input');
           inp.type = 'file'; inp.accept = 'image/*';
           if (o.k === 'camera') inp.setAttribute('capture','environment'); else inp.multiple = true;
           inp.style.display = 'none';
-          inp.onchange = function(){ try { stkLabelFiles(it, row, inp.files); } catch(e){ console.warn('[stock] label files', e); } try { inp.remove(); } catch(e){} };
+          inp.onchange = function(){ var f = inp.files; try { inp.remove(); } catch(e){} finish(f); };
+          inp.addEventListener('cancel', function(){ try { inp.remove(); } catch(e){} finish(null); });
+          // Repli (navigateurs sans évènement « cancel ») : retour au premier plan sans fichier
+          var onFocus = function(){ setTimeout(function(){ if (!handled && !(inp.files && inp.files.length)) finish(null); }, 1500); };
+          setTimeout(function(){ try { window.addEventListener('focus', onFocus); } catch(e){} }, 400);
           document.body.appendChild(inp); inp.click();
-        } catch(e){ console.warn('[stock] label pick', e); }
-      });
-    } catch(e){ console.warn('[stock] entamerPhoto', e); }
-  });
+        } catch(e){ console.warn('[stock] label pick', e); done(it, stkCommitEntame(it, 'neuf', {})); }
+      }, function(){ done(it, stkCommitEntame(it, 'neuf', {})); });
+    } catch(e){ console.warn('[stock] entamerFlow', e); }
+  }, true);
+}
+function stkEntamerPhoto(key){
+  stkEntamerFlow(key, function(it, rec){ if (it && rec) toast('✅ Entamé — fiche traçabilité remplie','success'); _stkRefresh(); });
 }
 function _stkReadFile(f){
   return new Promise(function(res){ try { var rd = new FileReader(); rd.onload = function(){ res(String(rd.result||'')); }; rd.onerror = function(){ res(''); }; rd.readAsDataURL(f); } catch(e){ res(''); } });
 }
-async function stkLabelFiles(it, row, files){
+async function stkLabelFiles(it, files, done){
   var arr = Array.prototype.slice.call(files||[]).slice(0, 2);
-  if (!arr.length) { stkCreateEnr31(it, { mvt_ts: row._ts }); _stkRefresh(); return; }
-  try { haccShowWait({ icon: '📷', title: 'Lecture de l\'étiquette…', sub: 'Lot et DLC proposés, à vérifier' }); } catch(e){}
-  var raws = [], refs = [], prop = null;
+  try { haccShowWait({ icon: '📷', title: 'Lecture de l\'étiquette…', sub: 'Lot et date proposés, à vérifier' }); } catch(e){}
+  var pairs = [], prop = null;
   try {
-    for (var i = 0; i < arr.length; i++) { var r = await _stkReadFile(arr[i]); if (r) raws.push(r); }
-    for (var j = 0; j < raws.length; j++) refs.push(await _stkThumbRef(raws[j], 640));
-    for (var k = 0; k < raws.length; k++) {
+    for (var i = 0; i < arr.length; i++) {
+      var raw = await _stkReadFile(arr[i]); if (!raw) continue;
+      pairs.push(await _stkPhotoPair(raw));
       try {
-        var res = (typeof _labelOcrPost === 'function') ? await _labelOcrPost(raws[k]) : null;
+        var res = (typeof _labelOcrPost === 'function') ? await _labelOcrPost(raw) : null;
         if (res && res.proposed) prop = (typeof _labelOcrMerge === 'function') ? _labelOcrMerge(prop, res.proposed) : (prop || res.proposed);
       } catch(e){ console.warn('[stock] label post', e); }
     }
   } catch(e){ console.warn('[stock] label', e); }
   try { haccHideWait(); } catch(e){}
   var lot = (prop && prop.lot) || '', dlc = '';
-  try { dlc = (prop && prop.dlc) ? (String(prop.dlc).match(/^\d{4}-\d{2}-\d{2}$/) ? prop.dlc : '') : ''; } catch(e){}
-  var warn = '';
-  if (lot && it.lot && !it.lot_auto && _stkNorm(lot) !== _stkNorm(it.lot)) warn = '⚠️ Lot étiquette ('+_stkE(lot)+') ≠ lot BL ('+_stkE(it.lot)+')';
-  if (!prop) toast('ℹ️ Étiquette non lue — lot du BL conservé, photo jointe','warning');
-  var fin = { lot: lot || it.lot, dlc: dlc || it.dlc, estampille: (prop && prop.estampille) || '', photo: refs[0] || '', photo2: refs[1] || '', mvt_ts: row._ts };
-  var rec = stkCreateEnr31(it, fin);
-  try { if (lot || dlc) stkMvt('lecture_etiquette', it, { lot_lu: lot, dlc_lue: dlc, enr31_uuid: rec && rec._uuid }); } catch(e){}
-  toast('✅ Fiche traçabilité MP remplie automatiquement'+(warn?' — '+warn.replace(/<[^>]+>/g,''):''), warn ? 'warning' : 'success');
-  _stkRefresh();
+  try { dlc = (prop && /^\d{4}-\d{2}-\d{2}$/.test(String(prop.dlc||''))) ? prop.dlc : ''; } catch(e){}
+  var warn = (lot && it.lot && !it.lot_auto && _stkNorm(lot) !== _stkNorm(it.lot)) ? ('lot étiquette '+lot+' ≠ lot du BL '+it.lot) : '';
+  if (!prop) toast('Étiquette non lue — lot du BL gardé, photo jointe','warning');
+  var rec = stkCommitEntame(it, 'neuf', { lot: lot || it.lot, dlc: dlc || it.dlc, estampille: (prop && prop.estampille) || '',
+    p1: pairs[0] || null, p2: pairs[1] || null, lot_lu: lot, dlc_lue: dlc });
+  if (warn) toast('⚠️ Vérifie : '+warn,'warning');
+  done(it, rec);
 }
 
-/** Sélecteur « Choisir dans le stock » : produits + switch entamé / fini, liés au plat (et au BL). */
+// ── Lots bloqués : refus dans TOUS les chemins de liaison (fiche manuelle, bandeau menu, stock) ──
+function stkBlockedInfo(lot, produit){
+  try {
+    var n = _stkNorm(lot); if (!n || n === '—') return null;
+    var it = stkItems().find(function(i){ return i.bloque && (_stkNorm(i.lot) === n || _stkNorm(i.lot_lu||'') === n); });
+    if (!it) return null;
+    var m = _stkMvts().filter(function(x){ return x.item_id === it.id && x.type === 'bloque'; }).sort(function(a,b){ return String(b._ts).localeCompare(String(a._ts)); })[0] || {};
+    return { lot: it.lot, produit: it.produit, motif: it.bloque_motif || m.motif || '', par: m.cuisinier || '', date: m.date || '' };
+  } catch(e){ return null; }
+}
+function stkBlockedAlert(b){
+  try {
+    var msg = '⛔ LOT BLOQUÉ — ' + b.produit + ' (lot ' + b.lot + ')' + (b.motif ? ' — motif : ' + b.motif : '') + (b.par ? ' — bloqué par ' + b.par + (b.date ? ' le ' + _stkFr(b.date) : '') : '') + '. Ne pas utiliser ce lot.';
+    try { toast(msg, 'error', { force: true }); } catch(e){}
+    _stkChoice('⛔ Lot bloqué', '<div style="color:#991b1b;font-weight:800">'+_stkE(b.produit)+' — lot '+_stkE(b.lot)+'</div>'
+      + (b.motif ? '<div>Motif : '+_stkE(b.motif)+'</div>' : '') + (b.par ? '<div>Bloqué par '+_stkE(b.par)+(b.date?' le '+_stkFr(b.date):'')+'</div>' : '')
+      + '<div style="margin-top:6px">Ce lot ne peut pas être utilisé ni lié à un plat.</div>', [{ k: 'ok', html: 'Compris', hl: true }], function(){});
+  } catch(e){ console.warn('[stock] blockedAlert', e); }
+}
+/** Utilisé par app-menu-cuisine (_menuSetLotPlat) : true = refusé. */
+window.stkLotBlockCheck = function(l){
+  try { var b = l ? stkBlockedInfo(l.lot, l.produit) : null; if (b) { stkBlockedAlert(b); return true; } } catch(e){}
+  return false;
+};
+
+/** Sélecteur « Choisir dans le stock » : produits cochés → switch entamé / fini, puis même parcours que J'entame. */
 function stkPickForDish(ref, ctx){
   try {
     if (!_stkNeedWho()) return;
@@ -661,37 +866,40 @@ function stkPickForDish(ref, ctx){
     var groups = stkGroups().filter(function(G){ return G.dispo > 0 && !G.bloque; });
     var plats = [];
     try { plats = (window._stkMenuApi && window._stkMenuApi.todayMenuPlats) ? window._stkMenuApi.todayMenuPlats() : []; } catch(e){ plats = []; }
+    var pend = [];
+    try { if (!ref && window._stkMenuApi && window._stkMenuApi.pendingRefs) pend = (window._stkMenuApi.pendingRefs('enr31')||[]).filter(function(r){ return r && r.plat_id; }); } catch(e){ pend = []; }
     var prev = document.getElementById('stk-dish-ov'); if (prev) prev.remove();
     var ov = document.createElement('div');
     ov.id = 'stk-dish-ov';
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9500;display:flex;align-items:flex-end;justify-content:center';
-    var pend = [];
-    try { if (!ref && window._stkMenuApi && window._stkMenuApi.pendingRefs) pend = (window._stkMenuApi.pendingRefs('enr31')||[]).filter(function(r){ return r && r.plat_id; }); } catch(e){ pend = []; }
-    var platSel = pend.length ? '<div class="stk-sub" style="margin-bottom:6px">🍽️ '+pend.map(function(r){ return _stkE(r.nom||''); }).join(', ')+' <small>(bandeau Menu du jour)</small></div>' : ref ? '<div class="stk-sub" style="margin-bottom:6px">🍽️ '+_stkE(ref.nom||'')+(ctx.service?' · '+_stkE(ctx.service):'')+'</div>'
+    var platSel = pend.length ? '<div class="stk-sub" style="margin-bottom:6px">🍽️ '+pend.map(function(r){ return _stkE(r.nom||''); }).join(', ')+' <small>(bandeau Menu du jour)</small></div>'
+      : ref ? '<div class="stk-sub" style="margin-bottom:6px">🍽️ '+_stkE(ref.nom||'')+'</div>'
       : ('<select id="stk-dish-plat" class="stk-in" style="margin-bottom:8px"><option value="">— Plat (facultatif) —</option>'
         + plats.map(function(x, i){ return '<option value="'+i+'">'+_stkE(x.p.nom)+(x.svc&&x.svc.label?' ('+_stkE(x.svc.label)+')':'')+'</option>'; }).join('') + '</select>');
     ov.innerHTML = '<div style="background:#fff;border-radius:18px 18px 0 0;width:100%;max-width:520px;padding:16px 14px 22px;max-height:88vh;overflow:auto">'
       + '<div class="stk-h">📦 Produits du stock</div>' + platSel
       + (groups.length ? groups.map(function(G, i){
           var src = G.lot_auto ? ('BL '+_stkE(G.items[0].fournisseur)+' '+_stkFr(G.items[0].bl_date)) : _stkE(G.lot);
-          return '<div class="stk-line" data-g="'+i+'" style="display:flex;align-items:center;gap:8px;padding:8px">'
+          return '<div class="stk-line" style="display:flex;align-items:center;gap:8px;padding:8px">'
             + '<input type="checkbox" data-gi="'+i+'" style="width:20px;height:20px;accent-color:#16a34a">'
             + '<div style="flex:1;min-width:0"><div class="nm">'+_stkE(G.produit)+'</div><div class="mt">'+src+(G.entames?' · entamé '+_stkFr(G.ouvert_le):' · neuf')+'</div></div>'
-            + '<div style="display:flex;border:1.5px solid #d9c6dc;border-radius:9px;overflow:hidden" data-sw="'+i+'">'
+            + '<div style="display:none;border:1.5px solid #d9c6dc;border-radius:9px;overflow:hidden" data-sw="'+i+'">'
             + '<button type="button" data-v="entame" style="border:none;padding:6px 9px;font-weight:800;font-size:.74rem;background:#f59e0b;color:#fff;font-family:inherit">Entamé</button>'
             + '<button type="button" data-v="fini" style="border:none;padding:6px 9px;font-weight:800;font-size:.74rem;background:#fff;color:#5C1E5A;font-family:inherit">Fini</button></div></div>';
         }).join('') : '<div class="empty-s">Stock vide — utilise la saisie manuelle.</div>')
-      + '<button type="button" id="stk-dish-ok" class="stk-btn ok big" style="margin-top:10px">✓ Lier au plat</button>'
+      + '<button type="button" id="stk-dish-ok" class="stk-btn ok big" style="margin-top:10px">✓ Valider</button>'
       + '<button type="button" id="stk-dish-cancel" class="stk-btn big" style="margin-top:6px">Fermer</button></div>';
     document.body.appendChild(ov);
     var etat = {};
+    ov.querySelectorAll('input[data-gi]').forEach(function(cb){
+      cb.addEventListener('change', function(){ try { var sw = ov.querySelector('[data-sw="'+cb.getAttribute('data-gi')+'"]'); if (sw) sw.style.display = cb.checked ? 'flex' : 'none'; } catch(e){} });
+    });
     ov.querySelectorAll('[data-sw]').forEach(function(sw){
       sw.addEventListener('click', function(ev){
         try {
           var b = ev.target.closest('button[data-v]'); if (!b) return;
           var i = sw.getAttribute('data-sw'); etat[i] = b.getAttribute('data-v');
           sw.querySelectorAll('button').forEach(function(x){ var on = x === b; x.style.background = on ? (x.getAttribute('data-v')==='fini'?'#16a34a':'#f59e0b') : '#fff'; x.style.color = on ? '#fff' : '#5C1E5A'; });
-          var cb = ov.querySelector('input[data-gi="'+i+'"]'); if (cb) cb.checked = true;
         } catch(e){ console.warn('[stock] switch', e); }
       });
     });
@@ -700,60 +908,58 @@ function stkPickForDish(ref, ctx){
     document.getElementById('stk-dish-cancel').onclick = close;
     document.getElementById('stk-dish-ok').onclick = function(){
       try {
-        var r = ref, svc = ctx.service || '', dsv = ctx.date || _stkToday();
+        var svc = ctx.service || '', dsv = ctx.date || _stkToday();
         var refs = ref ? [ref] : pend.slice();
-        if (!r && !refs.length) {
+        if (!refs.length) {
           var sel = document.getElementById('stk-dish-plat');
           var x = sel && sel.value !== '' ? plats[parseInt(sel.value,10)] : null;
-          if (x) { r = { plat_id: x.p.plat_id, nom: x.p.nom, menu_id: x.menu_id || '', profil_haccp: x.p.profil_haccp || '' }; svc = (x.svc && (x.svc.label || x.svc.id)) || ''; refs = [r]; }
+          if (x) { refs = [{ plat_id: x.p.plat_id, nom: x.p.nom, menu_id: x.menu_id || '', profil_haccp: x.p.profil_haccp || '' }]; svc = (x.svc && (x.svc.label || x.svc.id)) || ''; }
         }
-        if (!r && refs.length) r = { nom: refs.map(function(z){ return z.nom; }).join(', ') };
-        var n = 0;
-        ov.querySelectorAll('input[data-gi]:checked').forEach(function(cb){
-          var i = cb.getAttribute('data-gi');
-          var res = stkUseForDish(groups[parseInt(i,10)], refs, etat[i] || 'entame', { service: svc, date: dsv });
-          if (res) n++;
-        });
-        if (!n) { toast('Coche au moins un produit','warning'); return; }
-        toast('🔗 Chaîne complète ✓ — '+n+' produit'+(n>1?'s':'')+(r?' lié'+(n>1?'s':'')+' à '+r.nom:' tracé'+(n>1?'s':'')),'success');
-        close();
+        var todo = [];
+        ov.querySelectorAll('input[data-gi]:checked').forEach(function(cb){ var i = cb.getAttribute('data-gi'); todo.push({ G: groups[parseInt(i,10)], etat: etat[i] || 'entame' }); });
+        if (!todo.length) { toast('Coche au moins un produit','warning'); return; }
+        ov.remove();
+        var linked = 0, n = 0;
+        var next = function(){
+          if (!todo.length) {
+            try { renderMain(); renderNav(); } catch(e){}
+            if (linked) toast('🔗 Chaîne complète ✓ — '+linked+' produit'+(linked>1?'s':'')+' lié'+(linked>1?'s':'')+' à '+refs.map(function(r){ return r.nom; }).join(', '),'success');
+            else if (n) toast('✅ '+n+' produit'+(n>1?'s':'')+' tracé'+(n>1?'s':'')+' (aucun plat choisi)','success');
+            return;
+          }
+          var t = todo.shift();
+          stkEntamerFlow(t.G.key, function(it, rec){
+            try { if (it && rec) { n++; if (stkUseForDish(it, rec, refs, t.etat, { service: svc, date: dsv })) linked++; } } catch(e){ console.warn('[stock] dish step', e); }
+            setTimeout(next, 50);
+          });
+        };
+        next();
       } catch(e){ console.warn('[stock] dish ok', e); }
     };
   } catch(e){ console.warn('[stock] pickForDish', e); }
 }
-/** Utilisation d'un produit du stock pour un plat : ENR31 (existante ou créée), lien plat, mouvement « usage », fini éventuel. */
-function stkUseForDish(G, refs, etat, ctx){
+/** Après le parcours J'entame : lien plat(s) ↔ fiche ENR31, mouvement « usage », « fini » éventuel. Renvoie le nb de plats liés. */
+function stkUseForDish(it, rec, refs, etat, ctx){
   try {
-    if (!G) return null;
-    refs = Array.isArray(refs) ? refs.filter(Boolean) : (refs ? [refs] : []);
-    var ref = refs[0] || null;
-    var it = G.items.find(function(i){ return i.entames > 0; });
-    var openRow = null;
-    if (!it) {
-      it = G.items.find(function(i){ return i.neufs > 0; });
-      if (!it) return null;
-      if (etat === 'fini') { stkMvt('fini', it, { from: 'neuf', plat: ref ? ref.nom : '' }); }
-      else openRow = stkMvt('entame', it, { from: 'neuf' });
-    } else if (etat === 'fini') {
-      stkMvt('fini', it, { from: 'entame', plat: ref ? ref.nom : '' });
-    }
-    var l = _stkEnr31For(it.id) || stkCreateEnr31(it, { mvt_ts: openRow ? openRow._ts : '' });
+    refs = (refs||[]).filter(function(r){ return r && r.plat_id; });
+    var linked = 0;
     refs.forEach(function(rf){
-      if (!rf || !rf.plat_id || !l || !l._uuid) return;
-      try { if (window._stkMenuApi && window._stkMenuApi.setLotPlat) window._stkMenuApi.setLotPlat(l._uuid, rf, true); }
-      catch(e){ console.warn('[stock] lien plat', e); }
+      try {
+        if (!rec || !rec._uuid || !window._stkMenuApi || !window._stkMenuApi.setLotPlat) return;
+        window._stkMenuApi.setLotPlat(rec._uuid, rf, true);
+        var ok = window._stkMenuApi.refsFromLigne ? window._stkMenuApi.refsFromLigne(rec).some(function(z){ return String(z.plat_id) === String(rf.plat_id); }) : true;
+        if (ok) linked++;
+      } catch(e){ console.warn('[stock] lien plat', e); }
     });
-    stkMvt('usage', it, { plat_id: refs.map(function(z){ return z.plat_id; }).join(','), plat: refs.map(function(z){ return z.nom; }).join(', '), service: (ctx && ctx.service) || '', date_service: (ctx && ctx.date) || _stkToday(), etat: etat, enr31_uuid: l ? l._uuid : '' });
-    return l;
-  } catch(e){ console.warn('[stock] useForDish', e); return null; }
+    if (etat === 'fini') stkMvt('fini', it, { from: 'entame', plat: refs.map(function(z){ return z.nom; }).join(', ') });
+    stkMvt('usage', it, { plat_id: refs.map(function(z){ return z.plat_id; }).join(','), plat: refs.map(function(z){ return z.nom; }).join(', '),
+      service: (ctx && ctx.service) || '', date_service: (ctx && ctx.date) || _stkToday(), etat: etat, enr31_uuid: rec ? rec._uuid : '' });
+    return linked;
+  } catch(e){ console.warn('[stock] useForDish', e); return 0; }
 }
 /* Branchements non intrusifs (aucune modification des formulaires existants) */
 (function stkHooksB(){
-  try {
-    // Liste stock : « J'entame » → version avec photo d'étiquette + ENR31 auto
-    var _list = stkListHtml;
-    stkListHtml = function(groups){ return String(_list(groups)).replace(/onclick="stkEntamer\(/g, 'onclick="stkEntamerPhoto('); };
-  } catch(e){ console.warn('[stock] hook list', e); }
+  try { stkEntamerUI = stkEntamerPhoto; } catch(e){ console.warn('[stock] hook entamer', e); }
   try {
     // Fiche ENR31 : bouton « Choisir dans le stock » à côté de la saisie manuelle
     if (typeof REND !== 'undefined' && typeof REND['enr31'] === 'function') {
@@ -768,6 +974,22 @@ function stkUseForDish(G, refs, etat, ctx){
       };
     }
   } catch(e){ console.warn('[stock] hook enr31', e); }
+  try {
+    // Saisie manuelle ENR31 : lot bloqué → refus avec alerte rouge (motif)
+    if (typeof saveRow === 'function') {
+      var _sr = saveRow;
+      saveRow = function(id){
+        try {
+          if (id === 'enr31') {
+            var d = (S.enr31||{}).draft||{};
+            var b = stkBlockedInfo(d.lot, d.produit);
+            if (b) { stkBlockedAlert(b); return; }
+          }
+        } catch(e){ console.warn('[stock] saveRow guard', e); }
+        return _sr.apply(this, arguments);
+      };
+    }
+  } catch(e){ console.warn('[stock] hook saveRow', e); }
 })();
 
 /* ════════════════════════════════════════════════════════════════════
