@@ -17862,9 +17862,9 @@ function _setPinLabels(){
     set2:  'Confirmez le code',
     recovery: isChef ? 'Code oublié ?' : 'Récupération admin'
   };
-  let _who = ''; try { _who = String((isChef ? name : (getActiveSession()||'')) || '').trim().split(' ')[0]; } catch(e){}
+  let _who = ''; try { _who = isChef ? String(name||'').trim().split(' ')[0] : String(S.adminName||'').trim(); } catch(e){}
   const subs = {
-    check: isChef ? 'Code de '+(_who||name) : (_who ? 'Code de '+_who+' (administrateur) — 4 chiffres' : 'Entrez le code admin (4 chiffres)'),
+    check: isChef ? 'Code de '+(_who||name) : (_who ? 'Code administrateur ('+_who+')' : 'Code administrateur'),
     set1:  'Choisissez un code à 4 chiffres',
     set2:  'Retapez le même code',
     recovery: ''

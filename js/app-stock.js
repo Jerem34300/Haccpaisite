@@ -744,7 +744,10 @@ function stkEntamer(key, after, defer){
         if (after) after(o.it, row); else { toast('✅ '+o.it.produit+' entamé','success'); _stkRefresh(); }
       } catch(e){ console.warn('[stock] entamer go', e); }
     };
-    if (opts.length === 1 && opts[0].kind === 'neuf') { go(opts[0]); return; }
+    // Choix seulement si entamé ET neuf, ou plusieurs entamés ; sinon prise directe (entamé unique / neuf le plus ancien)
+    var oE = opts.filter(function(o){ return o.kind === 'ent'; }), oN = opts.filter(function(o){ return o.kind === 'neuf'; });
+    if (oE.length === 1 && !oN.length) { go(oE[0]); return; }
+    if (!oE.length && oN.length) { go(oN[0]); return; }
     var multi = G.items.length > 1 ? ('Lot '+_stkE(G.lot)+' reçu sur '+G.items.length+' livraisons — la plus ancienne d\'abord (FIFO)') : (G.entames ? 'Un entamé existe déjà — on le continue ou on ouvre un neuf ?' : 'Lequel ouvres-tu ?');
     _stkChoice(G.produit, multi, opts, go);
   } catch(e){ console.warn('[stock] entamer', e); }
@@ -1064,15 +1067,16 @@ function stkEtiq(G){
         toast(dlc ? ('🏷️ Étiquette Entamé — DLC après ouverture '+_stkFrY(dlc)) : '🏷️ Étiquette Entamé — saisis la DLC après ouverture', dlc ? 'success' : 'warning');
       } catch(e){ console.warn('[stock] etiq go', e); }
     };
+    // Sécurité alimentaire : la durée proposée (mémoire ou DLC_BASE) est TOUJOURS montrée et doit être confirmée
     var j = _stkDlcOuvJ(it.produit);
-    if (j != null) { go(j); return; }
-    showPrompt('DLC après ouverture — '+it.produit, 'Ouvert le '+_stkFrY(ouv)+'. Combien de jours se conserve-t-il une fois ouvert ? (voir l\'emballage — laisse vide pour saisir la date à la main)', 'Ex : 3', function(v){
+    showPrompt('DLC après ouverture — '+it.produit, 'Ouvert le '+_stkFrY(ouv)+'. '+(j != null ? ('Durée proposée : '+j+' jour'+(j>1?'s':'')+' — vérifie l\'emballage, confirme ou modifie. ') : 'Combien de jours se conserve-t-il une fois ouvert ? (voir l\'emballage) ')+'Laisse vide pour saisir la date à la main.', 'Ex : 3', function(v){
       try {
         var n = parseInt(String(v||'').trim(),10);
         if (!isNaN(n) && n >= 0 && n < 400) { S.config = S.config || {}; S.config.stk_dlc_ouv = S.config.stk_dlc_ouv || {}; S.config.stk_dlc_ouv[_stkNorm(it.produit)] = n; go(n); }
         else go(null);
       } catch(e){ console.warn('[stock] etiq prompt', e); go(null); }
-    }, 'Créer l\'étiquette');
+    }, 'Confirmer et créer l\'étiquette');
+    try { if (j != null) { var pi = document.getElementById('prompt-input'); if (pi) pi.value = String(j); } } catch(e){}
   } catch(e){ console.warn('[stock] etiq', e); }
 }
 /* Branchements non intrusifs (aucune modification des formulaires existants) */
