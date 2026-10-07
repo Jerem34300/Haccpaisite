@@ -1225,6 +1225,26 @@ window._menuSetPastille = function(catId, idx, key, svcId){
     const menu = getMenu(_menuState.date, _menuState.service);
     const plat = menu && menu.categories && menu.categories[catId] && menu.categories[catId][idx];
     if(!plat || !PROFILS[key]) return;
+    // v502 : tap sur la pastille ACTIVE Cuisiné / Cuit-refroidi → jamais de changement direct : ouvrir la fiche OU désactiver (confirmé)
+    if(plat.profil_haccp === key && (key === 'CUISINE' || key === 'CUIT_REFROIDI') && !window._menuPastilleConfirmed){
+      try {
+        const first = key === 'CUISINE' ? 'enr04' : 'enr01';
+        const det0 = detectProfil(plat.nom);
+        const base = plat.profil_base || ((det0 === 'BF_CUIT' || det0 === 'BF_CRU') ? det0 : 'BF_CUIT');
+        const opts = [];
+        if(_menuState.date === today()) opts.push({ html: '📝 Ouvrir la fiche '+(first === 'enr04' ? 'Cuisson à cœur' : 'Refroidissement'), a:'open' });
+        opts.push({ html: '↺ Désactiver « '+(PROFILS[key].label||key)+' » → '+(PROFILS[base]?.label||base), a:'off' });
+        const go = o => { try {
+          if(!o) return;
+          if(o.a === 'open'){ window._menuOpenStep(null, first, _menuState.service, catId, idx); return; }
+          window._menuPastilleConfirmed = true;
+          try { window._menuSetPastille(catId, idx, key, svcId); } finally { window._menuPastilleConfirmed = false; }
+        } catch(e){ console.warn('[menu] pastille choix', e); } };
+        if(typeof _stkChoice === 'function') _stkChoice('🍽️ '+plat.nom, 'Mode actuel : '+(PROFILS[key].ico||'')+' '+(PROFILS[key].label||key)+'. Que veux-tu faire ?', opts, go);
+        else if(typeof confirm === 'function' && confirm('Désactiver le mode « '+(PROFILS[key].label||key)+' » pour '+plat.nom+' ?')) go({a:'off'});
+      } catch(e){ console.warn('[menu] pastille garde', e); }
+      return;
+    }
     if(plat.profil_haccp === key){
       const det = detectProfil(plat.nom);
       plat.profil_haccp = plat.profil_base || ((det === 'BF_CUIT' || det === 'BF_CRU') ? det : 'BF_CUIT');
@@ -2690,6 +2710,8 @@ window._menuOpenStep = function(ev, enrId, svcId, catId, idx){
     // Lots MP : fiche Traçabilité MP liée à ce seul plat (pas de liens restés d'une saisie précédente)
     if(enrId === 'enr31') _menuLinkPendingMulti['enr31'] = [_menuLinkPending[enrId]];
     goTo(enrId);
+    // v502 : fiches sans bandeau (ENR04 Cuisson à cœur…) → champ « Produit / plat » pré-rempli avec le nom du plat
+    try { if(enrId !== 'enr31' && !menuBannerWanted(enrId)) fillFormWithPlat(enrId, _menuLinkPending[enrId]); } catch(e){ console.warn('[menu] prefill', e); }
   } catch(e){ console.warn('[menu] _menuOpenStep:', e); try { goTo('menu_jour'); } catch(_){} }
 };
 
