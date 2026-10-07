@@ -10,7 +10,8 @@ var _sdState = { site: '', q: '' };
 function _sdE(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function _sdN(s){ try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return String(s||'').toLowerCase(); } }
 function _sdFr(ymd){ var m = String(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3]+'/'+m[2]+'/'+m[1] : String(ymd||''); }
-function _sdToday(){ try { return (typeof toLocalYMD === 'function') ? toLocalYMD(new Date()) : new Date().toISOString().slice(0,10); } catch(e){ return new Date().toISOString().slice(0,10); } }
+function _sdYMD(d){ try { if (typeof toLocalYMD === 'function') return toLocalYMD(d); } catch(e){} return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function _sdToday(){ return _sdYMD(new Date()); } // heure locale, jamais UTC
 function _sdSiteName(code){ try { var s = (_sites||[]).find(function(x){ return x.code === code; }); return s ? (s.name || code) : code; } catch(e){ return code; } }
 /** Enregistrements stock autorisés : uniquement les sites visibles par ce compte. */
 function _sdRecs(types){
@@ -67,10 +68,13 @@ function _sdPhotos(r){
     }).join('');
   } catch(e){ return ''; }
 }
+/** NC liées : n° de BL EXACT (mot entier) dans la description — « 12 » ne correspond jamais à « 123 ». */
 function _sdNcFor(site, bl){
   try {
-    var num = _sdN(bl.numero); if (!num) return [];
-    return _sdRecs(['enr30']).filter(function(r){ return r.site_id === site && _sdN(r.data.desc).indexOf(num) >= 0; });
+    var num = String(bl.numero||'').trim(); if (!num) return [];
+    var esc = num.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var re = new RegExp('(^|[^A-Za-z0-9])' + esc + '(?![A-Za-z0-9])', 'i');
+    return _sdRecs(['enr30']).filter(function(r){ return r.site_id === site && re.test(String(r.data.desc||'')); });
   } catch(e){ return []; }
 }
 function renderStockHQ(){
@@ -105,7 +109,7 @@ function renderStockHQ(){
     }).join('') : '<div style="color:#64748b;font-size:.85rem">Aucune réception BL pour ce site sur la période chargée.</div>');
     // 2. Stock (lecture seule)
     var items = _sdItems(site).filter(function(i){ return i.entames + i.neufs > 0 || i.bloque; });
-    var t = _sdToday(), lim = new Date(Date.now()+3*86400000).toISOString().slice(0,10);
+    var t = _sdToday(), lim = (function(){ var d = new Date(); d.setDate(d.getDate()+3); return _sdYMD(d); })(); // J+3 en heure locale
     var ent = items.filter(function(i){ return i.entames > 0; });
     var dlc = items.filter(function(i){ return i.dlc && i.dlc <= lim && (i.entames+i.neufs) > 0; }).sort(function(a,b){ return a.dlc.localeCompare(b.dlc); });
     var blk = items.filter(function(i){ return i.bloque; });
