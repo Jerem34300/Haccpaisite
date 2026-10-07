@@ -682,7 +682,7 @@
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <label style="background:var(--plum);color:#fff;border-radius:8px;padding:7px 12px;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">
-          📷 Logo<input type="file" accept="image/*" style="display:none" onchange="applyHeaderLogo(this)">
+          📷 Logo<input type="file" id="sp-logo-file" accept="image/*" style="display:none" onchange="event.stopPropagation();applyHeaderLogo(this)">
         </label>
         <button onclick="resetHeaderLogo()" style="font-size:.72rem;font-weight:700;color:#dc2626;background:#fee2e2;border:1.5px solid #fca5a5;border-radius:8px;padding:6px 10px;cursor:pointer;font-family:inherit">↺ Défaut</button>
         <div id="sp-logo-preview" style="width:32px;height:32px;overflow:hidden;border-radius:6px;border:1.5px solid var(--brd);display:flex;align-items:center;justify-content:center;background:var(--fond)"></div>
@@ -958,9 +958,9 @@
   <!-- Application Cuisine (ordre important: service avant app) -->
   <script src="js/supabaseservice.js?v=436"></script>
   <script src="js/printservice.js"></script>
-  <script src="js/app-cuisine.js?v=488"></script>
+  <script src="js/app-cuisine.js?v=492"></script>
   <!-- Module STOCK (v488) : scan BL, confirmation ligne par ligne, stock en unités -->
-  <script src="js/app-stock.js?v=490"></script>
+  <script src="js/app-stock.js?v=492"></script>
   <!-- Module MENU (v36.3) — fix dictée + widget bulletproof + plats témoins auto + impression -->
   <script src="js/app-menu-cuisine.js?v=489"></script>
   <!-- Guide « Premiers pas » sur l'accueil (après inscription) -->
