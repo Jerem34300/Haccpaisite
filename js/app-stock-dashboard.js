@@ -30,7 +30,7 @@ function _sdItems(site){
       var bl = r.data;
       (bl.lignes_bl||[]).forEach(function(l, i){
         if (!l || l.statut !== 'recu') return;
-        var it = { id: (bl._ts||'')+'#'+i, site: site, rec_id: r.id, produit: l.produit||'', lot: l.lot||'', lot_auto: !!l.lot_auto, dlc: l.dlc||'',
+        var it = { id: (bl._ts||'')+'#'+i, site: site, rec_id: r.id, produit: l.produit||'', lot: l.lot||'', lot_auto: !!l.lot_auto, dlc: l.dlc||'', dlc_type: /^(DDM|DLUO)$/i.test(String(l.dlc_type||''))?'DDM':'DLC',
           qte: Math.max(0, parseInt(l.qte,10)||0), fournisseur: bl.fournisseur||'', bl_numero: bl.numero||'', bl_date: bl.date||'', date_rec: bl.date_reception||bl.date||'',
           ouverts: [], fin: 0, corr: 0, bloque: false, motif: '', lot_lu: '' };
         items.push(it); byId[it.id] = it;
@@ -101,7 +101,7 @@ function renderStockHQ(){
         + '<div style="display:flex;gap:6px;flex-wrap:wrap">'+_sdPhotos(r)+'</div></div>'
         + '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:.78rem;font-weight:800;color:#1d4ed8">Lignes du BL ('+(d.lignes_bl||[]).length+')</summary>'
         + (d.lignes_bl||[]).map(function(l){ var s = st[l.statut] || ['?','#555','#eee'];
-            return '<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid #f1f5f9;padding:4px 0;font-size:.78rem"><span style="background:'+s[2]+';color:'+s[1]+';border-radius:8px;padding:2px 8px;font-weight:800;white-space:nowrap">'+s[0]+'</span><span style="flex:1"><b>'+_sdE(l.produit)+'</b>'+(l.hors_bl?' (hors BL)':'')+' <span style="color:#64748b">'+_sdE([l.conditionnement, l.qte_bl?l.qte_bl+' u.':'', l.lot?'lot '+l.lot:'', l.dlc?'DLC '+_sdFr(l.dlc):'', l.trace||''].filter(Boolean).join(' · '))+'</span></span></div>'; }).join('')
+            return '<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid #f1f5f9;padding:4px 0;font-size:.78rem"><span style="background:'+s[2]+';color:'+s[1]+';border-radius:8px;padding:2px 8px;font-weight:800;white-space:nowrap">'+s[0]+'</span><span style="flex:1"><b>'+_sdE(l.produit)+'</b>'+(l.hors_bl?' (hors BL)':'')+' <span style="color:#64748b">'+_sdE([l.conditionnement, l.qte_bl?l.qte_bl+' u.':'', l.lot?'lot '+l.lot:'', l.dlc?((/^(DDM|DLUO)$/i.test(String(l.dlc_type||''))?'DDM ':'DLC ')+_sdFr(l.dlc)):'', l.trace||''].filter(Boolean).join(' · '))+'</span></span></div>'; }).join('')
         + '</details>'
         + (ncs.length ? '<div style="margin-top:6px;font-size:.78rem">🚨 NC liée'+(ncs.length>1?'s':'')+' : '+ncs.map(function(n){ return '<a href="#" onclick="event.preventDefault();try{openDetail(\''+_sdE(String(n.id).replace(/[^\w-]/g,''))+'\')}catch(e){}" style="color:#b91c1c;font-weight:800">'+_sdE(n.data.num||'NC')+' '+(n.data.cloture==='OUI'?'(clôturée)':'(ouverte)')+'</a>'; }).join(', ')+'</div>' : '')
         + '<div style="margin-top:6px"><a href="#" onclick="event.preventDefault();try{openDetail(\''+_sdE(String(r.id).replace(/[^\w-]/g,''))+'\')}catch(e){}" style="font-size:.75rem;color:#1d4ed8;font-weight:800">Voir la fiche complète →</a></div>'
@@ -116,7 +116,7 @@ function renderStockHQ(){
     var row = function(i, extra){ return '<div style="font-size:.8rem;padding:4px 0;border-bottom:1px solid #f1f5f9"><b>'+_sdE(i.produit)+'</b> <span style="color:#64748b">lot '+_sdE(i.lot||'—')+' · '+_sdE(/^BL/i.test(i.bl_numero)?i.bl_numero:'BL '+i.bl_numero)+'</span> · '+i.entames+' entamé(s) · '+i.neufs+' neuf(s)'+(extra||'')+'</div>'; };
     h += card('📦 Stock — '+_sdE(_sdSiteName(site))+' <span style="font-weight:600;font-size:.75rem;color:#64748b">('+items.length+' ligne(s))</span>',
       '<div style="font-weight:800;font-size:.8rem;color:#9a3412;margin-top:2px">🟠 Entamés ('+ent.length+')</div>'+(ent.map(function(i){ return row(i, ' · ouvert le '+_sdFr(i.ouverts[0])); }).join('')||'<div style="font-size:.78rem;color:#64748b">—</div>')
-      + '<div style="font-weight:800;font-size:.8rem;color:#92400e;margin-top:8px">⚠️ DLC proches ≤ 3 j ('+dlc.length+')</div>'+(dlc.map(function(i){ return row(i, ' · <b style="color:'+(i.dlc<t?'#b91c1c':'#92400e')+'">DLC '+_sdFr(i.dlc)+(i.dlc<t?' dépassée':'')+'</b>'); }).join('')||'<div style="font-size:.78rem;color:#64748b">—</div>')
+      + '<div style="font-weight:800;font-size:.8rem;color:#92400e;margin-top:8px">⚠️ DLC proches ≤ 3 j ('+dlc.length+')</div>'+(dlc.map(function(i){ return row(i, ' · <b style="color:'+(i.dlc<t?'#b91c1c':'#92400e')+'">'+(i.dlc_type||'DLC')+' '+_sdFr(i.dlc)+(i.dlc<t?' dépassée':'')+'</b>'); }).join('')||'<div style="font-size:.78rem;color:#64748b">—</div>')
       + '<div style="font-weight:800;font-size:.8rem;color:#b91c1c;margin-top:8px">⛔ Lots bloqués ('+blk.length+')</div>'+(blk.map(function(i){ return row(i, ' · motif : '+_sdE(i.motif||'—')+' ('+_sdE(i.bloque_par||'?')+' '+_sdFr(i.bloque_le)+')'); }).join('')||'<div style="font-size:.78rem;color:#64748b">—</div>'));
     // 3. Rappel de lot multi-sites
     h += card('🔎 Rappel de lot — tous les sites de l\'organisation', '<input id="sd-q" value="'+_sdE(_sdState.q)+'" placeholder="N° de lot…" oninput="_sdState.q=this.value;_sdRecallRender()" style="width:100%;box-sizing:border-box;padding:9px 11px;border-radius:9px;border:1.5px solid #cbd5e1;font-family:inherit"><div id="sd-recall" style="margin-top:8px">'+_sdRecallHtml(_sdState.q)+'</div>');

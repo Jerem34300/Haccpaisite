@@ -938,6 +938,7 @@ function renderNav(){
   if(a)setTimeout(()=>a.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'}),60);
 }
 function goTo(id, scrollTarget){
+  try { const _t=document.getElementById('toast'); if(_t && id!==cur){ _t.className=''; _t.style.zIndex=''; } } catch(e){}
   if(id==='enr30' && cur!=='enr30'){
     nettAdminGuard(()=>{
       const prev=cur; cur='enr30';
@@ -1582,7 +1583,13 @@ function applyHeaderName(){
 }
 
 function applyHeaderLogo(input){
+  // v492 : seul l'input logo des Réglages (panneau ouvert) peut changer le logo — jamais un upload Stock/BL
+  try {
+    const spOpen=document.getElementById('sp')?.classList.contains('open');
+    if(!input || input.id!=='sp-logo-file' || !spOpen){ try{ if(input) input.value=''; }catch(_e){} return; }
+  } catch(e){ return; }
   const file=input.files[0];if(!file)return;
+  try { input.value=''; } catch(e){}
   const reader=new FileReader();
   reader.onload=e=>{
     const dataUrl=e.target.result;
@@ -17849,14 +17856,16 @@ function _setPinLabels(){
   const m = _pinCtx.mode;
   const isChef = _pinCtx.target?.startsWith('chef:');
   const name = isChef ? _pinCtx.target.slice(5) : 'admin';
+  const _first = isChef ? (String(name||'').trim().split(' ')[0] || name) : '';
   const titles = {
-    check: isChef ? 'Session cuisinier' : 'Code administrateur',
+    check: isChef ? 'Code de '+_first : 'Code administrateur',
     set1:  isChef ? 'Créer votre code PIN' : 'Définir le code admin',
     set2:  'Confirmez le code',
     recovery: isChef ? 'Code oublié ?' : 'Récupération admin'
   };
+  let _who = ''; try { _who = isChef ? String(name||'').trim().split(' ')[0] : ''; } catch(e){}
   const subs = {
-    check: isChef ? 'Code PIN de '+name : 'Entrez le code admin (4 chiffres)',
+    check: isChef ? 'Code personnel de '+(_who||name)+' (4 chiffres)' : 'Code administrateur',
     set1:  'Choisissez un code à 4 chiffres',
     set2:  'Retapez le même code',
     recovery: ''

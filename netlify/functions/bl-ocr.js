@@ -55,7 +55,12 @@ Règles:
 2) Ne jamais inventer lot ni DLC : vide si absent, "—" ou illisible.
 3) Ne pas dupliquer une ligne répétée en en-tête de page suivante. Mais si un même produit figure sur 2 lignes réelles, garder les 2.
 4) Le poids net n'est PAS la quantité. Pas de kg comme quantité.
-5) Max 80 lignes.`;
+5) Max 80 lignes.
+6) Vocabulaire français : "colis", "carton", "sac", "bt"/"bouteille", "pce"/"pièce", "bq"/"barquette", "UVC". "colis" = nombre de colis livrés.
+7) Conditionnement multiple "N × P" (ex: "20×250 g", "6 x 1 L", "colis de 12") : "unites" = N × nombre de colis (ex: 1 colis de 20×250 g → unites = 20). Ne jamais renvoyer 1 unité pour un colis de N pièces.
+8) Dates : toujours l'ANNÉE COMPLÈTE sur 4 chiffres (JJ/MM/AAAA). Si l'année imprimée a 2 chiffres, la convertir en 20AA. Ne jamais confondre date de livraison et DLC.
+9) "dlc_type" : "DLC" si "à consommer jusqu'au" / DLC ; "DDM" si "à consommer de préférence avant" / DDM / DLUO / BBD.
+10) Lot : recopier EXACTEMENT les caractères imprimés (lettres, chiffres, tirets, espaces), sans corriger ni compléter ; ne pas confondre avec un code article, un EAN ou une date.`;
 
 function toInt(v) {
   if (v == null || v === '') return null;
@@ -76,6 +81,11 @@ function parseQteTexte(txt) {
   return out;
 }
 
+/** "20×250 g" / "6 x 1 L" → 20 / 6 (unités par colis) */
+function perColis(txt) {
+  const m = String(txt || '').match(/(\d+)\s*[x×*]\s*\d/i);
+  return m ? parseInt(m[1], 10) : null;
+}
 function normDlc(raw) {
   let s = cleanStr(raw, 30);
   let type = '';
@@ -96,11 +106,14 @@ function normalizeBlDoc(raw, pages) {
       if (!produit) return;
       const q = parseQteTexte(r.qte_texte || r.quantite || r.qte || '');
       const colis = toInt(r.colis) != null ? toInt(r.colis) : q.colis;
-      const unites = toInt(r.unites) != null ? toInt(r.unites) : q.unites;
+      let unites = toInt(r.unites) != null ? toInt(r.unites) : q.unites;
+      const per = perColis((r.conditionnement || r.cond || '') + ' ' + (r.qte_texte || r.quantite || ''));
+      if (per && per > 1 && (unites == null || unites < per)) unites = per * Math.max(1, colis || 1);
       let lot = cleanStr(r.lot || r.lot_number || r.batch, 60);
       if (/^[—–-]+$/.test(lot)) lot = '';
       const d = normDlc(r.dlc || r.ddm || r.dluo || '');
       let dlcType = String(r.dlc_type || d.type || '').toUpperCase();
+      if (!dlcType && /pr[ée]f[ée]rence|DDM|DLUO|BBD/i.test(String(r.dlc || '') + ' ' + String(r.ddm || r.dluo ? 'DDM' : ''))) dlcType = 'DDM';
       if (dlcType === 'DLUO') dlcType = 'DDM';
       if (dlcType !== 'DLC' && dlcType !== 'DDM') dlcType = '';
       out.push({
