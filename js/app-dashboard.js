@@ -5475,6 +5475,7 @@ const ENR_LABELS = {
   enr_tc_distrib:'🌡️ T°C Distribution',
   enr24:'🔧 Maintenance',enr25:'🔬 Contrôle labo',enr_allergenes:'⚠️ Allergènes INCO',
   fourc_nonlivre:'🚚 Livraison non reçue',
+  stock:'📦 Réception BL (stock)',stock_mvt:'📦 Mouvement de stock',
 };
 
 // Labels lisibles pour les champs data
@@ -5737,6 +5738,17 @@ function openDetail(id) {
       body+=`<div class="detail-section"><div class="detail-section-title">🚚 Livraison non reçue</div><div style="background:${ann?'#f1f5f9':'#fff7ed'};border:1.5px solid ${ann?'#cbd5e1':'#fdba74'};border-radius:10px;padding:10px 12px;font-size:.82rem;font-weight:800;color:${ann?'#475569':'#9a3412'}">${escH(d.fournisseur||'Fournisseur')} — pas livré (${escH(d.cuisinier||'?')}${d.heure?', '+escH(d.heure):''})${ann?` · <span style="text-decoration:none">annulé (${escH(d.annule_par||'Admin')}${d.annule_heure?', '+escH(d.annule_heure):''})</span>`:''}</div></div>`;
     }
   }catch(e){ console.warn('[detail] fourc_nonlivre:', e); }
+
+  // ── Module Stock : réception BL ligne par ligne / mouvement tracé ──
+  try{
+    if(r.enr_type==='stock' && Array.isArray(d.lignes_bl)){
+      const st={recu:['✓ Reçu','#166534','#dcfce7'],manquant:['✗ Manquant','#374151','#f3f4f6'],refuse:['⛔ Refusé','#991b1b','#fee2e2']};
+      body+=`<div class="detail-section"><div class="detail-section-title">📦 BL ${escH(d.fournisseur||'')} n° ${escH(d.numero||'?')} — ${escH(d.resume||'')}</div>${d.lignes_bl.map(l=>{const s=st[l.statut]||['?','#555','#eee'];return `<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid #f0e6f0;padding:5px 0;font-size:.8rem"><span style="background:${s[2]};color:${s[1]};border-radius:8px;padding:2px 8px;font-weight:800;white-space:nowrap">${s[0]}</span><span style="flex:1"><b>${escH(l.produit||'')}</b>${l.hors_bl?' (hors BL)':''}<br><small>${escH([l.conditionnement,l.qte?l.qte+' u.':'',l.lot?'lot '+l.lot:'',l.dlc?(l.dlc_type||'DLC')+' '+l.dlc:'',l.trace||''].filter(Boolean).join(' · '))}</small></span></div>`;}).join('')}</div>`;
+    }
+    if(r.enr_type==='stock_mvt'){
+      body+=`<div class="detail-section"><div class="detail-section-title">📦 Mouvement de stock</div><div style="font-size:.82rem">${escH(d.type||'')} — ${escH(d.produit||'')} (lot ${escH(d.lot||'—')}, BL ${escH(d.bl_numero||'?')}) par ${escH(d.cuisinier||'?')}${d.motif?' · motif : '+escH(d.motif):''}</div></div>`;
+    }
+  }catch(e){ console.warn('[detail] stock:', e); }
 
   // ── ENR24 Maintenance : bloc structuré ──────────────────────────────────
   if(r.enr_type==='enr24'){

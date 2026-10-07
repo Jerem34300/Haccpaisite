@@ -11950,7 +11950,7 @@ async function _loadFromSupabase() {
   function _purgeLocalEnrForTenantSwitch(opts){
     opts = opts || {};
     const PURGE_SAISIES = [
-      'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending','fourc_nonlivre',
+      'enr01','enr02','enr03','enr04','enr05','enr06','enr07','enr08','enr09','enr10','enr11','enr12','enr13','enr14','enr15','enr16','enr17','enr18','enr19','enr23','enr26','enr27','enr28','enr29','enr30','enr31','enr32','enr33','enr34','enr35','enr36','enr39','enr52','enr53','enr24','enr25','enr_allergenes','enr_tc_distrib','nc_auto_pending','fourc_nonlivre','stock','stock_mvt',
     ];
     try {
       PURGE_SAISIES.forEach(key => {
