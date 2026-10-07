@@ -636,6 +636,7 @@ function _menuSetLotPlat(uuid, ref, on){
   try {
     const l = _menuFindEnr31(uuid);
     if(!l || !ref || !ref.plat_id) return;
+    try { if(on && typeof window.stkLotBlockCheck === 'function' && window.stkLotBlockCheck(l)) return; } catch(e){ console.warn('[menu] lot bloqué', e); } // Stock v489 : lot bloqué refusé
     let refs = _menuPlatRefsFromLigne(l);
     if(on){
       if(!refs.some(r => String(r.plat_id) === String(ref.plat_id))) refs.push(ref);
@@ -1168,6 +1169,8 @@ function _menuSyncAfterEdit(menu){
   } catch(e){ console.warn('[menu] sync after edit', e); }
 }
 window._menuSyncAfterEdit = _menuSyncAfterEdit;
+// Module Stock (v489) : accès lecture aux plats du jour / plats cochés et au lien lot ↔ plat existant
+window._stkMenuApi = { todayMenuPlats: todayMenuPlats, pendingRefs: _menuPendingRefs, setLotPlat: _menuSetLotPlat, refsFromLigne: _menuPlatRefsFromLigne };
 // Pastille Préparé minute / Sortie directe / Remise T°C : 2e clic = retour au profil de base
 window._menuSetPastille = function(catId, idx, key, svcId){
   try {
