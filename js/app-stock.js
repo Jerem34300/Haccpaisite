@@ -1313,14 +1313,28 @@ var STK_OUV_FAM = [
   { k: 'compote', re: /\b(compotes?|puree de fruits?|fruits? au sirop)\b/, j: 3 },
   { k: 'pate', re: /\b(pate (feuilletee|brisee|sablee|a pizza|fraiche)|pates fraiches)\b/, ex: /\b(pate a tartiner|fond de tarte)\b/, j: 2 },
   { k: 'creme', re: /\b(creme (fraiche|liquide|epaisse|entiere|legere)|lait|yaourts?|fromage blanc)\b/, j: 3 },
-  { k: 'charcuterie', re: /\b(jambon|lardons?|bacon|saucisson|chorizo|charcuterie|cervelas|pate|pate de (campagne|foie|lapin|volaille)|pate en croute)\b/, ex: /\b(pate (a tartiner|feuilletee|brisee|sablee|a pizza|fraiche)|pates)\b/, j: 3 },
+  { k: 'charcuterie', re: /\b(jambon|lardons?|bacon|saucisson|chorizo|charcuterie|cervelas)\b/, j: 3 }, // « pâté » : testé AVEC accent dans _stkFamOuvJ
   { k: 'fromage', re: /\b(fromages?|emmental|comte|camembert|brie|mozzarella|fromage rape|emmental rape)\b/, ex: /\b(fromage blanc)\b/, j: 5 },
   { k: 'conserve', re: /\b(conserve|en boite|macedoine|mais doux|thon|haricots? (verts|blancs|rouges)|petits pois|tomates? concassees?|concentre de tomates?)\b/, j: 3 },
   { k: 'condiment', re: /\b(ketchup|moutarde|cornichons?|capres|olives)\b/, j: 30 }
 ];
 function _stkFamOuvJ(produit){
   try {
-    var n = _stkNorm(produit).replace(/[’']/g,"'"), f = STK_OUV_FAM.find(function(x){ return x.re.test(n) && !(x.ex && x.ex.test(n)); });
+    var raw = String(produit||'').toLowerCase().replace(/[’']/g,"'");
+    var n = _stkNorm(produit).replace(/[’']/g,"'"), f = null;
+    // pâté : mot entier AVEC accent sur le nom d'origine (jamais « pate » / « pâte » sans accent)
+    if (/(^|[^a-zà-ÿ])pâtés?($|[^a-zà-ÿ])/.test(raw)) f = STK_OUV_FAM.find(function(x){ return x.k === 'charcuterie'; });
+    if (!f) {
+      var pp = STK_OUV_FAM.find(function(x){ return x.k === 'pate'; });
+      if (pp && pp.re.test(n) && !(pp.ex && pp.ex.test(n))) f = pp; // pâte feuilletée / brisée…
+    }
+    // pâtes (sèches ou cuites) : famille à part — 3 j si « cuit », sinon aucune durée (la question est posée)
+    if (!f && /\b(pates?|coquillettes?|spaghettis?|penne|macaronis?|tagliatelles?|fusillis?|farfalles?|rigatonis?|linguines?|lasagnes?|torsades?|nouilles?)\b/.test(n)) {
+      if (/\bpate a tartiner\b/.test(n)) return null;
+      if (/\bcuite?s?\b/.test(n)) { var ovp = ((S.config||{}).stk_dlc_ouv_fam||{})['pates_cuites']; return (ovp != null && !isNaN(parseInt(ovp,10))) ? parseInt(ovp,10) : 3; }
+      return null;
+    }
+    if (!f) f = STK_OUV_FAM.find(function(x){ return x.k !== 'pate' && x.re.test(n) && !(x.ex && x.ex.test(n)); });
     if (!f) return null;
     var ov = ((S.config||{}).stk_dlc_ouv_fam||{})[f.k];
     return (ov != null && !isNaN(parseInt(ov,10))) ? parseInt(ov,10) : f.j;
