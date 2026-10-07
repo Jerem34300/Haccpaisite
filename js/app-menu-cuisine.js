@@ -2909,8 +2909,10 @@ let _menuPhotoDraft = null; // { type, days:[{date, services:{midi:[],gouter:[],
 function guessMenuCat(nom){
   const s = String(nom||'').toLowerCase();
   // v498 : fromages / produits laitiers prioritaires (sauf « gratin au fromage », « sauce fromage »…)
+  // v498 : test des fromages sans accents (« Comté » → comte)
+  let _sa = s; try { _sa = s.normalize('NFD').replace(/[\u0300-\u036f]/g,''); } catch(e){}
   const _platFromage = /\b(au|aux|à la|a la|sauce|gratin|croque|omelette|tarte|quiche|pizza|feuillet[ée]|soufflé|souffle|cake|burger|croquettes?|galette|crêpe|crepe|pâtes|pates|risotto) (au |aux |de |du )?fromages?\b/.test(s);
-  if(!_platFromage && /\b(plateaux? (de |des )?(produits? )?laitiers?|plateaux? (de |des )?fromages?|fromages?|produits? laitiers?|laitiers?|laitages?|camembert|brie|emmental|comté|comte|gruyère|gruyere|mimolette|tomme|roquefort|reblochon|munster|coulommiers|saint[- ]nectaire|cantal)\b/.test(s)) return 'fromages';
+  if(!_platFromage && /\b(plateaux? (de |des )?(produits? )?laitiers?|plateaux? (de |des )?fromages?|fromages?|produits? laitiers?|laitiers?|laitages?|camembert|brie|emmental|comte|gruyere|mimolette|tomme|roquefort|reblochon|munster|coulommiers|saint[- ]nectaire|cantal)\b/.test(_sa)) return 'fromages';
   if(/\b(potage|soupe|velouté|veloute|consommé|consomme|bouillon)\b/.test(s)) return 'entrees';
   if(/\b(vinaigrette|crudité|crudite|salade|râpé|rape|mimosa|terrine|mousse de|oeuf|œuf|céleri|celeri|carotte|betterave|endive|concombre|macédoine|macedoine|piémontaise|piemontaise)\b/.test(s)) return 'entrees';
   if(!_platFromage && /\b(fromage|laitage|produit laitier|plateaux? de produit)\b/.test(s)) return 'fromages';

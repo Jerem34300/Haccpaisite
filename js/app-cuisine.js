@@ -2017,7 +2017,7 @@ function twDirectInput(col,inp){
       if(hh>=0&&hh<24&&mm>=0&&mm<60){
         inp.value=String(hh).padStart(2,'0'); setWheel('h',hh,true);
         const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
-        setWheel('m',mm,true); return;
+        setWheel('m',mm,true); _twSnapTake(); return;
       }
       inp.value=raw; return; // invalide : rien appliqué, message au blur
     }
@@ -2047,7 +2047,7 @@ function twDirectBlur(col,inp){
       if(hh>=0&&hh<24&&mm>=0&&mm<60){
         inp.value=String(hh).padStart(2,'0'); setWheel('h',hh,true);
         const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
-        setWheel('m',mm,true); return;
+        setWheel('m',mm,true); _twSnapTake(); return;
       }
       // v498 : 2460 / 1275 → refusé, heure inchangée
       try{ toast('⚠️ Heure invalide','warning'); }catch(e){}
@@ -2061,6 +2061,7 @@ function twDirectBlur(col,inp){
   if(v>=tot) v=tot-1;
   inp.value=String(v).padStart(2,'0');
   setWheel(col,v,true);
+  _twSnapTake(); // v498 : heure valide → nouvelle référence de restauration
 }
 function openTW(fid,sec,label){
   TW.fid=fid;TW.sec=sec;

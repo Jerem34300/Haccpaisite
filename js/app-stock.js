@@ -1313,7 +1313,7 @@ var STK_OUV_FAM = [
   { k: 'compote', re: /\b(compotes?|puree de fruits?|fruits? au sirop)\b/, j: 3 },
   { k: 'pate', re: /\b(pate (feuilletee|brisee|sablee|a pizza|fraiche)|pates fraiches)\b/, ex: /\b(pate a tartiner|fond de tarte)\b/, j: 2 },
   { k: 'creme', re: /\b(creme (fraiche|liquide|epaisse|entiere|legere)|lait|yaourts?|fromage blanc)\b/, j: 3 },
-  { k: 'charcuterie', re: /\b(jambon|lardons?|bacon|saucisson|chorizo|charcuterie|cervelas)\b/, j: 3 },
+  { k: 'charcuterie', re: /\b(jambon|lardons?|bacon|saucisson|chorizo|charcuterie|cervelas|pate|pate de (campagne|foie|lapin|volaille)|pate en croute)\b/, ex: /\b(pate (a tartiner|feuilletee|brisee|sablee|a pizza|fraiche)|pates)\b/, j: 3 },
   { k: 'fromage', re: /\b(fromages?|emmental|comte|camembert|brie|mozzarella|fromage rape|emmental rape)\b/, ex: /\b(fromage blanc)\b/, j: 5 },
   { k: 'conserve', re: /\b(conserve|en boite|macedoine|mais doux|thon|haricots? (verts|blancs|rouges)|petits pois|tomates? concassees?|concentre de tomates?)\b/, j: 3 },
   { k: 'condiment', re: /\b(ketchup|moutarde|cornichons?|capres|olives)\b/, j: 30 }

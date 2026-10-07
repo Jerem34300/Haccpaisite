@@ -5461,7 +5461,7 @@ function closeLightbox(){document.getElementById('lightbox').classList.remove('o
 
 const ENR_LABELS = {
   enr01:'❄️ Refroidissement',enr02:'🔥 Remise T°C',enr03:'🔄 Refroid.+Remise',
-  enr04:'🥩 Steaks hachés',enr05:'🍟 Fritures',enr06:'🍟 Fritures+test',
+  enr04:'🌡️ Cuisson à cœur (≥ 65 °C)',enr05:'🍟 Fritures',enr06:'🍟 Fritures+test',
   enr07:'🥘 Bien Faits',enr08:'🥗 TM/BF',enr09:'♨️ Cond. chaud',
   enr10:'🧊 Cond. froid',enr11:'🍽️ Plat. froids',enr12:'🍽️ Plat. chauds',
   enr13:'🚚 Départ',enr14:'🛎️ Distribution',enr15:'🏠 SAM',enr16:'🍴 Self',
@@ -8939,7 +8939,7 @@ async function generatePDF() {
       'enr01': 'Enregistrement du refroidissement rapide des préparations chaudes (règle HACCP : -63°C à +10°C en moins de 2h)',
       'enr02': 'Remise en température des plats préparés à l\'avance (règle : atteindre +63°C à cœur)',
       'enr03': 'Refroidissement et remise en température combinés',
-      'enr04': 'Cuisson des steaks hachés (T° à cœur ≥63°C)',
+      'enr04': 'Cuisson à cœur (T° à cœur ≥ 65 °C)',
       'enr05': 'Friture — contrôle T° huile et qualité',
       'enr06': 'Friture avec test huile (teneurs en composés polaires)',
       'enr07': 'Cuisson viandes bien faites (T° à cœur ≥75°C)',

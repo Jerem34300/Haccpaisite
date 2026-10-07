@@ -1997,7 +1997,7 @@ function huileAlertBlock() {
 // ════════════════════════════════════════════════════
 const EXP_SECTIONS_BASE = [
   {id:'enr01',label:'❄️ Refroidissement'},  {id:'enr02',label:'🔥 Remise T°C'},
-  {id:'enr03',label:'🔄 Refroid.+Remise'},  {id:'enr04',label:'🥩 Steaks hachés'},
+  {id:'enr03',label:'🔄 Refroid.+Remise'},  {id:'enr04',label:'🌡️ Cuisson à cœur (≥ 65 °C)'},
   {id:'enr05',label:'🍟 Fritures'},          {id:'enr06',label:'🍟 Fritures testeur'},
   {id:'enr07',label:'🥘 Bien Faits cuit'},   {id:'enr08',label:'🥗 TM/BF'},
   {id:'enr09',label:'♨️ Cond. chaud'},       {id:'enr10',label:'🧊 Cond. froid'},
