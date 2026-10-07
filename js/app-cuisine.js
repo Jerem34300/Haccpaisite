@@ -1997,7 +1997,9 @@ function twDirectInput(col,inp){
   const raw=inp.value.replace(/\D/g,'');
   // v496 : « 1115 » / « 915 » tapé dans les heures = HHMM → 11:15 / 09:15 (avant : 23:5)
   try {
-    if(col==='h' && raw.length>=3){
+    if(col==='h' && raw.length>=3 && window._twAutoMinT){ clearTimeout(window._twAutoMinT); window._twAutoMinT=null; }
+    if(col==='h' && raw.length===3){ inp.value=raw; return; } // attendre le 4e chiffre ou le blur
+    if(col==='h' && raw.length>=4){
       const r4=raw.slice(0,4), hh=parseInt(r4.slice(0,r4.length-2),10), mm=parseInt(r4.slice(-2),10);
       if(hh>=0&&hh<24&&mm>=0&&mm<60){
         inp.value=String(hh).padStart(2,'0'); setWheel('h',hh,true);
@@ -2016,12 +2018,25 @@ function twDirectInput(col,inp){
     setWheel(col,v,true); // true = vient du champ, ne pas re-setter l'input
     // Auto-focus sur le champ minutes si 2 chiffres valides saisis pour les heures
     if(col==='h' && raw.length>=2){
-      setTimeout(()=>{const m=document.getElementById('tw-inp-m');if(m){m.focus();m.select();}},120);
+      try{ if(window._twAutoMinT) clearTimeout(window._twAutoMinT); }catch(e){}
+      window._twAutoMinT=setTimeout(()=>{ window._twAutoMinT=null; try{ const hi=document.getElementById('tw-inp-h'); if(hi && String(hi.value).replace(/\D/g,'').length>2) return; const m=document.getElementById('tw-inp-m');if(m){m.focus();m.select();} }catch(e){} },120);
     }
   }
 }
 function twDirectBlur(col,inp){
   const tot=col==='h'?24:60;
+  // v496 : « 915 » / « 1115 » dans les heures = HHMM au blur
+  try {
+    const raw=String(inp.value||'').replace(/\D/g,'');
+    if(col==='h' && raw.length>=3){
+      const r4=raw.slice(0,4), hh=parseInt(r4.slice(0,r4.length-2),10), mm=parseInt(r4.slice(-2),10);
+      if(hh>=0&&hh<24&&mm>=0&&mm<60){
+        inp.value=String(hh).padStart(2,'0'); setWheel('h',hh,true);
+        const im=document.getElementById('tw-inp-m'); if(im) im.value=String(mm).padStart(2,'0');
+        setWheel('m',mm,true); return;
+      }
+    }
+  } catch(e){ console.warn('[tw] blur hhmm', e); }
   let v=parseInt(inp.value);
   if(isNaN(v)||v<0) v=0;
   if(v>=tot) v=tot-1;
@@ -3318,7 +3333,7 @@ function saveRow(id){
   if(prod)addProd(prod.trim());
   const ts=new Date().toISOString();
   // ── Photo différée : télécharger avec le bon nom produit ──
-  const _savedRow = {...draft, _sec:id, _ts:ts};
+  const _savedRow = {...draft, _sec:id, _ts:ts}; try{ delete _savedRow._autoT; delete _savedRow._hf_auto; }catch(e){} // v496 : marqueurs UI jamais synchronisés
   // Inclure photo2/3 dans le row ENR31 si présentes
   if(id==='enr31'){
     if(draft.photo2) _savedRow.photo2=draft.photo2;
@@ -15109,7 +15124,7 @@ function renderENR34(){
   const d=e34d();
   // Auto-initialiser heure_fab si vide
   // v496 : heure par défaut = maintenant à chaque ouverture tant que l'utilisateur ne l'a pas choisie
-  try { if(!d.heure_fab || d._hf_auto){ const _n=nowT(); if(d.heure_fab!==_n){ e34s('heure_fab', _n); } e34s('_hf_auto', '1'); d.heure_fab=_n; d._hf_auto='1'; } } catch(e){}
+  try { if(!d.heure_fab || d._hf_auto){ S['enr34']=S['enr34']||{}; S['enr34'].draft34=S['enr34'].draft34||{}; const D=S['enr34'].draft34; D.heure_fab=nowT(); D._hf_auto='1'; d.heure_fab=D.heure_fab; d._hf_auto='1'; } } catch(e){} // en mémoire seulement : pas de save() à chaque affichage
   const lignes=(S['enr34']||{}).lignes||[];
   const fmt=e34Format();
 
@@ -15294,7 +15309,7 @@ function e34AddBatch(){
   // v495 : jamais d'étiquette « DLC: DDM » sans date — DLC (après ouverture pour un entamé) obligatoire
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.dlc||''))){toast(d.statut==='Entamé'?'⛔ Saisis la DLC après ouverture (date) avant de valider':'⛔ Saisis la date limite (DLC) avant de valider','warning');return;}
   const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
-  const batchEntry={...d, nb:_e34qty, _sel:_e34sel, cuisinier34:op, cuisinier:op, operateur:op};
+  const batchEntry={...d, nb:_e34qty, _sel:_e34sel, cuisinier34:op, cuisinier:op, operateur:op}; try{ delete batchEntry._hf_auto; }catch(e){}
   _e34batch.push(batchEntry);
   // Sauvegarder immédiatement dans l'historique (sans attendre l'impression)
   const rec=stampEntry({...batchEntry,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:_e34qty,_dans_lot:true});
@@ -15315,7 +15330,7 @@ function e34Save(){
   if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.dlc||''))){toast(d.statut==='Entamé'?'⛔ Saisis la DLC après ouverture (date) avant de valider':'⛔ Saisis la date limite (DLC) avant de valider','warning');return;}
   const nb=_e34qty;
   const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
-  const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb,cuisinier34:op,cuisinier:op,operateur:op};
+  const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb,cuisinier34:op,cuisinier:op,operateur:op}; try{ delete rec._hf_auto; }catch(e){}
   const sim=etiqSimule(nb+printAllTotal());
   function doSave(){
     S['enr34']=S['enr34']||{};

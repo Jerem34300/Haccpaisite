@@ -1474,7 +1474,8 @@ function _stkInfoFor31(r){
     o.produit = _stkCanonNom(r.produit || (it && it.produit) || '');
     o.dlc = _stkIso(r.dlc) || _stkIso(r.ddm) || _stkIso(r.dluo) || _stkIso(r.dlc_lue) || (it ? (_stkIso(it.dlc_lue) || _stkIso(it.dlc)) : '');
     o.dlc_type = r.dlc_type || (it && it.dlc_type) || '';
-    o.jete = !!(it && it.jetes && it.jetes.length && (it.entames + it.neufs) === 0);
+    // statut Jeté seulement si TOUS les retraits sont des jets (aucun « fini ») et plus rien en stock
+    o.jete = !!(it && it.jetes && it.jetes.length && (it.jete_ent + it.jete_neuf) > 0 && (it.fin_ent + it.fin_neuf) === 0 && (it.entames + it.neufs) === 0);
   } catch(e){}
   return o;
 }

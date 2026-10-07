@@ -720,6 +720,8 @@ function _menuAddMpToPlats(nom, lot, refs){
   try {
     const name = String(nom||'').trim();
     if(!name) return;
+    // v496 : lot bloqué = refus de lier (même contrôle que les autres chemins)
+    try { if(String(lot||'').trim() && typeof window.stkLotBlockCheck === 'function' && window.stkLotBlockCheck({ produit: name, lot: String(lot||'').trim(), dlc: '', dlc_type: '' })) return; } catch(e){ console.warn('[menu] lot bloqué', e); }
     const chef = (typeof getActiveSession==='function' ? (getActiveSession()||'') : '') ||
                  ((S.config && S.config.chefs && S.config.chefs[0]) || '') || '—';
     const rec = (typeof stampEntry==='function' ? stampEntry : (o=>o))({
