@@ -115,7 +115,7 @@ function _stkFamKey(reg, produit, lot){
     var key = pn + '|' + ln; reg.push({ ln: ln, pn: pn, key: key }); return key;
   } catch(e){ return _stkNorm(produit) + '|' + _stkNorm(lot); }
 }
-function _stkNorm(s){ try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return String(s||'').toLowerCase().trim(); } }
+function _stkNorm(s){ try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\barrivees?\b/g,'arrivage').replace(/\s+/g,' ').trim(); } catch(e){ return String(s||'').toLowerCase().trim(); } }
 function _stkWho(){ try { return (typeof getActiveSession === 'function') ? getActiveSession() : null; } catch(e){ return null; } }
 function _stkNeedWho(){
   var w = _stkWho();
@@ -173,6 +173,7 @@ function _stkCheckResume(){
     _stkLoadPersisted().then(function(d){
       try {
         if (!d || (!d.draft && !(d.pages||[]).length)) return;
+        if (_stk.draft || _stk.pages.length) return; // v496 : réception déjà en cours → ne pas bloquer ses sauvegardes avec un ancien brouillon
         if (d.site && _stkSiteKey() && d.site !== _stkSiteKey()) return; // jamais d'un site à l'autre
         _stk.resume = d;
         if (typeof cur !== 'undefined' && cur === 'stock') renderMain();
@@ -457,7 +458,7 @@ function stkAddFiles(files){
       var rd = new FileReader();
       rd.onload = function(){
         var raw = String(rd.result||'');
-        var p = (typeof _ocrCompressForUpload === 'function') ? _ocrCompressForUpload(raw, { maxSide: 1600 }) : Promise.resolve(raw);
+        var p = (typeof _ocrCompressForUpload === 'function') ? _ocrCompressForUpload(raw, { maxSide: 2048, maxChars: 1450000 }) /* v496 : BL dense → 2048 px (plafond de l'API en detail high), ≤1,45 Mo × 6 pages < limite serveur 9 Mo */ : Promise.resolve(raw);
         p.then(function(c){ _stk.pages.push(c || raw); next(); }).catch(function(){ _stk.pages.push(raw); next(); });
       };
       rd.onerror = function(){ next(); };
@@ -548,7 +549,12 @@ async function stkAnalyse(){
   try { haccHideWait(); } catch(e){}
   _stk.busy = false;
   if (!res) { try { toast('⚠️ '+err+' — complète le BL à la main','warning'); } catch(e){} res = { fournisseur:'', numero:'', date:'', lignes:[] }; }
+  try {
+    if (res && res.lignes_manquantes > 0) toast('⚠️ La lecture voit '+res.nb_lignes_vues+' lignes mais n\'en a extrait que '+res.lignes.length+' — vérifie le BL et ajoute les manquantes (« + Produit hors BL »)','warning',{ force: true });
+    else if (res && res.tronque) toast('⚠️ BL très long : lecture peut-être incomplète — vérifie les dernières lignes','warning',{ force: true });
+  } catch(e){}
   stkOpenDraft(res);
+  try { if (_stk.draft && res) { _stk.draft.ocr_model = res.model || ''; _stk.draft.ocr_detail = res.detail || ''; _stk.draft.ocr_lignes_vues = res.nb_lignes_vues != null ? res.nb_lignes_vues : ''; } } catch(e){}
 }
 function stkManual(){ stkOpenDraft({ fournisseur:'', numero:'', date:_stkToday(), lignes:[] }); }
 function stkOpenDraft(res){
@@ -561,7 +567,8 @@ function stkOpenDraft(res){
         var o = {
         produit: l.produit||'', conditionnement: l.conditionnement||'', qte_texte: l.qte_texte||'',
         qte: Math.max(1, parseInt(l.qte,10)||1), unite: l.unite||'', lot: l.lot||'', dlc: l.dlc||'', dlc_type: l.dlc_type ? _stkDType(l.dlc_type) : '',
-        statut: '', hors_bl: false, edit: false, sans_etiquette: !l.lot };
+        statut: '', hors_bl: false, edit: false, sans_etiquette: !l.lot,
+        _ocr: { produit: l.produit||'', lot: l.lot||'', dlc: l.dlc||'', qte: parseInt(l.qte,10)||1 } }; // v496 : valeurs lues, pour mesurer le taux d'erreur OCR
         // « 20×250 g » lu comme 1 unité → 20 unités (× nb de colis), signalé « Vérifie »
         try {
           var src = String(l.conditionnement||'') + ' ' + String(l.qte_texte||'');
@@ -603,10 +610,10 @@ function stkRenderConfirm(){
     if (l.statut === 'manquant') extra = '<div class="mt" style="color:#4b5563">Trace : manquant sur BL n° '+_stkE(d.numero||'?')+'</div>';
     if (l.statut === 'refuse') extra = '<div class="mt" style="color:#991b1b">Refusé — fiche non-conformité pré-remplie à la validation</div>';
     var edit = l.edit ? ('<div class="stk-grid">'
-      + '<input class="stk-in" value="'+_stkA(l.produit)+'" placeholder="Produit" onchange="stkLineSet('+i+',\'produit\',this.value)">'
-      + '<input class="stk-in" value="'+_stkA(l.conditionnement)+'" placeholder="Conditionnement (ex : sac 10 kg, cal. 40/50)" onchange="stkLineSet('+i+',\'conditionnement\',this.value)">'
+      + '<input class="stk-in" value="'+_stkA(l.produit)+'" placeholder="Produit" oninput="stkLineSet('+i+',\'produit\',this.value,1)" onchange="stkLineSet('+i+',\'produit\',this.value)">'
+      + '<input class="stk-in" value="'+_stkA(l.conditionnement)+'" placeholder="Conditionnement (ex : sac 10 kg, cal. 40/50)" oninput="stkLineSet('+i+',\'conditionnement\',this.value,1)" onchange="stkLineSet('+i+',\'conditionnement\',this.value)">'
       + '<input class="stk-in" type="number" min="1" value="'+_stkA(l.qte)+'" placeholder="Unités" onchange="stkLineSet('+i+',\'qte\',this.value)">'
-      + '<input class="stk-in" value="'+_stkA(l.lot)+'" placeholder="Lot" onchange="stkLineSet('+i+',\'lot\',this.value)">'
+      + '<input class="stk-in" value="'+_stkA(l.lot)+'" placeholder="Lot" oninput="stkLineSet('+i+',\'lot\',this.value,1)" onchange="stkLineSet('+i+',\'lot\',this.value)">'
       + '<input class="stk-in" type="date" value="'+_stkA(l.dlc)+'" onchange="stkLineSet('+i+',\'dlc\',this.value)">'
       + '<select class="stk-in" onchange="stkLineSet('+i+',\'dlc_type\',this.value)"><option value="DLC"'+(_stkDType(l.dlc_type)==='DLC'?' selected':'')+'>DLC (à consommer jusqu\'au)</option><option value="DDM"'+(_stkDType(l.dlc_type)==='DDM'?' selected':'')+'>DDM (de préférence avant)</option></select></div>') : '';
     return '<div class="stk-line'+(l.statut?'':' todo')+'"><div style="display:flex;gap:6px"><div style="flex:1"><div class="nm">'+_stkE(l.produit||'(sans nom)')+(l.hors_bl?' <span class="stk-chip dlc">hors BL</span>':'')+'</div>'
@@ -625,9 +632,11 @@ function stkRenderConfirm(){
   return h;
 }
 function stkDraftSet(k, v){ try { if (_stk.draft) { _stk.draft[k] = String(v||'').trim(); stkPersist(); } } catch(e){ console.warn('[stock] draftSet', e); } }
-function stkLineSet(i, k, v){
+function stkLineSet(i, k, v, silent){
   try {
     var l = _stk.draft && _stk.draft.lignes[i]; if (!l) return;
+    // v496 : saisie enregistrée à chaque frappe dans le brouillon → un re-rendu (sync, minuterie) ne remet plus l'ancienne valeur
+    if (silent) { l[k] = String(v||''); stkPersist(); return; }
     if (k === 'qte') l.qte = Math.max(1, parseInt(v,10)||1);
     else if (k === 'sans_etiquette') l.sans_etiquette = !!v;
     else l[k] = String(v||'').trim();
@@ -710,11 +719,13 @@ async function stkValider(){
       date: _stkToday(), date_bl: d.date || _stkToday(), date_reception: _stkToday(), heure: _stkHM(now),
       fournisseur: d.fournisseur||'', fournisseur_id: d.fournisseur_id||'', numero: d.numero||'',
       cuisinier: who, pages: d.pages.length, produit: 'BL '+(d.fournisseur||'')+' '+(d.numero||''),
+      ocr_model: d.ocr_model||'', ocr_detail: d.ocr_detail||'', ocr_lignes_vues: d.ocr_lignes_vues!=null?d.ocr_lignes_vues:'',
       lignes_bl: d.lignes.map(function(l){
         var lot = l.lot, auto = false;
         if (!lot && l.statut === 'recu') { lot = stkLotFromBl(d.fournisseur, d.numero, d.date); auto = true; }
         var o = { produit: l.produit, conditionnement: l.conditionnement, qte_texte: l.qte_texte, qte: l.statut==='recu' ? l.qte : 0, qte_bl: l.qte,
           unite: l.unite, lot: lot, lot_auto: auto, dlc: l.dlc, dlc_type: l.dlc ? _stkDType(l.dlc_type) : '', statut: l.statut, hors_bl: !!l.hors_bl };
+        try { if (l._ocr) { var cg = ['produit','lot','dlc','qte'].filter(function(k){ return String(l._ocr[k]||'') !== String((k==='qte'?l.qte:l[k])||''); }); if (cg.length) { o.ocr_lu = l._ocr; o.ocr_corrige = cg; } } } catch(e){}
         if (l.statut === 'manquant') o.trace = 'manquant sur BL n° '+(d.numero||'?');
         if (l.statut === 'refuse') o.trace = 'refusé à la réception';
         o.sans_etiquette = !!l.sans_etiquette;
@@ -1410,7 +1421,10 @@ function stkRecall(q){
           plats.push({ nom: nom, date: date || '', service: service || '', par: par || '' });
         } catch(e){}
       };
-      mv.filter(function(m){ return ids[m.item_id] && m.type === 'usage' && m.plat; }).forEach(function(m){
+      // v496 : source unique = liste de plats de la fiche ENR31 (comme ✅) ; les anciens libellés
+      // m.plat des mouvements (sélection non vidée) ne servent qu'en secours si aucune fiche n'est liée.
+      var _e31Plats = 0; L.e31.forEach(function(l){ try { _e31Plats += _stkPlatsOf(l).length; } catch(e){} });
+      mv.filter(function(m){ return !_e31Plats && ids[m.item_id] && m.type === 'usage' && m.plat; }).forEach(function(m){
         String(m.plat).split(', ').forEach(function(n){ addPlat(n, m.date_service || m.date, m.service || '', m.cuisinier || ''); });
       });
       L.e31.forEach(function(l){
@@ -1439,6 +1453,32 @@ function _stkPlatsOf(l){
   return out;
 }
 window._stkPlatsOf = _stkPlatsOf;
+/** v496 : nom affiché normalisé (variantes OCR/saisie : arrivée ↔ arrivage, espaces, casse). */
+function _stkCanonNom(n){
+  try { return String(n||'').replace(/\barriv[ée]e(s)?\b/gi, 'arrivage').replace(/\s+/g,' ').trim(); } catch(e){ return String(n||''); }
+}
+window._stkCanonNom = _stkCanonNom;
+/** v496 : source unique pour une fiche ENR31 dans les exports — article de stock (id, sinon lot+nom proche),
+ *  DLC (tous les champs connus : fiche, lecture étiquette, BL), statut jeté. */
+function _stkInfoFor31(r){
+  var o = { item: null, produit: '', dlc: '', dlc_type: '', jete: false };
+  try {
+    r = r || {};
+    var items = stkItems();
+    var it = r._stock_item_id ? items.find(function(x){ return x.id === r._stock_item_id; }) : null;
+    if (!it && r.lot && r.lot !== '—') {
+      var ln = _stkNorm(r.lot), pn = _stkNorm(r.produit);
+      it = items.find(function(x){ return _stkNorm(x.lot) === ln && _stkClose(_stkNorm(x.produit), pn); }) || null;
+    }
+    o.item = it;
+    o.produit = _stkCanonNom(r.produit || (it && it.produit) || '');
+    o.dlc = _stkIso(r.dlc) || _stkIso(r.ddm) || _stkIso(r.dluo) || _stkIso(r.dlc_lue) || (it ? (_stkIso(it.dlc_lue) || _stkIso(it.dlc)) : '');
+    o.dlc_type = r.dlc_type || (it && it.dlc_type) || '';
+    o.jete = !!(it && it.jetes && it.jetes.length && (it.entames + it.neufs) === 0);
+  } catch(e){}
+  return o;
+}
+window._stkInfoFor31 = _stkInfoFor31;
 function stkRecallHtml(q){
   try {
     if (!String(q||'').trim()) return '<div class="stk-sub">Tape un n° de lot (ou une partie) pour voir les BL, les plats concernés et le stock restant.</div>';

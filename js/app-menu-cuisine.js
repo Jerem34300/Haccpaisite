@@ -239,7 +239,7 @@ function ensureMenuFor(date, service){
 }
 function computeDayCoverage(date){
   // v493 : aujourd'hui → même source que le widget Accueil (plat tracé = toutes ses fiches faites)
-  try { if(date === today()){ const tj = menuTraceJour(); if(tj.plats) return { total: tj.plats, expected: tj.plats, tracked: tj.platsComplets }; } } catch(e){}
+  try { if(date === today()){ const tj = menuTraceJour(); if(tj.plats) return { total: tj.plats, expected: tj.plats, tracked: tj.platsComplets, steps: tj.steps, stepsDone: tj.stepsDone }; } } catch(e){}
   let total=0, tracked=0;
   try {
     SERVICES.forEach(s => {
@@ -259,7 +259,7 @@ function menuDayDotStatus(date){
   try {
     const cov = computeDayCoverage(date);
     if(!cov || !cov.total) return null;
-    const pct = cov.expected === 0 ? 0 : (cov.tracked / cov.expected) * 100;
+    const pct = cov.steps ? (cov.stepsDone / cov.steps) * 100 : (cov.expected === 0 ? 0 : (cov.tracked / cov.expected) * 100);
     if(pct >= 100) return 'done';
     const today_ = today();
     if(date < today_) return 'late';
@@ -882,14 +882,15 @@ function countEnrLinkedToPlat(platId, dateOpt){
 }
 
 function renderCoverageCard(cov){
-  const pct = cov.expected === 0 ? 0 : Math.round((cov.tracked / cov.expected) * 100);
+  // v496 : UN seul calcul (= widget Accueil) : fiches faites / fiches à faire
+  const pct = cov.steps ? Math.round(cov.stepsDone * 100 / cov.steps) : (cov.expected === 0 ? 0 : Math.round((cov.tracked / cov.expected) * 100));
   const cls = pct >= 80 ? '' : (pct >= 40 ? 'warn' : 'bad');
   const ico = pct >= 80 ? '✅' : (pct >= 40 ? '⚠️' : '❗');
   return `
   <div class="mn-cov ${cls}">
     <div class="mn-cov-tit">${ico} Couverture HACCP du jour — ${pct}%</div>
     <div class="mn-cov-bar"><div class="mn-cov-fill" style="width:${pct}%"></div></div>
-    <div class="mn-cov-sub">${cov.total} plat${cov.total>1?'s':''} • ${cov.tracked} tracé${cov.tracked>1?'s':''} sur ${cov.total}</div>
+    <div class="mn-cov-sub">${cov.tracked} / ${cov.total} plat${cov.total>1?'s':''} complet${cov.tracked>1?'s':''}${cov.steps?` • ${cov.stepsDone} / ${cov.steps} fiche${cov.steps>1?'s':''}`:''}</div>
   </div>`;
 }
 
