@@ -3311,7 +3311,6 @@ function ncAutoDismiss(idx){
 }
 
 function saveRow(id){
-  try { if(/^enr_distrib_/.test(String(id))){ const _n0=((S[id]||{}).lignes||[]).length; setTimeout(function(){ try { if(((S[id]||{}).lignes||[]).length>_n0) _distribAutoReassign(id); } catch(e){ console.warn('[distrib] auto', e); } }, 0); } } catch(e){ console.warn('[distrib] hook', e); }
   // ENR07 : mixage chaud interdit sur un produit refroidi (le produit a pu être choisi après le mode)
   if(id==='enr07'){
     const d07=((S['enr07']||{}).draft||{});
@@ -6910,7 +6909,7 @@ function accueilTaches(){
         'T°C Distribution — '+svc.label+' ('+creneauLabel+')',
         svc.ico||'🌡️', "goTo('"+distribTarget+"')",
         detail
-      )
+      )+'<!--tkey:distrib:'+String(svcId).replace(/[^\w-]/g,'')+':'+creneau+'-->'
     });
   }
 
@@ -7135,7 +7134,7 @@ function accueilTaches(){
   // v499 : tâches désassignées pour cette cuisine (Réglages admin) → ni affichées ni comptées dans le score
   try {
     const off=(S.config&&S.config.tasksOff)||{};
-    if(Object.keys(off).length){ for(let i=tasks.length-1;i>=0;i--){ if(!_taskIsHaccp(tasks[i].html) && off[_taskKey(tasks[i].html)]) tasks.splice(i,1); } }
+    if(Object.keys(off).length){ for(let i=tasks.length-1;i>=0;i--){ if(!_taskIsHaccp(tasks[i].html) && (off[_taskKey(tasks[i].html)] || off[_taskKeyLbl(tasks[i].html)])) tasks.splice(i,1); } }
   } catch(e){ console.warn('[accueil] tasksOff', e); }
   // Trier : alertes d'abord, puis par priorité décroissante
   tasks.sort((a,b)=>b.priority-a.priority);
@@ -7211,14 +7210,18 @@ function accueilCloseTaskList(){
 }
 /** v499 : clé stable d'une tâche = libellé normalisé (sans chiffres de compteur). */
 function _taskLabel(html){ try { const m=String(html||'').match(/class="task-label">([\s\S]*?)<\/div>/); const t=document.createElement('div'); t.innerHTML=m?m[1]:''; return (t.textContent||'').trim(); } catch(e){ return ''; } }
-function _taskKey(html){ try { return _taskLabel(html).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bn°\s*/g,'').replace(/#/g,'').replace(/\d+/g,'').replace(/\(\s*\)/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return ''; } }
+function _taskKey(html){ try { const _m=String(html||'').match(/<!--tkey:([\w:-]+)-->/); if(_m) return _m[1]; return _taskKeyLbl(html); } catch(e){ return ''; } }
+/** Clé historique (libellé normalisé) — compat des clés v499/v500 déjà enregistrées. */
+function _taskKeyLbl(html){ try { return _taskLabel(html).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bn°\s*/g,'').replace(/#/g,'').replace(/\d+/g,'').replace(/\(\s*\)/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return ''; } }
 /** v500 : alertes HACCP jamais désassignables (refroidissement, huile, températures, NC, DLC…). */
-function _taskIsHaccp(html){ try { const k=_taskKey(html); if(/^t°c distribution — /.test(k)) return false; /* service de distribution inexistant dans cette cuisine = désassignable */ return /(refroid|huile|friteuse|t°c|temperature|enceinte|frigo|congel|\bnc\b|non[- ]conform|dlc|ddm|perime|temoin|remise|cuisson|rappel|lot bloque)/.test(k); } catch(e){ return true; } }
+const _TASK_HACCP_RX=/(refroid|huile|friteuse|t°c|temperature|enceinte|frigo|congel|\bnc\b|non[- ]conform|dlc|ddm|perime|temoin|remise|cuisson|rappel|lot bloque|thermometre|reception|tracabilite)/;
+/** Accepte un html de tâche OU une clé déjà calculée. */
+function _taskIsHaccp(htmlOrKey){ try { const v=String(htmlOrKey||''); const k=/task-label|<!--tkey:/.test(v)?_taskKey(v):v; if(_isDistribKey(k)) return false; /* service de distribution = désassignable sous conditions */ return _TASK_HACCP_RX.test(k); } catch(e){ return true; } }
 window._taskIsHaccp=_taskIsHaccp;
 window._taskKey=_taskKey;
 /** v500 : services de distribution désassignables sous conditions (code admin, motif, historique, siège). */
-function _isDistribKey(k){ return /^t°c distribution — /.test(String(k||'')); }
-function _distribSvcOfKey(k){ try { return String(k||'').replace(/^t°c distribution — /,'').replace(/\s*\((midi|soir)\)\s*$/,'').trim(); } catch(e){ return ''; } }
+function _isDistribKey(k){ return /^distrib:|^t°c distribution — /.test(String(k||'')); }
+function _distribSvcOfKey(k){ try { const m=String(k||'').match(/^distrib:([\w-]+):/); if(m){ const sv=(getDistribServices()||[]).find(x=>String(x.id).replace(/[^\w-]/g,'')===m[1]); return sv?sv.label:m[1]; } return String(k||'').replace(/^t°c distribution — /,'').replace(/\s*\((midi|soir)\)\s*$/,'').trim(); } catch(e){ return ''; } }
 function _tasksOffLogAdd(ent){
   try {
     S.config=S.config||{};
@@ -7230,7 +7233,7 @@ function _tasksOffLogAdd(ent){
 }
 function taskUnassign(key, label){
   try {
-    if(!_isDistribKey(key) && /(refroid|huile|friteuse|t°c|temperature|enceinte|\bnc\b|non[- ]conform|dlc|ddm|perime|temoin|remise|cuisson)/.test(String(key||''))){ toast('⛔ Alerte HACCP : ne peut pas être désassignée','warning'); return; }
+    if(_taskIsHaccp(String(key||''))){ toast('⛔ Alerte HACCP : ne peut pas être désassignée','warning'); return; }
     const apply=(extra)=>{
       S.config=S.config||{}; S.config.tasksOff=Object.assign({}, S.config.tasksOff||{}); S.config.tasksOff[key]=label||key;
       if(extra) _tasksOffLogAdd(Object.assign({action:'off', key:key, label:label||key}, extra));
@@ -7279,9 +7282,10 @@ function _distribAutoReassign(secId){
     const svcId=String(secId||'').replace(/^enr_distrib_/,'');
     const svc=(getDistribServices()||[]).find(x=>String(x.id)===svcId); if(!svc) return;
     const nk=String(svc.label||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bn°\s*/g,'').replace(/#/g,'').replace(/\d+/g,'').replace(/\s+/g,' ').trim();
-    const hit=ks.filter(k=>_distribSvcOfKey(k)===nk); if(!hit.length) return;
+    const sid=String(svc.id).replace(/[^\w-]/g,'');
+    const hit=ks.filter(k=>k.indexOf('distrib:'+sid+':')===0 || (/^t°c distribution — /.test(k) && _distribSvcOfKey(k)===nk)); if(!hit.length) return;
     const o=Object.assign({}, off); hit.forEach(k=>delete o[k]); S.config.tasksOff=o;
-    hit.forEach(k=>_tasksOffLogAdd({action:'auto_on', key:k, label:off[k]===true?k:off[k], service:nk, by:'Automatique (T°C saisie)', alerte:true}));
+    hit.forEach(k=>_tasksOffLogAdd({action:'auto_on', key:k, label:off[k]===true?k:off[k], service:svc.label, by:'Automatique (T°C saisie)', alerte:true}));
     S.config.tasksOffAlert={service:svc.label, ts:new Date().toISOString(), msg:'Service « '+svc.label+' » réassigné automatiquement : T°C de distribution saisie'};
     save(); try{ _saveConfigToSupabase(); }catch(e){}
     toast('↺ Service « '+svc.label+' » réassigné automatiquement (T°C saisie) — siège alerté','warning');
@@ -8517,6 +8521,7 @@ async function distribSvcSaveRow(svcId, slot){
     try { SupaEngine.enqueue(k, existing); } catch(e){}
     if(confF==='NON') autoCreateNC(k,'T°C froid NC : '+svc.label+' '+slot,svc.label,'Contrôler');
     if(confC==='NON') autoCreateNC(k,'T°C chaud NC : '+svc.label+' '+slot,svc.label,'Contrôler');
+    try { _distribAutoReassign(k); } catch(e){ console.warn('[distrib] auto reassign', e); } // v500 : T°C saisie → service réassigné
   } catch(e){ console.warn('[distribSvcSaveRow]', e); }
 }
 

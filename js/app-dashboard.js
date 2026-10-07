@@ -726,9 +726,9 @@ function _siteTasksOffHtml(code){
     const off=cfg.tasksOff||{}, log=Array.isArray(cfg.tasksOffLog)?cfg.tasksOffLog:[];
     const last=k=>{ for(let i=log.length-1;i>=0;i--){ if(log[i]&&log[i].key===k) return log[i]; } return null; };
     let h='';
-    Object.keys(off).filter(k=>/^t°c distribution — /.test(k)).forEach(k=>{
+    Object.keys(off).filter(k=>/^distrib:|^t°c distribution — /.test(k)).forEach(k=>{
       const e=last(k)||{};
-      h+=`<div style="font-size:.62rem;font-weight:700;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:6px;padding:3px 7px;margin-top:4px">🚫 Service ${escH(e.service||k.replace(/^t°c distribution — /,''))} désassigné${e.motif?' — '+escH(e.motif):''}${e.date?' · '+escH(e.date)+(e.heure?' '+escH(e.heure):''):''}${e.by?' · '+escH(e.by):''}</div>`;
+      h+=`<div style="font-size:.62rem;font-weight:700;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-radius:6px;padding:3px 7px;margin-top:4px">🚫 Service ${escH(e.service||String(off[k]===true?k:off[k]).replace(/^T°C Distribution — /i,''))} désassigné${e.motif?' — '+escH(e.motif):''}${e.date?' · '+escH(e.date)+(e.heure?' '+escH(e.heure):''):''}${e.by?' · '+escH(e.by):''}</div>`;
     });
     const lim=Date.now()-7*864e5, seen={};
     log.filter(e=>e&&e.action==='auto_on'&&Date.parse(e.ts)>lim).reverse().forEach(e=>{
