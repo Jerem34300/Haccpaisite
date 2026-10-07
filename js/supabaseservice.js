@@ -221,6 +221,12 @@ const SupaEngine = (() => {
       }
     } catch(e) { _supaLog('[TOKEN] getSession erreur : ' + e.message); }
 
+    // 1b. v503 : access token encore valide > 5 min → pas de refresh (avant : refresh à
+    // chaque envoi, ~1 400 /auth/v1/token par jour et par tablette, base saturée)
+    try {
+      if (c.userToken && c.userToken !== c.anonKey && c.userToken !== _PMS_KEY_DEFAULT && _jwtExpMs(c.userToken) > Date.now() + 300000) return c.userToken;
+    } catch (e) { console.warn('[TOKEN] contrôle expiration', e); }
+
     // 2. Refresh manuel via refresh_token
     if (c.refreshToken && c.url && c.anonKey) {
       try {
