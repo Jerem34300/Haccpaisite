@@ -2147,6 +2147,14 @@ function _ligneNom(l){ return (l && (l.produit || l.plat || l.nom || l._plat_nom
 function _tagLigne(enrId, l, x){
   try {
     l._plat_id = x.p.plat_id; l._plat_nom = x.p.nom; l._menu_id = x.menu_id; l._plat_profil = x.p.profil_haccp;
+    // v500 : le champ plats (_plat_liens), s'il existe, est la seule source lue → y ajouter aussi le rattachement manuel
+    try {
+      if(Array.isArray(l._plat_liens)){
+        const pid = String(x.p.plat_id);
+        if(!l._plat_liens.some(r => r && String(r.plat_id) === pid)) l._plat_liens.push({ plat_id:pid, nom:x.p.nom||'', menu_id:x.menu_id||'', profil:x.p.profil_haccp||'' });
+        l._plat_ids = l._plat_liens.filter(Boolean).map(r => String(r.plat_id));
+      }
+    } catch(e){ console.warn('[menu] _tagLigne liens:', e); }
     save();
     try { if(typeof SupaEngine !== 'undefined' && SupaEngine.enqueue) SupaEngine.enqueue(enrId, l); } catch(e){ console.warn('[menu] enqueue tag:', e); }
   } catch(e){ console.warn('[menu] _tagLigne:', e); }

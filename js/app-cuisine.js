@@ -2213,8 +2213,8 @@ const AR={
   enr03:sec=>{const d=(S[sec]||{}).draft||{},dR=tdiff(d.h1,d.h2),t2=gtv('t2',sec),dRT=tdiff(d.h3,d.h4),t3=gtv('t3',sec),t4=gtv('t4',sec);return{duree_r:fmtD(dR),conf_r:cv(dR!==null&&dR<=120&&t2!==null&&t2<=10,dR!==null&&t2!==null),duree_rt:fmtD(dRT),conf_t3:cv(t3!==null&&t3<=10,t3!==null),conf_rt:cv(dRT!==null&&dRT<=60&&t4!==null&&t4>=63&&t3!==null&&t3<=10,dRT!==null&&t4!==null&&t3!==null)};},
   enr04:sec=>{const t=gtv('tc',sec);return{conforme:cv(t!==null&&t>=65,t!==null)};},
   // v499 : friture — NC seulement si utilisations > consigne (défaut 8) ; « huile changée ? NON » n'est pas une NC
-  enr05:sec=>{const d=(S[sec]||{}).draft||{};const n=parseInt(d.nb_util,10),c=parseInt(d.consigne_util,10)||8;return{conforme:cv(!isNaN(n)&&n<=c,!isNaN(n))};},
-  enr06:sec=>{const d=(S[sec]||{}).draft||{};const n=parseInt(d.nb_util,10),c=parseInt(d.consigne_util,10)||8;return{conforme:cv(!isNaN(n)&&n<=c,!isNaN(n))};},
+  enr05:sec=>{const d=(S[sec]||{}).draft||{};const n=parseInt(d.nb_util,10),c=parseInt(d.consigne_util,10)||parseInt((S.config&&S.config.huileConsigne),10)||8;return{conforme:cv(!isNaN(n)&&n<=c,!isNaN(n))};},
+  enr06:sec=>{const d=(S[sec]||{}).draft||{};const n=parseInt(d.nb_util,10),c=parseInt(d.consigne_util,10)||parseInt((S.config&&S.config.huileConsigne),10)||8;return{conforme:cv(!isNaN(n)&&n<=c,!isNaN(n))};},
   enr07:sec=>{
     const d=(S[sec]||{}).draft||{};
     const mode=d.mode_mixage||'froid';
@@ -2272,7 +2272,7 @@ const CONF_FIDS=['conforme','conf_r','conf_rt','conf_deb','conf_fin','conf_debut
   'conf_duree','conf_cuisson','conf_mix_deb','conf_mix_fin',
   'conf1','conf2','conf_premier','conf_couple',
   'conf_prem','conf_dern','conf_glac','conf_prod','conf_f','conf_c','conf',
-  'vehicule','emballage','etiquetage','qualite','remise','filtre','change','conf_test'];
+  'vehicule','emballage','etiquetage','qualite','remise','change','conf_test']; // v500 : « filtre » retiré (info, pas une NC)
 
 function doAutoCalc(sec){
   const rules=AR[sec];if(!rules)return;
@@ -2320,6 +2320,8 @@ function rf(f,sec){
   if(f.type==='prod')return acHtml(f.id,sec,f.label,f.ph);
   if(f.type==='chef')return chefSel(f.id,sec,f.label);
   if(f.type==='photo')return cpPhotoEl(f.id,sec,f.label);
+  // v500 : consigne verrouillée (modifiable seulement avec le code admin)
+  if(f.type==='consigne'){ try { let v=gd(f.id,sec); if(v===undefined||v===''){ v=String((S.config&&S.config.huileConsigne)||f.default||'8'); S[sec]=S[sec]||{}; S[sec].draft=S[sec].draft||{}; S[sec].draft[f.id]=v; } return `<div class="fg"><label>${f.label}</label><div style="display:flex;gap:6px;align-items:center"><div class="fi" style="flex:1;background:#f8f5f8;font-weight:900">${escH(v)}</div><button type="button" class="btn btn-sec" style="padding:6px 10px;font-size:.72rem" onclick="huileConsigneEdit('${sec}')">🔐 Modifier</button></div></div>`; } catch(e){ return ''; } }
   if(f.computed)return compEl(f,sec);
   return inpEl(f,sec);
 }
@@ -4063,14 +4065,14 @@ const FDEFS={
   enr05:{id:'enr05',title:'🍟 Huiles de friture (sans testeur)',tag:'PrPo',tagCat:'prpo',
     regle:"Filtrer après chaque utilisation. Changer après pané/poisson ou après <strong>8 utilisations.</strong>",
     fields:[{id:'date',label:'Date',inputType:'date',autoDate:true},{id:'friteuse',label:'Friteuse n°',inputType:'number',ph:'1'},
-      {id:'produit',label:'Produit / plat frit',type:'prod',ph:'Plat du menu…'},{id:'nb_util',label:"Nombre d'utilisations de l'huile",inputType:'number',ph:'1'},{id:'consigne_util',label:'Consigne (max utilisations)',inputType:'number',default:'8'},
+      {id:'produit',label:'Produit / plat frit',type:'prod',ph:'Plat du menu…'},{id:'nb_util',label:"Nombre d'utilisations de l'huile",inputType:'number',ph:'1'},{id:'consigne_util',label:'Consigne (max utilisations)',type:'consigne',default:'8'},
       {id:'filtre',label:'Huile filtrée ?',type:'conf'},{id:'change',label:'Huile changée ?',type:'conf'},
       {id:'conforme',label:'Utilisations ≤ consigne ? (auto)',type:'conf',auto:true},
       {id:'cuisinier',label:'Cuisinier / Visa',type:'chef'}]},
   enr06:{id:'enr06',title:'🍟 Huiles de friture (avec testeur)',tag:'PrPo',tagCat:'prpo',
     regle:"Filtrer et tester après chaque utilisation.",
     fields:[{id:'date',label:'Date',inputType:'date',autoDate:true},{id:'friteuse',label:'Friteuse n°',inputType:'number',ph:'1'},
-      {id:'produit',label:'Produit / plat frit',type:'prod',ph:'Plat du menu…'},{id:'nb_util',label:"Nombre d'utilisations de l'huile",inputType:'number',ph:'1'},{id:'consigne_util',label:'Consigne (max utilisations)',inputType:'number',default:'8'},
+      {id:'produit',label:'Produit / plat frit',type:'prod',ph:'Plat du menu…'},{id:'nb_util',label:"Nombre d'utilisations de l'huile",inputType:'number',ph:'1'},{id:'consigne_util',label:'Consigne (max utilisations)',type:'consigne',default:'8'},
       {id:'conf_test',label:'Test polaire conforme ?',type:'conf'},{id:'conforme',label:'Utilisations ≤ consigne ? (auto)',type:'conf',auto:true},{id:'filtre',label:'Filtrée ?',type:'conf'},{id:'change',label:'Changée ?',type:'conf'},
       {id:'cuisinier',label:'Cuisinier / Visa',type:'chef'}]},
   enr07:{id:'enr07',title:'🥘 Bien Faits – avec cuisson',tag:'PrPo',tagCat:'prpo',
@@ -5956,6 +5958,21 @@ function nettDelRef(i){
   });
 }
 // v499 : validation hors plage horaire (soir avant 17 h, fermeture le matin) → refus clair ; le code admin permet de forcer
+/** v500 : la consigne d'utilisations de l'huile ne se modifie qu'avec le code admin. */
+function huileConsigneEdit(sec){
+  try {
+    nettAdminGuard(()=>{
+      const cur=((S[sec]||{}).draft||{}).consigne_util||'8';
+      showPrompt('Consigne d\'utilisations', 'Nombre maximal d\'utilisations de l\'huile avant changement.', String(cur), function(v){
+        try { const n=parseInt(v,10); if(isNaN(n)||n<1||n>50){ toast('⚠️ Valeur invalide (1 à 50)','warning'); return; }
+          S.config=S.config||{}; S.config.huileConsigne=n; save(); try{ _saveConfigToSupabase(); }catch(e){}
+          sd('consigne_util', String(n), sec); doAutoCalc(sec); renderMain(); toast('✅ Consigne : '+n+' utilisations','success');
+        } catch(e){ console.warn('[huile] consigne', e); }
+      }, 'Enregistrer');
+    });
+  } catch(e){ console.warn('[huile] consigneEdit', e); }
+}
+window.huileConsigneEdit=huileConsigneEdit;
 function _plageH(){ try { const n=new Date(); return n.getHours()+n.getMinutes()/60; } catch(e){ return 12; } }
 function _plageGuard(kind, retry){
   try {
@@ -5963,11 +5980,12 @@ function _plageGuard(kind, retry){
     const cfg=(S.config&&S.config.plages)||{};
     const soirMin=parseFloat(cfg.soir_min)||17, fermMin=parseFloat(cfg.ferm_min)||12;
     let msg='';
-    const h=_plageH();
+    let h=_plageH(); if(h<2) h+=24; // v500 : soir / fermeture acceptés jusqu'à 2 h du matin
     if(kind==='soir' && h<soirMin) msg='Service du soir : validation possible à partir de '+soirMin+' h (il est '+nowT()+').';
     if(kind==='ferm' && h<fermMin) msg='Relevé de fermeture : possible à partir de '+fermMin+' h (il est '+nowT()+'). Le matin, fais le relevé d\'ouverture.';
     if(!msg) return false;
-    const force=()=>{ try { nettAdminGuard(()=>{ window._plageForce=true; try{ retry(); }catch(e){ console.warn('[plage] retry', e); } }); } catch(e){ console.warn('[plage] force', e); } };
+    // v500 : forçage valable pour UNE action — toujours réinitialisé (finally), même si l'action s'arrête avant le contrôle
+    const force=()=>{ try { nettAdminGuard(()=>{ window._plageForce=true; try{ retry(); }catch(e){ console.warn('[plage] retry', e); } finally { window._plageForce=false; } }); } catch(e){ console.warn('[plage] force', e); } };
     if(typeof _stkChoice==='function') _stkChoice('⏰ Hors plage horaire', escH(msg), [{ k:'force', html:'🔐 Forcer avec le code admin' }], function(o){ if(o&&o.k==='force') force(); }, null, 'Annuler');
     else { toast('⛔ '+msg,'warning'); }
     return true;
@@ -7116,7 +7134,7 @@ function accueilTaches(){
   // v499 : tâches désassignées pour cette cuisine (Réglages admin) → ni affichées ni comptées dans le score
   try {
     const off=(S.config&&S.config.tasksOff)||{};
-    if(Object.keys(off).length){ for(let i=tasks.length-1;i>=0;i--){ if(off[_taskKey(tasks[i].html)]) tasks.splice(i,1); } }
+    if(Object.keys(off).length){ for(let i=tasks.length-1;i>=0;i--){ if(!_taskIsHaccp(tasks[i].html) && off[_taskKey(tasks[i].html)]) tasks.splice(i,1); } }
   } catch(e){ console.warn('[accueil] tasksOff', e); }
   // Trier : alertes d'abord, puis par priorité décroissante
   tasks.sort((a,b)=>b.priority-a.priority);
@@ -7192,10 +7210,14 @@ function accueilCloseTaskList(){
 }
 /** v499 : clé stable d'une tâche = libellé normalisé (sans chiffres de compteur). */
 function _taskLabel(html){ try { const m=String(html||'').match(/class="task-label">([\s\S]*?)<\/div>/); const t=document.createElement('div'); t.innerHTML=m?m[1]:''; return (t.textContent||'').trim(); } catch(e){ return ''; } }
-function _taskKey(html){ try { return _taskLabel(html).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return ''; } }
+function _taskKey(html){ try { return _taskLabel(html).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\bn°\s*/g,'').replace(/#/g,'').replace(/\d+/g,'').replace(/\(\s*\)/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return ''; } }
+/** v500 : alertes HACCP jamais désassignables (refroidissement, huile, températures, NC, DLC…). */
+function _taskIsHaccp(html){ try { const k=_taskKey(html); if(/^t°c distribution — /.test(k)) return false; /* service de distribution inexistant dans cette cuisine = désassignable */ return /(refroid|huile|friteuse|t°c|temperature|enceinte|frigo|congel|\bnc\b|non[- ]conform|dlc|ddm|perime|temoin|remise|cuisson|rappel|lot bloque)/.test(k); } catch(e){ return true; } }
+window._taskIsHaccp=_taskIsHaccp;
 window._taskKey=_taskKey;
 function taskUnassign(key, label){
   try {
+    if(!/^t°c distribution — /.test(String(key||'')) && /(refroid|huile|friteuse|t°c|temperature|enceinte|\bnc\b|non[- ]conform|dlc|ddm|perime|temoin|remise|cuisson)/.test(String(key||''))){ toast('⛔ Alerte HACCP : ne peut pas être désassignée','warning'); return; }
     nettAdminGuard(()=>{
       S.config=S.config||{}; S.config.tasksOff=Object.assign({}, S.config.tasksOff||{}); S.config.tasksOff[key]=label||key;
       save(); try{ _saveConfigToSupabase(); }catch(e){}
@@ -7218,7 +7240,7 @@ function renderTasksOffSettings(){
   try {
     const el=document.getElementById('sp-tasks-off'); if(!el) return;
     const off=(S.config&&S.config.tasksOff)||{}, ks=Object.keys(off);
-    const cur=(Array.isArray(window._accTasksLast)?window._accTasksLast:[]).map(t=>({k:_taskKey(t.html), l:_taskLabel(t.html)})).filter(x=>x.k);
+    const cur=(Array.isArray(window._accTasksLast)?window._accTasksLast:[]).filter(t=>!_taskIsHaccp(t.html)).map(t=>({k:_taskKey(t.html), l:_taskLabel(t.html)})).filter(x=>x.k); // alertes HACCP : pas de bouton
     window._tasksOffCur=cur; window._tasksOffKeys=ks;
     el.innerHTML='<div style="font-size:.78rem;font-weight:900;color:var(--plum);margin:4px 0 6px">🧹 Tâches assignées à cette cuisine</div>'
       +'<div style="font-size:.68rem;color:#7A6579;margin-bottom:6px">Une tâche désassignée (ex. service ou étage inexistant) n\'apparaît plus et ne compte plus dans le score.</div>'
