@@ -5690,7 +5690,7 @@ function openDetail(id) {
   const isEnr25Field = k => r.enr_type==='enr25'&&['type_analyse','zone_produit','laboratoire','reference','resultats','actions'].includes(k);
   Object.entries(d).forEach(([k,v]) => {
     if (SKIP_FIELDS.includes(k) || !v || v==='' ) return;
-    if (k === '_plat_liens' || k === '_plat_ids') return;
+    if (k === '_plat_liens' || k === '_plat_ids' || k === '_plat_corrections') return;
     if (isAlgField(k)||isEnr24Field(k)||isEnr25Field(k)) return; // handled in special blocks
     if (PHOTO_FIELDS.includes(k)) { photos[k]=v; return; }
     if (TEMP_FIELDS.includes(k)) { temps[k]=v; return; }
@@ -5886,10 +5886,12 @@ function openDetail(id) {
     if(r.enr_type === 'enr31'){
       const liens = Array.isArray(d._plat_liens) ? d._plat_liens : [];
       let noms = liens.map(function(x){ return x && (x.nom || x.plat_id); }).filter(Boolean);
-      if(!noms.length && d._plat_nom) noms = [d._plat_nom];
+      if(!noms.length && !Array.isArray(d._plat_liens) && d._plat_nom) noms = [d._plat_nom];
       if(noms.length){
         body += '<div class="detail-section"><div class="detail-section-title">Plats liés</div><div class="detail-field-value">'+noms.map(escH).join(', ')+'</div></div>';
       }
+      // v501 : corrections des plats liés (avant / après / motif)
+      (Array.isArray(d._plat_corrections) ? d._plat_corrections : []).forEach(function(e){ try { body += '<div class="detail-field-value" style="font-size:.72rem;color:#7a6378">✏️ Corrigé le '+escH(e.date||'')+' à '+escH(e.heure||'')+' par '+escH(e.par||'?')+' : avant '+escH((e.avant||[]).join(', ')||'aucun')+', après '+escH((e.apres||[]).join(', ')||'aucun')+', motif « '+escH(e.motif||'')+' »</div>'; } catch(x){} });
     }
   } catch(e){}
 
