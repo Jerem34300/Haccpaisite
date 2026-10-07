@@ -10,6 +10,8 @@
  *     lignes:[{ produit, conditionnement, qte, unite, colis, unites, lot, dlc, dlc_type }] }
  *
  * Env: OPENAI_API_KEY | MENU_OCR_API_KEY. Stub clair (503) si clé absente.
+ * Coût : modèle par défaut gpt-4o-mini, surchargeable par BL_OCR_MODEL (ex. BL_OCR_MODEL=gpt-4o si la
+ * lecture des BL denses est insuffisante). Résolution image : BL_OCR_DETAIL = high (défaut) | low | auto.
  * Basé sur label-ocr.js / _ocrShared.js — aucun secret côté client.
  */
 const {
@@ -165,13 +167,14 @@ exports.handler = async function (event) {
   }
   if (total > MAX_TOTAL_CHARS) return json(413, { error: 'BL trop volumineux' });
 
+  const DETAIL = ['low', 'high', 'auto'].indexOf(String(process.env.BL_OCR_DETAIL || '').toLowerCase()) >= 0 ? String(process.env.BL_OCR_DETAIL).toLowerCase() : 'high';
   const content = [{ type: 'text', text: 'Voici ' + images.length + ' page(s) du même bon de livraison, dans l\'ordre. JSON uniquement.' }];
   images.forEach(function (u, i) {
     content.push({ type: 'text', text: 'Page ' + (i + 1) + '/' + images.length });
-    content.push({ type: 'image_url', image_url: { url: u, detail: 'high' } });
+    content.push({ type: 'image_url', image_url: { url: u, detail: DETAIL } });
   });
   const body = {
-    model: process.env.BL_OCR_MODEL || process.env.LABEL_OCR_MODEL || process.env.MENU_OCR_MODEL || 'gpt-4o',
+    model: process.env.BL_OCR_MODEL || 'gpt-4o-mini',
     temperature: 0,
     response_format: { type: 'json_object' },
     messages: [{ role: 'system', content: SYSTEM_BL }, { role: 'user', content: content }],
