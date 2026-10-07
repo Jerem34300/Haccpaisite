@@ -90,6 +90,31 @@ function _stkCheckLine(l, dateRec){
 function _stkMulti(txt){ try { var m = String(txt||'').match(/(\d+)\s*[x×*]\s*\d/i); return m ? parseInt(m[1],10) : null; } catch(e){ return null; } }
 /** v493 : 'dlc' = DLC dépassée (inutilisable), 'ddm' = DDM dépassée (avertissement), '' sinon */
 function _stkPerime(dlc, typ){ try { if (!dlc || String(dlc) >= _stkToday()) return ''; return _stkDType(typ) === 'DDM' ? 'ddm' : 'dlc'; } catch(e){ return ''; } }
+/** v495 : distance d'édition (variantes OCR « chault / chalut ») */
+function _stkLev(a, b){
+  try {
+    a = String(a||''); b = String(b||''); if (a === b) return 0;
+    var m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+    var prev = [], cur = [], i, j;
+    for (j = 0; j <= n; j++) prev[j] = j;
+    for (i = 1; i <= m; i++) { cur = [i]; for (j = 1; j <= n; j++) cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1] + (a[i-1] === b[j-1] ? 0 : 1)); prev = cur; }
+    return prev[n];
+  } catch(e){ return 99; }
+}
+function _stkClose(a, b){
+  try { a = _stkNorm(a); b = _stkNorm(b); if (a === b) return true; var d = _stkLev(a, b), L = Math.max(a.length, b.length); return L >= 5 && (d <= 2 || d / L <= 0.2); } catch(e){ return false; }
+}
+/** v495 : clé de famille produit + lot tolérante (même lot réel + noms proches = même famille) */
+function _stkFamKey(reg, produit, lot){
+  try {
+    var pn = _stkNorm(produit), ln = _stkNorm(lot);
+    if (ln && ln !== '—' && !/^bl /.test(ln)) {
+      var f = reg.find(function(x){ return x.ln === ln && _stkClose(x.pn, pn); });
+      if (f) return f.key;
+    }
+    var key = pn + '|' + ln; reg.push({ ln: ln, pn: pn, key: key }); return key;
+  } catch(e){ return _stkNorm(produit) + '|' + _stkNorm(lot); }
+}
 function _stkNorm(s){ try { return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){ return String(s||'').toLowerCase().trim(); } }
 function _stkWho(){ try { return (typeof getActiveSession === 'function') ? getActiveSession() : null; } catch(e){ return null; } }
 function _stkNeedWho(){
@@ -240,11 +265,12 @@ function stkItems(){
 }
 /** Regroupe par produit + lot (même lot sur 2 livraisons = 2 items distincts dans le groupe). */
 function stkGroups(items){
-  var g = {}, out = [];
+  var g = {}, out = [], reg = [];
   try {
     (items||stkItems()).forEach(function(it){
       // v492 : une ligne de stock par BL + date de réception (FIFO) — même lot sur 2 BL = 2 lignes
-      var fam = _stkNorm(it.produit) + '|' + _stkNorm(it.lot);
+      // v495 : variantes OCR du même produit (même lot) regroupées dans la même famille / ligne
+      var fam = _stkFamKey(reg, it.produit, it.lot);
       var k = fam + '|' + String(it.bl_ts||'');
       if (!g[k]) { g[k] = { key: k, fam: fam, produit: it.produit, lot: it.lot, lot_auto: it.lot_auto, items: [] }; out.push(g[k]); }
       g[k].items.push(it);
@@ -578,6 +604,7 @@ function stkRenderConfirm(){
     if (l.statut === 'refuse') extra = '<div class="mt" style="color:#991b1b">Refusé — fiche non-conformité pré-remplie à la validation</div>';
     var edit = l.edit ? ('<div class="stk-grid">'
       + '<input class="stk-in" value="'+_stkA(l.produit)+'" placeholder="Produit" onchange="stkLineSet('+i+',\'produit\',this.value)">'
+      + '<input class="stk-in" value="'+_stkA(l.conditionnement)+'" placeholder="Conditionnement (ex : sac 10 kg, cal. 40/50)" onchange="stkLineSet('+i+',\'conditionnement\',this.value)">'
       + '<input class="stk-in" type="number" min="1" value="'+_stkA(l.qte)+'" placeholder="Unités" onchange="stkLineSet('+i+',\'qte\',this.value)">'
       + '<input class="stk-in" value="'+_stkA(l.lot)+'" placeholder="Lot" onchange="stkLineSet('+i+',\'lot\',this.value)">'
       + '<input class="stk-in" type="date" value="'+_stkA(l.dlc)+'" onchange="stkLineSet('+i+',\'dlc\',this.value)">'
@@ -635,6 +662,46 @@ async function stkValider(){
     if (d.lignes.some(function(l){ return !l.statut; })) { toast('⚠️ Confirme chaque ligne (Reçu / Manquant / Refusé)','warning'); return; }
     if (d.lignes.some(function(l){ return !String(l.produit||'').trim(); })) { toast('⚠️ Une ligne n\'a pas de nom de produit','warning'); return; }
     var who = _stkNeedWho(); if (!who) return;
+    // v495 : même n° de BL déjà reçu → « Voir l'existant » / « Continuer quand même »
+    try {
+      var nn = _stkNorm(d.numero).replace(/^bl\s*/,'');
+      var dup = (!d._dup_ok && nn) ? _stkBls().find(function(b){ return _stkNorm(b.numero).replace(/^bl\s*/,'') === nn && (!d.fournisseur || !b.fournisseur || _stkClose(String(d.fournisseur).split(' ')[0], String(b.fournisseur).split(' ')[0]) || _stkNorm(d.fournisseur) === _stkNorm(b.fournisseur)); }) : null;
+      if (dup) {
+        _stkChoice('⚠️ BL déjà reçu', 'Le BL n° <b>'+_stkE(dup.numero)+'</b> ('+_stkE(dup.fournisseur||'?')+') a déjà été reçu le '+_stkFrY(dup.date_reception||dup.date)+' '+_stkE(dup.heure||'')+' par '+_stkE(dup.cuisinier||'?')+' — '+_stkE(dup.resume||'')+'.', [
+          { k: 'see', html: '📄 Voir la réception existante (ne rien enregistrer)', hl: true },
+          { k: 'go', html: '➡️ Continuer quand même (2e livraison sur ce BL)' }
+        ], function(o){
+          try {
+            if (o.k === 'go') { d._dup_ok = true; stkValider(); return; }
+            var ph = ''; try { ph = JSON.parse(dup.photo||'{}').thumb || ''; } catch(e){}
+            if (ph && typeof photoFullscreen === 'function') photoFullscreen(ph);
+            else toast('Réception existante : '+(dup.resume||'')+' — voir « Dernières réceptions »','warning');
+          } catch(e){ console.warn('[stock] dup', e); }
+        }, null, 'Annuler');
+        return;
+      }
+    } catch(e){ console.warn('[stock] dup check', e); }
+    // v495 : lignes du même lot aux noms très proches (variante de lecture) → proposer la fusion
+    try {
+      if (!d._merge_ok) {
+        var pairs = [];
+        d.lignes.forEach(function(a, i){ d.lignes.forEach(function(b, j){ if (j > i && a.statut === 'recu' && b.statut === 'recu' && a.lot && _stkNorm(a.lot) === _stkNorm(b.lot) && _stkNorm(a.produit) !== _stkNorm(b.produit) && _stkClose(a.produit, b.produit)) pairs.push([i, j]); }); });
+        if (pairs.length) {
+          var P = pairs[0], A = d.lignes[P[0]], B = d.lignes[P[1]];
+          _stkChoice('🔎 Même produit ?', '« '+_stkE(A.produit)+' » et « '+_stkE(B.produit)+' » — même lot <b>'+_stkE(A.lot)+'</b>. Probable variante de lecture.', [
+            { k: 'merge', html: '🔗 Fusionner en « '+_stkE(A.produit)+' » ('+(A.qte+B.qte)+' u.)', hl: true },
+            { k: 'keep', html: '↔️ Ce sont 2 produits différents' }
+          ], function(o){
+            try {
+              if (o.k === 'merge') { A.qte = (parseInt(A.qte,10)||0) + (parseInt(B.qte,10)||0); d.lignes.splice(P[1], 1); }
+              else d._merge_ok = true;
+              stkPersist(); stkValider();
+            } catch(e){ console.warn('[stock] merge', e); }
+          }, null, 'Annuler');
+          return;
+        }
+      }
+    } catch(e){ console.warn('[stock] merge check', e); }
     _stk.busy = true;
     var now = new Date();
     var rec = {
@@ -792,10 +859,10 @@ function stkFini(key){
 function _stkJetes(from, to){
   try { return _stkMvts().filter(function(m){ return m.type === 'jete' && (!from || (m.date||'') >= from) && (!to || (m.date||'') <= to); }).sort(function(a,b){ return String(b._ts).localeCompare(String(a._ts)); }); } catch(e){ return []; }
 }
-function _stkJetesCard(limit){
+function _stkJetesCard(limit, title){
   try {
     var J = _stkJetes().slice(0, limit || 10); if (!J.length) return '';
-    return '<div class="card"><div class="stk-h">🗑️ Produits jetés</div>' + J.map(function(m){
+    return '<div class="card"><div class="stk-h">'+_stkE(title||'🗑️ Produits jetés')+'</div>' + J.map(function(m){
       return '<div class="stk-line"><div class="nm">'+_stkE(m.produit||'?')+' — '+_stkE(m.n||1)+' u.</div><div class="mt">'+_stkFrY(m.date)+' '+_stkE(m.heure||'')+' par '+_stkE(m.cuisinier||'?')+' · motif : '+_stkE(m.motif||'—')+' · lot '+_stkE(m.lot||'—')+' · BL '+_stkE(m.bl_numero||'?')+'</div></div>';
     }).join('') + '</div>';
   } catch(e){ return ''; }
@@ -1096,6 +1163,8 @@ function stkPickForDish(ref, ctx){
     if (!_stkNeedWho()) return;
     ctx = ctx || {};
     var groups = stkGroups().filter(function(G){ return G.dispo > 0 && !G.bloque && _stkPerime(G.dlc, G.dlc_type) !== 'dlc'; }); // v494 : DLC dépassée jamais proposée
+    // v495 : une seule ligne par produit + lot (le choix de la réception se fait ensuite, FIFO) — plus de doublons visuels
+    try { var seenF = {}; groups = groups.filter(function(G){ if (seenF[G.fam]) return false; seenF[G.fam] = 1; return true; }); } catch(e){}
     var plats = [];
     try { plats = (window._stkMenuApi && window._stkMenuApi.todayMenuPlats) ? window._stkMenuApi.todayMenuPlats() : []; } catch(e){ plats = []; }
     var pend = [];
@@ -1152,6 +1221,8 @@ function stkPickForDish(ref, ctx){
         ov.querySelectorAll('input[data-gi]:checked').forEach(function(cb){ var i = cb.getAttribute('data-gi'); todo.push({ G: groups[parseInt(i,10)], etat: etat[i] || 'entame' }); });
         if (!todo.length) { toast('Coche au moins un produit','warning'); return; }
         ov.remove();
+        // v495 : sélection du bandeau vidée DÈS la validation (avant : seulement en fin de chaîne → restait cochée si un produit était annulé)
+        try { if (pend.length && window._stkMenuApi && window._stkMenuApi.clearPending) window._stkMenuApi.clearPending('enr31'); } catch(e){}
         var linked = 0, n = 0;
         var next = function(){
           if (!todo.length) {
@@ -1317,11 +1388,11 @@ function stkRecall(q){
     var n = _stkNorm(q); if (!n) return out;
     var items = stkItems().filter(function(i){ return _stkNorm(i.lot).indexOf(n) >= 0 || _stkNorm(i.lot_lu||'').indexOf(n) >= 0; });
     var e31 = ((S.enr31||{}).lignes||[]).filter(function(l){ return l && !l._deleted && _stkNorm(l.lot).indexOf(n) >= 0; });
-    var keys = {};
-    items.forEach(function(i){ var k = _stkNorm(i.produit)+'|'+_stkNorm(i.lot); (keys[k] = keys[k] || { produit: i.produit, lot: i.lot, items: [], e31: [] }).items.push(i); });
+    var keys = {}, reg = [];
+    items.forEach(function(i){ var k = _stkFamKey(reg, i.produit, i.lot); (keys[k] = keys[k] || { produit: i.produit, lot: i.lot, items: [], e31: [] }).items.push(i); });
     e31.forEach(function(l){
       var it = l._stock_item_id && items.find(function(i){ return i.id === l._stock_item_id; });
-      var k = it ? (_stkNorm(it.produit)+'|'+_stkNorm(it.lot)) : (_stkNorm(l.produit)+'|'+_stkNorm(l.lot));
+      var k = it ? _stkFamKey(reg, it.produit, it.lot) : _stkFamKey(reg, l.produit, l.lot);
       (keys[k] = keys[k] || { produit: l.produit, lot: l.lot, items: [], e31: [] }).e31.push(l);
     });
     var mv = _stkMvts();
@@ -1394,7 +1465,7 @@ function stkRecallFocus(){
   try { var c = document.getElementById('stk-recall'); if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); var q = document.getElementById('stk-recall-q'); if (q) setTimeout(function(){ try { q.focus(); } catch(e){} }, 350); } catch(e){ console.warn('[stock] recallFocus', e); }
 }
 function stkRecallSearch(v){
-  try { _stk.rq = String(v||''); var el = document.getElementById('stk-recall-res'); if (el) el.innerHTML = stkRecallHtml(_stk.rq); } catch(e){ console.warn('[stock] recallSearch', e); }
+  try { _stk.rq = String(v||''); var el = document.getElementById('stk-recall-res'); if (el) el.innerHTML = stkRecallHtml(_stk.rq); var ja = document.getElementById('stk-jetes-all'); if (ja) ja.style.display = _stk.rq.trim() ? 'none' : ''; } catch(e){ console.warn('[stock] recallSearch', e); }
 }
 /** Bloquer / débloquer : motif obligatoire, tracé (qui / quand / pourquoi) sur chaque ligne du lot. Débloquer = code admin. */
 function stkBloquer(idx, on){
@@ -1552,7 +1623,9 @@ function _stkExportSection(from, to){
           if (!bls.length) return h;
           return h + '<div class="card"><div class="stk-h">📦 Réceptions BL (module Stock)</div>' + bls.map(function(bl){
             return '<div class="stk-line"><div class="nm">'+_stkE(bl.fournisseur||'Fournisseur ?')+' — '+_stkE(/^BL/i.test(bl.numero||'')?bl.numero:'BL '+(bl.numero||'?'))+'</div>'
-              + '<div class="mt">Reçu le '+_stkFrY(bl.date_reception||bl.date)+' '+_stkE(bl.heure||'')+' par '+_stkE(bl.cuisinier||'?')+' · BL du '+_stkFrY(bl.date_bl||bl.date)+' · '+_stkE(bl.resume||'')+'</div></div>';
+              + '<div class="mt">Reçu le '+_stkFrY(bl.date_reception||bl.date)+' '+_stkE(bl.heure||'')+' par '+_stkE(bl.cuisinier||'?')+' · BL du '+_stkFrY(bl.date_bl||bl.date)+' · '+_stkE(bl.resume||'')+'</div>'
+              + (function(){ try { var ph = ['photo','photo2','photo3','photo4','photo5','photo6'].map(function(k){ return bl[k] ? photoThumb(bl[k], '', true) : ''; }).join(''); return ph ? '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'+ph+'</div>' : ''; } catch(e){ return ''; } })()
+              + '</div>';
           }).join('') + '<button class="stk-btn big" style="margin-top:6px" onclick="goTo(\'stock\')">Ouvrir le Stock</button></div>';
         } catch(e){ console.warn('[stock] enr23 inject', e); return h; }
       };
@@ -1579,7 +1652,7 @@ function _stkExportSection(from, to){
       var top = '<div style="display:flex;justify-content:flex-end;margin:0 0 8px"><button class="stk-btn" onclick="stkRecallFocus()">🔎 Rappel de lot</button></div>';
       return top + h + '<div class="card" id="stk-recall" style="margin-bottom:96px"><div class="stk-h">🔎 Rappel de lot</div>'
         + '<input class="stk-in" id="stk-recall-q" placeholder="N° de lot…" value="'+_stkA(_stk.rq)+'" oninput="stkRecallSearch(this.value)">'
-        + '<div id="stk-recall-res" style="margin-top:8px">'+stkRecallHtml(_stk.rq)+'</div></div>' + _stkJetesCard(10);
+        + '<div id="stk-recall-res" style="margin-top:8px">'+stkRecallHtml(_stk.rq)+'</div></div>' + '<div id="stk-jetes-all"'+(String(_stk.rq||'').trim()?' style="display:none"':'')+'>' + _stkJetesCard(10, '🗑️ Derniers produits jetés (tous lots)') + '</div>';
     };
   } catch(e){ console.warn('[stock] hook recall', e); }
   try {

@@ -2044,6 +2044,14 @@ function twClose(){
 }
 function twConfirm(){
   const val=`${String(TW.h).padStart(2,'0')}:${String(TW.m).padStart(2,'0')}`;
+  // v495 : heure future refusée (tolérance 5 min) quand la fiche est du jour
+  try {
+    let dRec=''; try{ dRec=String(gd('date',TW.sec)||''); }catch(e){}
+    if(!dRec || dRec===today()){
+      const n=new Date(), lim=n.getHours()*60+n.getMinutes()+5;
+      if(TW.h*60+TW.m>lim){ toast('⛔ Heure dans le futur refusée ('+val+') — il est '+nowT(),'warning'); return; }
+    }
+  } catch(e){ console.warn('[tw] futur', e); }
   sd(TW.fid,val,TW.sec);
   const btn=document.querySelector(`[data-tw="${TW.fid}-${TW.sec}"]`);
   if(btn)btn.innerHTML=`<span>⏰</span><span class="tv">${val}</span>`;
@@ -3012,6 +3020,7 @@ function renderHistoCard(secId,fieldDefs,opts){
             if(k==='signature') return false;
             // v493 : champs techniques (_from_stock, _plat_liens, _created…) masqués partout
             if(k.charAt(0)==='_') return false;
+            if(k==='conf_t3' && (r.t3===undefined||r.t3==='')) return false; // v495 : conformité auto sans mesure associée
             return true;
           }catch(e){ return false; }
         });
@@ -4562,14 +4571,15 @@ function openEncSaisie(encId, moment){
   document.getElementById('enc-modal-sub').textContent=`Consigne : ${enc.consigne}`;
   const _acEl=document.getElementById('enc-modal-ac'); if(_acEl) _acEl.innerHTML='';
   // Plages HACCP adaptées au type
-  const isConge = enc.type==='congelateur';
+  const isConge = _encIsConge(enc);
   const tMin = isConge ? -30 : -10;
   const tMax = isConge ? 5  : 25;
   const presets = isConge ? [-25,-22,-20,-18,-15] : [0,2,3,4,5,6,7,8,10,12,14];
   // Reset draft
   S['enc_modal']=S['enc_modal']||{};S['enc_modal'].draft={enc_temp:'',enc_chef:''};
+  _encResetBadge();
   document.getElementById('enc-modal-tp').innerHTML=
-    tpHtmlEnc('enc_temp','enc_modal','Température relevée', tMin, tMax, presets);
+    tpHtmlEnc('enc_temp','enc_modal','Température relevée', tMin, tMax, presets) + _encHeureHtml();
   // Chef
   document.getElementById('enc-modal-chef').innerHTML=
     chefSel('enc_chef','enc_modal','Cuisinier / Visa');
@@ -4577,7 +4587,26 @@ function openEncSaisie(encId, moment){
   if(_btn19) _btn19.setAttribute('onclick','saveEncSaisie()');
   document.getElementById('enc-ov').classList.add('open');
 }
+// v495 : congélateur reconnu aussi par libellé / consigne négative (curseur jusqu'à −30 °C)
+function _encIsConge(enc){
+  try { return !!enc && (enc.type==='congelateur' || /cong[eé]l|surg|n[ée]gatif/i.test(String(enc.label||'')) || /[−-]\s*(1[5-9]|2\d|3\d)/.test(String(enc.consigne||''))); } catch(e){ return false; }
+}
+// v495 : heure du relevé réglable (défaut = maintenant, jamais dans le futur)
+function _encHeureHtml(){
+  return '<div class="fg full" style="margin-top:8px"><label>Heure du relevé</label><input type="time" id="enc-heure-inp" class="fi" value="'+nowT()+'" max="'+nowT()+'" style="max-width:140px"></div>';
+}
+function _encHeureVal(){
+  try {
+    const el=document.getElementById('enc-heure-inp'); const v=el?String(el.value||''):'';
+    if(!/^\d{2}:\d{2}$/.test(v)) return nowT();
+    const n=new Date(); const p=v.split(':');
+    if(parseInt(p[0],10)*60+parseInt(p[1],10) > n.getHours()*60+n.getMinutes()+5) return null;
+    return v;
+  } catch(e){ return nowT(); }
+}
+function _encResetBadge(){ try { const b=document.getElementById('enc-conf-badge'); if(b) b.innerHTML=''; } catch(e){} }
 function closeEncSaisie(){
+  _encResetBadge();
   document.getElementById('enc-ov').classList.remove('open');
   _encSaisie={};
   _encAcSelectedIds=[];
@@ -4588,6 +4617,8 @@ function saveEncSaisie(){
   const temp=(S['enc_modal']?.draft?.enc_temp)||'';
   const chef=(S['enc_modal']?.draft?.enc_chef)||getActiveSession()||'';
   if(temp===''||temp===undefined){toast('⚠️ Saisissez la température','warning');return;}
+  const _hRel=_encHeureVal();
+  if(_hRel===null){ toast('⛔ Heure dans le futur refusée — il est '+nowT(),'warning'); return; }
   const ok=encConforme(temp,_encSaisie.consigne);
   let ac={ids:[],names:[],action:''};
   if(ok===false){
@@ -4600,7 +4631,7 @@ function saveEncSaisie(){
     }
   }
   const saisie={
-    date:today(),heure:nowT(),
+    date:today(),heure:_hRel||nowT(),
     enc_id:_encSaisie.encId,
     enc_label:_encSaisie.label||_encSaisie.encId,
     moment:_encSaisie.moment,
@@ -4730,7 +4761,7 @@ function openEncSaisie20(encId, moment){
   document.getElementById('enc-modal-title').textContent=enc.label+' — '+mLabel+' (Plan Canicule)';
   document.getElementById('enc-modal-sub').textContent='Consigne : '+enc.consigne;
   var _acEl20=document.getElementById('enc-modal-ac'); if(_acEl20) _acEl20.innerHTML='';
-  var isConge=enc.type==='congelateur';
+  var isConge=_encIsConge(enc);
   var tMin=isConge?-30:-10; var tMax=isConge?5:25;
   var presets=isConge?[-25,-22,-20,-18,-15]:[0,2,3,4,5,6,7,8,10,12,14];
   S['enc_modal']=S['enc_modal']||{}; S['enc_modal'].draft={enc_temp:'',enc_chef:''};
@@ -4856,7 +4887,7 @@ function openEncSaisie21(encId){
   document.getElementById('enc-modal-title').textContent=enc.label+' — Contrôle individuel';
   document.getElementById('enc-modal-sub').textContent='Consigne : '+enc.consigne;
   var _acEl21=document.getElementById('enc-modal-ac'); if(_acEl21) _acEl21.innerHTML='';
-  var isConge=enc.type==='congelateur';
+  var isConge=_encIsConge(enc);
   var tMin=isConge?-30:-10; var tMax=isConge?5:25;
   var presets=isConge?[-25,-22,-20,-18,-15]:[0,2,3,4,5,6,7,8,10,12,14];
   S['enc_modal']=S['enc_modal']||{}; S['enc_modal'].draft={enc_temp:'',enc_chef:'',enc_motif:''};
@@ -13216,8 +13247,13 @@ function renderAuditMP(period){
   // ── Top 20 produits ──────────────────────────────
   const prodCount = {};
   const prodDates = {};
+  // v495 : agrégation sur le nom normalisé (casse, accents, espaces) — sinon chaque variante comptait 1×
+  const prodNom = {};
   lignes.forEach(r=>{
-    const p = (r.produit||'—').trim();
+    const raw = (r.produit||'—').trim();
+    let k = raw; try { k = raw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); } catch(e){}
+    if(!prodNom[k]) prodNom[k] = raw;
+    const p = prodNom[k];
     prodCount[p] = (prodCount[p]||0) + 1;
     if(!prodDates[p]) prodDates[p] = [];
     prodDates[p].push(r.date);
@@ -13327,6 +13363,21 @@ function renderAuditMP(period){
 // ════════════════════════════════════════════════════
 // ENR31 — Export PDF Traçabilité Matières Premières
 // ════════════════════════════════════════════════════
+// v495 : export de l'AUDIT MP (Top 20 & statistiques affichés), distinct du listing Traça MP
+function exportAuditMP_PDF(period){
+  try {
+    renderAuditMP(period);
+    const body = document.getElementById('audit-mp-body');
+    if(!body || !body.innerHTML.trim()){ toast('Aucune donnée à exporter','warning'); return; }
+    const site = getSiteName(); const rg = _mpDateRange(period);
+    const html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Audit MP — '+escH(site)+'</title><style>'+_pdfCSS()+'@media print{.no-print{display:none!important}} button{display:none}</style></head><body>'
+      + '<div class="no-print" style="padding:10px"><button onclick="window.print()" style="display:inline-block;background:#5C1E5A;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-weight:bold">🖨️ Imprimer / PDF</button></div>'
+      + '<div class="hdr" style="border-color:#5C1E5A"><div><h1 style="color:#5C1E5A">📊 Audit Matières Premières</h1><p><strong>'+escH(site)+'</strong></p><p>Période : '+escH(rg.label||'')+'</p><p>Généré le '+new Date().toLocaleString('fr-FR')+'</p></div></div>'
+      + body.innerHTML
+      + '<div class="footer"><span>HACC.PRO — Audit MP — '+escH(site)+'</span></div></body></html>';
+    openPrintWindow(html);
+  } catch(e){ console.warn('[auditMP] export', e); toast('⚠️ Export impossible','warning'); }
+}
 function exportMP_PDF(period){
   const lignes = (S['enr31']?.lignes||[]).slice();
   const site = getSiteName();
@@ -13497,7 +13548,7 @@ function renderENR31() {
       </div>
     </div>
     ${renderHistoCard('enr31', def.fields, {
-      extraRow: r => { try{ return (typeof window._menuMpPlatsChips==='function')?window._menuMpPlatsChips(r):''; }catch(e){ console.warn('[enr31] plats liés', e); return ''; } },
+      extraRow: r => { let info=''; try{ let hh=r.heure||''; if(!hh&&r._ts){ const t=new Date(r._ts); if(!isNaN(t)) hh=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'); } info='<div style="font-size:.68rem;color:#7A6579;margin-top:4px">'+(hh?'🕒 '+escH(hh)+' · ':'')+'Lot <b>'+escH(r.lot||'—')+'</b></div>'; }catch(e){ info=''; } try{ return info+((typeof window._menuMpPlatsChips==='function')?window._menuMpPlatsChips(r):''); }catch(e){ console.warn('[enr31] plats liés', e); return info; } },
       extraBtn: (r,i) => `<button onclick="enr31ToEtiq(${i})" style="background:#f5eef5;border:1.5px solid var(--plum);border-radius:8px;padding:5px 8px;font-size:.7rem;cursor:pointer;font-family:inherit;color:var(--plum);font-weight:700;flex-shrink:0;touch-action:manipulation" title="Créer étiquette Entamé">🏷️</button>`
     })}`;
 }
@@ -15190,6 +15241,8 @@ function e34qty(delta){
 function e34AddBatch(){
   const d=e34d();
   if(!d.produit){toast('⚠️ Saisissez le nom du produit','warning');return;}
+  // v495 : jamais d'étiquette « DLC: DDM » sans date — DLC (après ouverture pour un entamé) obligatoire
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.dlc||''))){toast(d.statut==='Entamé'?'⛔ Saisis la DLC après ouverture (date) avant de valider':'⛔ Saisis la date limite (DLC) avant de valider','warning');return;}
   const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
   const batchEntry={...d, nb:_e34qty, _sel:_e34sel, cuisinier34:op, cuisinier:op, operateur:op};
   _e34batch.push(batchEntry);
@@ -15208,6 +15261,8 @@ function e34RemoveBatch(i){ _e34batch.splice(i,1); renderNav(); renderMain(); }
 function e34Save(){
   const d=e34d();
   if(!d.produit){toast('⚠️ Saisissez le nom du produit','warning');return;}
+  // v495 : jamais d'étiquette « DLC: DDM » sans date — DLC (après ouverture pour un entamé) obligatoire
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(d.dlc||''))){toast(d.statut==='Entamé'?'⛔ Saisis la DLC après ouverture (date) avant de valider':'⛔ Saisis la date limite (DLC) avant de valider','warning');return;}
   const nb=_e34qty;
   const op=d.cuisinier34||d.operateur||d.cuisinier||getActiveSession()||'';
   const rec={...d,date:today(),_ts:new Date().toISOString(),_sec:'enr34',nb_etiq:nb,cuisinier34:op,cuisinier:op,operateur:op};
