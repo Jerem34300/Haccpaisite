@@ -61,7 +61,7 @@ var _stk = { pages: [], draft: null, q: '', busy: false, view: [], resume: null,
 // ── Utilitaires ─────────────────────────────────────────────────────
 function _stkE(s){ try { return (typeof escH === 'function') ? escH(s) : String(s||''); } catch(e){ return ''; } }
 function _stkA(s){ try { return (typeof escAttr === 'function') ? escAttr(s) : String(s||''); } catch(e){ return ''; } }
-function _stkToday(){ try { return today(); } catch(e){ return new Date().toISOString().slice(0,10); } }
+function _stkToday(){ try { return today(); } catch(e){ var d = new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); } } // heure locale, jamais UTC
 function _stkHM(d){ d = d || new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
 function _stkFr(ymd){ try { var m = String(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (m[3]+'/'+m[2]) : String(ymd||''); } catch(e){ return ''; } }
 function _stkFrY(ymd){ try { var m = String(ymd||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? (m[3]+'/'+m[2]+'/'+m[1]) : String(ymd||''); } catch(e){ return ''; } }
