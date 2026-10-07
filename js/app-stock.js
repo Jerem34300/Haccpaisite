@@ -335,6 +335,8 @@ function stkRender(){
       + '<button class="stk-btn ok big" style="margin-top:8px" onclick="stkResume()">▶️ Reprendre la réception en cours</button>'
       + '<button class="stk-btn big" style="margin-top:6px" onclick="stkAbandonResume()">Abandonner</button></div>';
   }
+  // v498 : Rappel de lot visible dès l'accueil Stock (gros bouton en tête)
+  h += '<button class="stk-btn big" style="margin:0 0 10px;border:2px solid #5C1E5A;color:#5C1E5A;font-weight:900" onclick="try{stkRecallFocus()}catch(e){}">🔎 Rappel de lot</button>';
   // Scan BL
   h += '<div class="card"><div class="stk-h">📄 Nouvelle réception</div>'
     + '<div class="stk-sub">Photographie le bon de livraison (plusieurs pages possibles, gardées dans l\'ordre).</div>'
@@ -1292,6 +1294,7 @@ function _stkDlcOuvJ(produit){
   try {
     var m = ((S.config||{}).stk_dlc_ouv||{})[_stkNorm(produit)];
     if (m != null && !isNaN(parseInt(m,10))) return parseInt(m,10);
+    var fj = _stkFamOuvJ(produit); if (fj != null) return fj;
     if (typeof DLC_BASE !== 'undefined') {
       var n = _stkNorm(produit).split(' ')[0];
       var b = n && n.length > 3 && DLC_BASE.find(function(p){ return p && p.dlc_j != null && !p.dlc_ddm && _stkNorm(p.produit).indexOf(n) >= 0; });
@@ -1300,6 +1303,44 @@ function _stkDlcOuvJ(produit){
   } catch(e){}
   return null;
 }
+/** v498 : durées par défaut APRÈS OUVERTURE par famille (jours) — proposées, toujours confirmées ;
+ *  modifiables par site via S.config.stk_dlc_ouv_fam = { vinaigrette: 5, … } (clé = famille ci-dessous). */
+var STK_OUV_FAM = [
+  // mots entiers + exclusions (v498) : « carottes râpées », « fond de tarte », « jus d'orange », « pâté », « pâte à tartiner » ne sont pas attrapés
+  { k: 'vinaigrette', re: /\b(vinaigrette|sauce salade)\b/, j: 7 },
+  { k: 'mayonnaise', re: /\b(mayonnaise|mayo|aioli|sauce tartare|remoulade)\b/, j: 3 },
+  { k: 'sauce', re: /\b(sauces?|coulis|fond (brun|blanc|de veau|de volaille|de sauce)|jus (de viande|de roti|de veau|de volaille)|bechamel)\b/, ex: /\b(sauce salade|fond de tarte|jus d'?\s?(orange|pomme|raisin|fruits?|ananas|citron))\b/, j: 3 },
+  { k: 'compote', re: /\b(compotes?|puree de fruits?|fruits? au sirop)\b/, j: 3 },
+  { k: 'pate', re: /\b(pate (feuilletee|brisee|sablee|a pizza|fraiche)|pates fraiches)\b/, ex: /\b(pate a tartiner|fond de tarte)\b/, j: 2 },
+  { k: 'creme', re: /\b(creme (fraiche|liquide|epaisse|entiere|legere)|lait|yaourts?|fromage blanc)\b/, j: 3 },
+  { k: 'charcuterie', re: /\b(jambon|lardons?|bacon|saucisson|chorizo|charcuterie|cervelas)\b/, j: 3 }, // « pâté » : testé AVEC accent dans _stkFamOuvJ
+  { k: 'fromage', re: /\b(fromages?|emmental|comte|camembert|brie|mozzarella|fromage rape|emmental rape)\b/, ex: /\b(fromage blanc)\b/, j: 5 },
+  { k: 'conserve', re: /\b(conserve|en boite|macedoine|mais doux|thon|haricots? (verts|blancs|rouges)|petits pois|tomates? concassees?|concentre de tomates?)\b/, j: 3 },
+  { k: 'condiment', re: /\b(ketchup|moutarde|cornichons?|capres|olives)\b/, j: 30 }
+];
+function _stkFamOuvJ(produit){
+  try {
+    var raw = String(produit||'').toLowerCase().replace(/[’']/g,"'");
+    var n = _stkNorm(produit).replace(/[’']/g,"'"), f = null;
+    // pâté : mot entier AVEC accent sur le nom d'origine (jamais « pate » / « pâte » sans accent)
+    if (/(^|[^a-zà-ÿ])pâtés?($|[^a-zà-ÿ])/.test(raw)) f = STK_OUV_FAM.find(function(x){ return x.k === 'charcuterie'; });
+    if (!f) {
+      var pp = STK_OUV_FAM.find(function(x){ return x.k === 'pate'; });
+      if (pp && pp.re.test(n) && !(pp.ex && pp.ex.test(n))) f = pp; // pâte feuilletée / brisée…
+    }
+    // pâtes (sèches ou cuites) : famille à part — 3 j si « cuit », sinon aucune durée (la question est posée)
+    if (!f && /\b(pates?|coquillettes?|spaghettis?|penne|macaronis?|tagliatelles?|fusillis?|farfalles?|rigatonis?|linguines?|lasagnes?|torsades?|nouilles?)\b/.test(n)) {
+      if (/\bpate a tartiner\b/.test(n)) return null;
+      if (/\bcuite?s?\b/.test(n)) { var ovp = ((S.config||{}).stk_dlc_ouv_fam||{})['pates_cuites']; return (ovp != null && !isNaN(parseInt(ovp,10))) ? parseInt(ovp,10) : 3; }
+      return null;
+    }
+    if (!f) f = STK_OUV_FAM.find(function(x){ return x.k !== 'pate' && x.re.test(n) && !(x.ex && x.ex.test(n)); });
+    if (!f) return null;
+    var ov = ((S.config||{}).stk_dlc_ouv_fam||{})[f.k];
+    return (ov != null && !isNaN(parseInt(ov,10))) ? parseInt(ov,10) : f.j;
+  } catch(e){ return null; }
+}
+window.STK_OUV_FAM = STK_OUV_FAM;
 /** Étiquette « Entamé » depuis le stock : DLC = date d'ouverture + durée après ouverture (jamais la DDM du sac). */
 function stkEtiq(G, itX, kX){
   try {
@@ -1326,6 +1367,8 @@ function stkEtiq(G, itX, kX){
       try {
         var n = parseInt(String(v||'').trim(),10);
         if (!isNaN(n) && n >= 0 && n < 400) { S.config = S.config || {}; S.config.stk_dlc_ouv = S.config.stk_dlc_ouv || {}; S.config.stk_dlc_ouv[_stkNorm(it.produit)] = n; go(n); }
+        // v498 : produit à DDM seule → la durée après ouverture est obligatoire (jamais « DLC: DDM »)
+        else if (!it.dlc || _stkDType(it.dlc_type) === 'DDM') { toast('⛔ DDM seule : indique la durée de conservation après ouverture (en jours)','warning',{ force: true }); setTimeout(function(){ try { stkEtiq(G, itX, kX); } catch(e){} }, 150); }
         else go(null);
       } catch(e){ console.warn('[stock] etiq prompt', e); go(null); }
     }, 'Confirmer et créer l\'étiquette');
@@ -1442,12 +1485,27 @@ function stkRecall(q){
   } catch(e){ console.warn('[stock] recall', e); }
   return out;
 }
+var _stkPlatIdx = null, _stkPlatIdxT = 0;
+/** v498 : id de plat → nom actuel dans S.menus (index recalculé au plus toutes les 5 s). */
+function _stkPlatNomActuel(id){
+  try {
+    if (!id) return '';
+    if (!_stkPlatIdx || Date.now() - _stkPlatIdxT > 5000) {
+      _stkPlatIdx = {}; _stkPlatIdxT = Date.now();
+      var M = S.menus || {}, keys = Object.keys(M).sort(); // ordre chronologique : le plus récent écrase
+      keys.forEach(function(k){ try { var c = (M[k] && M[k].categories) || {}; Object.keys(c).forEach(function(ck){ (c[ck]||[]).forEach(function(p){ if (p && p.plat_id && p.nom) _stkPlatIdx[String(p.plat_id)] = p.nom; }); }); } catch(e){} });
+    }
+    return _stkPlatIdx[String(id)] || '';
+  } catch(e){ return ''; }
+}
 /** Noms des plats liés à une fiche ENR31 (tous, dédoublonnés). */
 function _stkPlatsOf(l){
   var out = [];
   try {
     var add = function(n){ n = String(n||'').trim(); if (n && !out.some(function(x){ return _stkNorm(x) === _stkNorm(n); })) out.push(n); };
-    (Array.isArray(l && l._plat_liens) ? l._plat_liens : []).forEach(function(p){ if (p) add(p.nom); });
+    // v498 : nom ACTUEL du plat dans le menu (par id), anciens noms regroupés ; sinon nom normalisé (dédoublonné par add)
+    (Array.isArray(l && l._plat_liens) ? l._plat_liens : []).forEach(function(p){ if (p) add(_stkPlatNomActuel(p.plat_id) || p.nom); });
+    (Array.isArray(l && l._plat_ids) ? l._plat_ids : []).forEach(function(id){ var n = _stkPlatNomActuel(id); if (n) add(n); });
     if (l && l._plat_nom) add(l._plat_nom);
   } catch(e){}
   return out;
@@ -1690,7 +1748,7 @@ function _stkExportSection(from, to){
     stkRender = function(){
       var h = _rs.apply(this, arguments);
       if (_stk.draft) return h;
-      var top = '<div style="display:flex;justify-content:flex-end;margin:0 0 8px"><button class="stk-btn" onclick="stkRecallFocus()">🔎 Rappel de lot</button></div>';
+      var top = ''; // v498 : bouton désormais en tête de stkRender
       return top + h + '<div class="card" id="stk-recall" style="margin-bottom:96px"><div class="stk-h">🔎 Rappel de lot</div>'
         + '<input class="stk-in" id="stk-recall-q" placeholder="N° de lot…" value="'+_stkA(_stk.rq)+'" oninput="stkRecallSearch(this.value)">'
         + '<div id="stk-recall-res" style="margin-top:8px">'+stkRecallHtml(_stk.rq)+'</div></div>' + '<div id="stk-jetes-all"'+(String(_stk.rq||'').trim()?' style="display:none"':'')+'>' + _stkJetesCard(10, '🗑️ Derniers produits jetés (tous lots)') + '</div>';

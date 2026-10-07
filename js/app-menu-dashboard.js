@@ -26,6 +26,8 @@ const PROFILS = {
   REMISE_TC:     { ico:'🔥', label:'Remise T°C',     color:'#ea580c' },
   SORTIE_DIRECTE:{ ico:'📦', label:'Sortie directe', color:'#0ea5e9' },
   PREP_MINUTE:   { ico:'⚡', label:'Préparé minute', color:'#7c3aed' },
+  CUISINE:       { ico:'🍳', label:'Cuisiné',        color:'#b45309' },
+  CUIT_REFROIDI: { ico:'❄️', label:'Cuit-refroidi',  color:'#0369a1' },
 };
 const SERVICES = { petitdej:'☕ Petit-déjeuner', midi:'🌞 Midi', gouter:'🍪 Goûter', soir:'🌙 Soir' };
 const CATS = [
@@ -601,6 +603,8 @@ function _platTrace(plat, enrs){
   const _prof = PROFILS[plat && plat.profil_haccp] ? plat.profil_haccp : 'BF_CUIT';
   if(_prof === 'BF_CUIT'){ _tile('🥘','Cuisson',['enr04','enr07']); _tile('❄️','Refroid.',['enr01','enr03']); }
   else if(_prof === 'BF_CRU'){ _tile('🥗','Préparation',['enr08']); }
+  else if(_prof === 'CUISINE'){ _tile('🍳','Cuisson',['enr04','enr07']); }
+  else if(_prof === 'CUIT_REFROIDI'){ _tile('❄️','Refroid.',['enr01','enr03']); _tile('🔥','Remise T°C',['enr02','enr03']); }
   else if(_prof === 'REMISE_TC'){ _tile('❄️','Refroid.',['enr01','enr03']); _tile('🔥','Remise T°C',['enr02','enr03']); }
   _tile('🍱','Témoin',['enr33']);
   if(enrs.some(e => e.enr_type === 'enr_tc_distrib' || e.enr_type?.startsWith('enr_distrib_'))) tiles.push({ ico:'🌡️', lbl:'Distrib.', ok:true, val:'✓' });
